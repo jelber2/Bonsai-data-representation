@@ -1557,7 +1557,8 @@ class TreeNode:
                 # This means we will use nearest-neighbours
                 if runConfigs['getNewNN']:
                     # In this case we calculate new NNs
-                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'], verbose=verbose)
+                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'],
+                                                        verbose=verbose)
                     runConfigs['getNewNN'] = False
                     NNInfo['NNcounter'] = 0
                 else:
@@ -1570,8 +1571,9 @@ class TreeNode:
                     else:
                         # In this case we should add NN-pairs involving the ancestor
                         new_pairs, oldPairsList = self.get_new_nn_pairs(newAnc, NNInfo, runConfigs, UBInfo=UBInfo,
-                                                                        old_pairs_list=[oldPairs], xrAIRoot=xrAsIfRoot_g,
-                                                                         xrVarsAIRoot=xrVarsAsIfRoot_g)
+                                                                        old_pairs_list=[oldPairs],
+                                                                        xrAIRoot=xrAsIfRoot_g,
+                                                                        xrVarsAIRoot=xrVarsAsIfRoot_g)
                         oldPairs = oldPairsList[0]
                         # index, nns = getApproxNNs(newAnc.ltqs[:, None], index=NNInfo['index'],
                         #                           k=2 * runConfigs['kNN'],
@@ -1606,7 +1608,8 @@ class TreeNode:
                 else:
                     # so we re-use UBs, recalculate NNs
                     # First get all NNs
-                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'], verbose=verbose)
+                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'],
+                                                        verbose=verbose)
                     runConfigs['getNewNN'] = False
                     NNInfo['NNcounter'] = 0
                     # Then we test which UBs were already in the UB-pairs and which ones are new
@@ -1636,12 +1639,14 @@ class TreeNode:
                                  newAnc.nodeInd != child.nodeInd]
                     old_pairs = [*UBInfo['pairs']]
                 elif not runConfigs['getNewNN']:
-                    new_pairs = self.get_new_nn_pairs(newAnc, NNInfo, runConfigs, UBInfo=UBInfo, xrAIRoot=xrAsIfRoot_g, xrVarsAIRoot=xrVarsAsIfRoot_g)
+                    new_pairs = self.get_new_nn_pairs(newAnc, NNInfo, runConfigs, UBInfo=UBInfo, xrAIRoot=xrAsIfRoot_g,
+                                                      xrVarsAIRoot=xrVarsAsIfRoot_g)
                     old_pairs = list(map(tuple, UBInfo['pairs']))
                 else:
                     # so we re-use UBs, recalculate NNs
                     # First get all NNs
-                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'], verbose=verbose)
+                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'],
+                                                        verbose=verbose)
                     runConfigs['getNewNN'] = False
                     NNInfo['NNcounter'] = 0
 
@@ -1832,7 +1837,7 @@ class TreeNode:
         # of pairs, in the order that we want to consider them.
         runConfigs['obtainedNewPairs'] = runConfigs['getNewUB'] or runConfigs['getNewNN']
         start_new_pairs = time.time()
-        pairs, nPairs, nNewPairs = self.getNewPairs(xrAsIfRoot_g, 1/WAsIfRoot_g, runConfigs, NNInfo=NNInfo,
+        pairs, nPairs, nNewPairs = self.getNewPairs(xrAsIfRoot_g, 1 / WAsIfRoot_g, runConfigs, NNInfo=NNInfo,
                                                     newAnc=newAnc, verbose=verbose, oldPairs=oldPairs,
                                                     UBInfo=UBInfo, specialChild=specialChild, chInfo=chInfo,
                                                     del_node_inds=del_node_inds)
@@ -2014,7 +2019,7 @@ class TreeNode:
         start = time.time()
 
         # We first gather all ltq-information about the children
-        post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1/xrVarsAIRoot)
+        post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot)
         # We center the ltq-information around the root
         post_ltqsCh -= xrAIRoot[:, None]
         NNInfo['subtracted_mean'] = xrAIRoot
@@ -2098,7 +2103,8 @@ class TreeNode:
 
         # Get the posterior coordinates for the new node
         # post_ltqs = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot)
-        post_ltqs, _ = getLtqsAsIfRoot_vectorized(new_node.ltqs[:, None], new_node.getW()[:, None], new_node.tParent, xrAIRoot, 1 / xrVarsAIRoot)
+        post_ltqs, _ = getLtqsAsIfRoot_vectorized(new_node.ltqs[:, None], new_node.getW()[:, None], new_node.tParent,
+                                                  xrAIRoot, 1 / xrVarsAIRoot)
         post_ltqs = post_ltqs.flatten()
 
         # post_ltqs_old = lik_to_post_coords(new_node.ltqs, new_node.getLtqsVars())
@@ -2109,7 +2115,8 @@ class TreeNode:
 
         nns = np.array(index.IDs)[nns]
         # Make list of unique neighbors that are not the node itself
-        non_unique_partners = np.array([NNInfo['leafToChild'][nb] for nb in nns[0, :] if NNInfo['leafToChild'][nb] != new_node.nodeInd])
+        non_unique_partners = np.array(
+            [NNInfo['leafToChild'][nb] for nb in nns[0, :] if NNInfo['leafToChild'][nb] != new_node.nodeInd])
         seen = set()
         partners = []
         for item in non_unique_partners:
@@ -2730,7 +2737,8 @@ class Tree:
                                 node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * variances
                             else:
                                 node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(geneDiffusionScaling)
-                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * geneDiffusionScaling
+                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(
+                                    AIRoot=True) * geneDiffusionScaling
                             ltqs.append(node_ltqs_post)
                             ltqsVars.append(node_ltqsVars_post)
                         # ltqsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].ltqs)) + '\n')
@@ -3543,7 +3551,9 @@ def optimiseT3LeafStar(ltqs_gi, ltqsVars_gi, t0_i, verbose=False):
 def optimiseT3LeafStarSequential(ltqs_gi, ltqsVars_gi, t0_i, tol=None, verbose=False):
     # Optimise t12, total diffusion time between the two cells as if these are not connected to the root
     # if t12Opt is None:
-    t12Opt, converged = getOptTime2LeafTree(ltqs_gi, ltqsVars_gi, tol=tol)
+    # t12Opt, converged = getOptTime2LeafTree(ltqs_gi, ltqsVars_gi, tol=tol)
+    t12Opt, converged = getOptTime2LeafTree(ltqs1_g=ltqs_gi[:, 0], ltqsVars1_g=ltqsVars_gi[:, 0], ltqs2_g=ltqs_gi[:, 1],
+                                            ltqsVars2_g=ltqsVars_gi[:, 1], tol=tol)
     if not converged:
         return None, None, None, False
     # Fix t12 = t1a + t2a and optimise t1a < t12 and tar.
@@ -3570,11 +3580,17 @@ def optimiseT3LeafStarSequential(ltqs_gi, ltqsVars_gi, t0_i, tol=None, verbose=F
 #     optRes.x[1] = np.exp(optRes.x[1])
 #     return -optRes.fun, optRes.x, t12Opt, optRes.success
 
+def getLoglik2LeafTree(ltqs1_g, ltqsVars1_g, ltqs2_g, ltqsVars2_g, t):
+    totalVars_g = ltqsVars1_g + ltqsVars2_g + t
+    sqDists_g = (ltqs1_g - ltqs2_g) ** 2
+    loglik = -np.sum(np.log(totalVars_g) + sqDists_g / totalVars_g)
+    return loglik
+
 
 # Used
-def getOptTime2LeafTree(ltqs_gi, ltqsVars_gi, tol=1e-7):
-    summedLtqsVars_g = ltqsVars_gi[:, 0] + ltqsVars_gi[:, 1]
-    sqDists_g = (ltqs_gi[:, 0] - ltqs_gi[:, 1]) ** 2
+def getOptTime2LeafTree(ltqs1_g, ltqsVars1_g, ltqs2_g, ltqsVars2_g, tol=1e-7):
+    summedLtqsVars_g = ltqsVars1_g + ltqsVars2_g
+    sqDists_g = (ltqs1_g - ltqs2_g) ** 2
     lb_bracket = 0
     ub_bracket = lb_bracket + 1
     value_lb = der2LeafTree(lb_bracket, summedLtqsVars_g, sqDists_g)
