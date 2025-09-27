@@ -3565,6 +3565,10 @@ class Tree:
 
     def do_spr_moves(self, max_moves=1000, seed=42):
         """Initialize some values"""
+        successful_moves = 0
+        unsuccessful_moves = 0
+        returned_moves = 0
+
         np.random.seed(seed)
         as_if_root_version = 0
         n_moves = 0
@@ -3631,18 +3635,24 @@ class Tree:
                                                               as_if_root_version=as_if_root_version)
             # Check if dlogl-improvement is gained. Otherwise, just place it back at its original position
             if dlogl_orig_pos > opt_dlogl:
+                if opt_node.nodeInd == old_parent.nodeInd:
+                    returned_moves += 1
+                else:
+                    unsuccessful_moves += 1
                 opt_node = old_parent
                 opt_t = orig_t
-                logging.info("SPR-move {} unsuccessful, placing node {} back as child of {}".format(n_moves,
-                                                                                                    candidate.nodeInd,
-                                                                                                    opt_node.nodeInd))
+                # logging.info("SPR-move {} unsuccessful, placing node {} back as child of {}".format(n_moves,
+                #                                                                                     candidate.nodeInd,
+                #                                                                                     opt_node.nodeInd))
             else:
                 if opt_node.nodeInd == old_parent.nodeInd:
-                    logging.info("SPR-move {} returned: leaving node {} as child of {}. "
-                                 "Time-optimization led to loglikelihood increase "
-                                 "of: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
-                                                  opt_dlogl - dlogl_orig_pos))
+                    returned_moves += 1
+                    # logging.info("SPR-move {} returned: leaving node {} as child of {}. "
+                    #              "Time-optimization led to loglikelihood increase "
+                    #              "of: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
+                    #                               opt_dlogl - dlogl_orig_pos))
                 else:
+                    successful_moves += 1
                     logging.info("SPR-move {} success: moving node {} as child of {}. "
                                  "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
                                                                   opt_dlogl - dlogl_orig_pos))
@@ -3663,6 +3673,10 @@ class Tree:
 
         logging.info("The {} SPR-moves led to an increase of {} of the tree loglikelihood.".format(n_moves, total_dlogl_increase))
         logging.info("Total loglikelihood should now thus be {}, and is {} according to the normal loglik calculation.".format(origLoglik + total_dlogl_increase, self.calcLogLComplete(mem_friendly=True, recalc=True)))
+        logging.info("Move statistics:\n"
+                     "Successful: {}\n"
+                     "Failed: {}\n"
+                     "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
 
 
 def getNewUBInfo(xrAsIfRoot_g, WAsIfRoot_g, epsx, epsW, alldLogLsUB, UBInfo, allPairsUB, oldRoot, del_node_inds,
