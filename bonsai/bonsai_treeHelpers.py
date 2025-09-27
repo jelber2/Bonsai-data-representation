@@ -619,18 +619,7 @@ class TreeNode:
             self.ltqs, W_g, wbar_gi = findNodeLtqsGivenLeafs(ltqs_gi=ltqsChildren, ltqsVars_gi=ltqsVarsChildren,
                                                              t_i=tChildren, return_wbar_gi=True)
         else:
-            # TODO: CLEAN UP
-            do_test = False
-            if self.ltqs is not None:
-                old_ltqs = self.ltqs.copy()
-                old_W = self.getW().copy()
-                do_test = True
             self.ltqs, W_g = findNodeLtqsGivenLeafs(childNodes=self.childNodes, return_wbar_gi=False)
-            if do_test:
-                if np.max(np.abs(old_ltqs - self.ltqs)) > 1e-6:
-                    print("Here it goes wrong. Node {}".format(self.nodeInd))
-                if np.max(np.abs(old_W - W_g)) > 1e-6:
-                    print("Here it goes wrong. Node {}".format(self.nodeInd))
             wbar_gi = None
             # self.ltqs, W_g, wbar_gi = getNodeLtqsGivenChildnodes(self.childNodes, mem_friendly=mem_friendly)
         self.setLtqsVarsOrW(W_g=W_g)
