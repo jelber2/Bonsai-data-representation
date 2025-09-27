@@ -26,6 +26,7 @@ class TreeNode:
     isRoot = None
     isCell = None
     dsLeafs = None
+    n_ds_nodes = None
 
     # Position information
     ltqs = None  # (Effective) coordinates of the (node) leaf
@@ -337,6 +338,29 @@ class TreeNode:
                 self.dsLeafs += dsLeafsCh
         return self.dsLeafs
 
+    def get_ds_node_counts(self):
+        if self.isLeaf:
+            self.n_ds_nodes = 1
+        else:
+            self.n_ds_nodes = 1
+            for child in self.childNodes:
+                n_ds_nodes_ch = child.get_ds_node_counts()
+                self.n_ds_nodes += n_ds_nodes_ch
+        return self.n_ds_nodes
+
+    def select_nth_node_df(self, nth_node, counter):
+        if counter == nth_node:
+            return self
+        for child in self.childNodes:
+            # Check if this child contains the desired node. This is only true when
+            # nth_node <= child.n_ds_nodes + counter
+            if nth_node <= counter + child.n_ds_nodes:
+                selected_node = child.select_nth_node_df(nth_node, counter+1)
+                return selected_node
+            else:
+                counter += child.n_ds_nodes
+        exit("Something went wrong! Couldn't find the {} node on this tree.".format(nth_node))
+
     def reset_root_node(self, parent_ind=None, old_tParent=None):
         # Get all connecting nodes
         new_children = []
@@ -595,7 +619,18 @@ class TreeNode:
             self.ltqs, W_g, wbar_gi = findNodeLtqsGivenLeafs(ltqs_gi=ltqsChildren, ltqsVars_gi=ltqsVarsChildren,
                                                              t_i=tChildren, return_wbar_gi=True)
         else:
+            # TODO: CLEAN UP
+            do_test = False
+            if self.ltqs is not None:
+                old_ltqs = self.ltqs.copy()
+                old_W = self.getW().copy()
+                do_test = True
             self.ltqs, W_g = findNodeLtqsGivenLeafs(childNodes=self.childNodes, return_wbar_gi=False)
+            if do_test:
+                if np.max(np.abs(old_ltqs - self.ltqs)) > 1e-6:
+                    print("Here it goes wrong. Node {}".format(self.nodeInd))
+                if np.max(np.abs(old_W - W_g)) > 1e-6:
+                    print("Here it goes wrong. Node {}".format(self.nodeInd))
             wbar_gi = None
             # self.ltqs, W_g, wbar_gi = getNodeLtqsGivenChildnodes(self.childNodes, mem_friendly=mem_friendly)
         self.setLtqsVarsOrW(W_g=W_g)
@@ -675,6 +710,15 @@ class TreeNode:
         parent.ltqs, W_g = findNodeLtqsGivenLeafs(childNodes=parent.childNodes, return_wbar_gi=False)
         parent.setLtqsVarsOrW(W_g=W_g)
         parent.setLtqsUpstream()
+
+    # Used
+    def add_n_nodes_upstream(self, n_nodes_added):
+        self.n_ds_nodes += n_nodes_added
+        # This assumes that the ltqs of this node and all of its siblings are already correct
+        if self.isRoot:
+            return
+        else:
+            self.parentNode.add_n_nodes_upstream(n_nodes_added)
 
     # Used
     def getLtqsUponMerge(self):
@@ -2667,6 +2711,51 @@ class TreeNode:
                                                          as_if_root_version=as_if_root_version)
         return opt_node, opt_dlogl, opt_t
 
+    def detach_subtree(self, candidate):
+        cand_node_ind = candidate.nodeInd
+        orig_t = candidate.tParent
+        ltqs_cand_g = candidate.ltqs
+        ltqsVars_cand_g = candidate.getLtqsVars(AIRoot=False)
+        wbar_cand_g = 1 / (orig_t + ltqsVars_cand_g)
+
+        self.childNodes = [child for child in self.childNodes if child.nodeInd != cand_node_ind]
+        candidate.parentNode = None
+
+        # Update the ltq-coordinates (non-ai-root) as well for removing the node
+        ltqs_wo_old_parent_g, ltqsVars_wo_old_parent_g = subtract_contrib_ltqs(self.ltqs,
+                                                                               self.getW(AIRoot=False),
+                                                                               ltqs_cand_g, wbar_cand_g)
+        self.ltqs = ltqs_wo_old_parent_g
+        self.setLtqsVarsOrW(ltqsVars=ltqsVars_wo_old_parent_g)
+        # Then update everything upstream of the parent, up to the root
+        self.setLtqsUpstream()
+        # Also update the n_ds_node variables upstream of the old_parent
+        n_nodes_in_subtree = candidate.n_ds_nodes
+        self.add_n_nodes_upstream(-n_nodes_in_subtree)
+
+        return cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g, wbar_cand_g
+
+    def add_subtree(self, candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g):
+        self.childNodes.append(candidate)
+        self.isLeaf = False
+        candidate.parentNode = self
+        candidate.tParent = opt_t
+
+        # Replace the new parent ltqs (not AIRoot), by adding the contribution of the added candidate
+        wbar_cand_g = 1 / (opt_t + ltqsVars_cand_g)
+        ltqs_w_new_parent_g, ltqsVars_w_new_parent_g = add_contrib_ltqs(self.ltqs,
+                                                                        self.getW(AIRoot=False),
+                                                                        ltqs_cand_g, wbar_cand_g)
+
+        self.ltqs = ltqs_w_new_parent_g
+        self.setLtqsVarsOrW(ltqsVars=ltqsVars_w_new_parent_g)
+        # Then update everything upstream of the parent, up to the root
+        self.setLtqsUpstream()
+
+        # Also update the n_ds_node variables upstream of the old_parent
+        n_nodes_in_subtree = candidate.n_ds_nodes
+        self.add_n_nodes_upstream(n_nodes_in_subtree)
+
     def get_dlogl_spr_move(self, ltqs_cand_g, ltqsVars_cand_g, as_if_root_version=None):
         # First, we have to get the coords at the target as if it's the root. The below function only calculates
         # these coords for nodes between the target and the real root, and stores them for later use
@@ -2692,6 +2781,7 @@ class TreeNode:
         new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
         new_parent.tParent = self.tParent
         new_parent.nodeId = self.nodeId + '_internal_twin'
+        new_parent.n_ds_nodes = 1
         bs_glob.nNodes += 1
 
         # New node is created, now add "opt_node" as child
@@ -2706,6 +2796,9 @@ class TreeNode:
         gparent.childNodes = [child for ind, child in enumerate(gparent.childNodes) if
                               child.nodeInd != self.nodeInd]
         gparent.childNodes.append(new_parent)
+
+        # Since we're effectively adding a node, we should add the n_ds_nodes-values on the upstream nodes
+        new_parent.add_n_nodes_upstream(1)
 
         return new_parent
 
@@ -3481,7 +3574,6 @@ class Tree:
         self.root.renumberNodes()
         self.nNodes = bs_glob.nNodes
 
-
     def do_spr_moves(self, max_moves=1000, seed=42):
         """Initialize some values"""
         np.random.seed(seed)
@@ -3499,63 +3591,47 @@ class Tree:
         self.root.getLtqsComplete(mem_friendly=True)
         origLoglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
 
-        """Select child to be moved"""
         # Create a list of nodes, first one is always the root, which should not be picked to be moved
-        nodesList = recursionWrap(self.root.getNodeList, [], returnRoot=True,
-                                  returnLeafs=True)  # TODO: Fast to maintain?
-        nodeIndToNode = {node.nodeInd: node for node in nodesList}
-        nCandidates = len(nodesList)
+        # nodesList = recursionWrap(self.root.getNodeList, [], returnRoot=True,
+        #                           returnLeafs=True)  # TODO: Fast to maintain?
+        self.root.get_ds_node_counts()
+        # nodeIndToNode = {node.nodeInd: node for node in nodesList}
+        # nCandidates = len(nodesList)
         total_dlogl_increase = 0
         while n_moves < max_moves:
             n_moves += 1
+
+            """Select child to be moved"""
+            # For now, this is completely random, except that we don't take the root, and not a node without sister
             no_cand = True
+            n_candidates = self.root.n_ds_nodes
             while no_cand:
-                cand_ind = np.random.randint(1, nCandidates)
-                candidate = nodesList[cand_ind]
+                cand_ind = np.random.randint(1, n_candidates)
+                candidate = self.root.select_nth_node_df(cand_ind, 0)
                 old_parent = candidate.parentNode
                 if len(old_parent.childNodes) >= 2:
                     no_cand = False
-            cand_node_ind = candidate.nodeInd
-            orig_t = candidate.tParent
-            ltqs_cand_g = candidate.ltqs
-            ltqsVars_cand_g = candidate.getLtqsVars(AIRoot=False)
-            wbar_cand_g = 1 / (orig_t + ltqsVars_cand_g)
-
-            """Select target-node to start the search for a good target"""
-            target_ind = np.random.randint(nCandidates - 2)
-            # Can be any node, except for
-            # - the one that is being moved, in that case we take the single-to-last (which can't be selected randomly)
-            # - the parent of the one that is being moved, in which case we take the last
-            if target_ind == cand_ind:
-                target_ind = (nCandidates - 2)
-            elif nodesList[target_ind].nodeInd == candidate.parentNode.nodeInd:
-                target_ind = (nCandidates - 1)
-            target = nodesList[target_ind]
 
             """Remove the candidate from the tree"""
-            old_parent.childNodes = [child for child in old_parent.childNodes if child.nodeInd != cand_node_ind]
-            # Get parent coordinates as if it is the root, to calculate increase in dLogL when detaching
-
-            # Update the ltq-coordinates (non-ai-root) as well for removing the node
-            ltqs_wo_old_parent_g, ltqsVars_wo_old_parent_g = subtract_contrib_ltqs(old_parent.ltqs,
-                                                                                   old_parent.getW(AIRoot=False),
-                                                                                   ltqs_cand_g, wbar_cand_g)
-            old_parent.ltqs = ltqs_wo_old_parent_g
-            old_parent.setLtqsVarsOrW(ltqsVars=ltqsVars_wo_old_parent_g)
-            # Then update everything upstream of the parent, up to the root
-            old_parent.setLtqsUpstream()
+            cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g, wbar_cand_g = old_parent.detach_subtree(candidate)
             # Discard all as_if_root-information by updating the version
             as_if_root_version += 1
 
+            # Get the loglikelihood change for the old position
             old_parent.getAIRootUpstream(as_if_root_version=as_if_root_version)
-            # Subtract the contribution to these coordinates by the candidate
-            # ltqsAI_wo_old_parent_g, ltqsVarsAI_wo_old_parent_g = subtract_contrib_ltqs(old_parent.ltqsAIRoot,
-            #                                                                            old_parent.getW(AIRoot=True),
-            #                                                                            ltqs_cand_g, wbar_cand_g)
-            # Get the loglikelihood increase when we detach
             dlogl_orig_pos = getLoglik2LeafTree(ltqs1_g=old_parent.ltqsAIRoot,
                                                 ltqsVars1_g=old_parent.getLtqsVars(AIRoot=True),
                                                 ltqs2_g=ltqs_cand_g, ltqsVars2_g=ltqsVars_cand_g, t=orig_t)
+
+            """Select target-node to start the search for a good target"""
+            # We take anything still remaining in the main tree, except the original parent of the candidate
+            no_cand = True
+            n_candidates = self.root.n_ds_nodes
+            while no_cand:
+                target_ind = np.random.randint(n_candidates)
+                target = self.root.select_nth_node_df(target_ind, 0)
+                if target.nodeInd != old_parent.nodeInd:
+                    no_cand = False
 
             """Check the change in loglikelihood when adding to target"""
             dlogl_target, opt_t_target = target.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
@@ -3589,28 +3665,11 @@ class Tree:
                 # In this case, create a new node that is basically a copy of "opt_node", but is the parent of the original
                 # node in the tree with a zero branch length connecting them.
                 new_parent = opt_node.get_twin_parent()
-                nodesList.append(new_parent)
-                nodeIndToNode[new_parent.nodeInd] = new_parent
-                nCandidates += 1
             else:
                 new_parent = opt_node
 
             # Add the candidate node on the tree, and update the coordinates
-            new_parent.childNodes.append(candidate)
-            new_parent.isLeaf = False
-            candidate.parentNode = new_parent
-            candidate.tParent = opt_t
-
-            # Replace the new parent ltqs (not AIRoot), by adding the contribution of the added candidate
-            wbar_cand_g = 1 / (opt_t + ltqsVars_cand_g)
-            ltqs_w_new_parent_g, ltqsVars_w_new_parent_g = add_contrib_ltqs(new_parent.ltqs,
-                                                                                  new_parent.getW(AIRoot=False),
-                                                                                  ltqs_cand_g, wbar_cand_g)
-
-            new_parent.ltqs = ltqs_w_new_parent_g
-            new_parent.setLtqsVarsOrW(ltqsVars=ltqsVars_w_new_parent_g)
-            # Then update everything upstream of the parent, up to the root
-            new_parent.setLtqsUpstream()
+            new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
             as_if_root_version += 1
 
         logging.info("The {} SPR-moves led to an increase of {} of the tree loglikelihood.".format(n_moves, total_dlogl_increase))
