@@ -355,7 +355,7 @@ class TreeNode:
             # Check if this child contains the desired node. This is only true when
             # nth_node <= child.n_ds_nodes + counter
             if nth_node <= counter + child.n_ds_nodes:
-                selected_node = child.select_nth_node_df(nth_node, counter+1)
+                selected_node = child.select_nth_node_df(nth_node, counter + 1)
                 return selected_node
             else:
                 counter += child.n_ds_nodes
@@ -2687,7 +2687,7 @@ class TreeNode:
             if target.nodeInd == prev_node_ind:
                 continue
             dlogl_target, opt_t_curr = target.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
-                                                     as_if_root_version=as_if_root_version)
+                                                                 as_if_root_version=as_if_root_version)
             if dlogl_target > opt_dlogl:
                 opt_dlogl = dlogl_target
                 opt_node = target
@@ -2696,8 +2696,8 @@ class TreeNode:
         if opt_node.nodeInd != self.nodeInd:
             # Continue the search
             opt_node, opt_dlogl, opt_t = opt_node.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=opt_dlogl,
-                                                         prev_t=opt_t, prev_node_ind=self.nodeInd,
-                                                         as_if_root_version=as_if_root_version)
+                                                                prev_t=opt_t, prev_node_ind=self.nodeInd,
+                                                                as_if_root_version=as_if_root_version)
         return opt_node, opt_dlogl, opt_t
 
     def detach_subtree(self, candidate):
@@ -3563,15 +3563,25 @@ class Tree:
         self.root.renumberNodes()
         self.nNodes = bs_glob.nNodes
 
-    def do_spr_moves(self, max_moves=1000, seed=42):
+    def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random'):
+        """
+
+        :param max_moves: When we do random moves, this sets the number of SPR-moves
+        :param seed: Random seed
+        :param select_cand: Sets the strategy with which we pick candidate-nodes to move. For now, options are
+        "random" or "long_branches_first"
+        :param select_target: Sets the strategy with which we pick the first target-place to attach the pruned subtree.
+        For now, options are "random", "root", "cluster_centers".
+        :return:
+        """
+
         """Initialize some values"""
         successful_moves = 0
         unsuccessful_moves = 0
         returned_moves = 0
-
         np.random.seed(seed)
         as_if_root_version = 0
-        n_moves = 0
+        n_moves = -1
 
         """Prepare the tree"""
         # nChildren = self.root.gatherInfoDepthFirst([])
@@ -3584,26 +3594,29 @@ class Tree:
         self.root.getLtqsComplete(mem_friendly=True)
         origLoglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
 
-        # Create a list of nodes, first one is always the root, which should not be picked to be moved
-        # nodesList = recursionWrap(self.root.getNodeList, [], returnRoot=True,
-        #                           returnLeafs=True)  # TODO: Fast to maintain?
+        # Store at every node how many nodes are downstream (including itself). Will need it for picking candidates
         self.root.get_ds_node_counts()
-        # nodeIndToNode = {node.nodeInd: node for node in nodesList}
-        # nCandidates = len(nodesList)
+
+        # If we don't select random candidates, list them here by sorting by branch length
+        if select_cand == 'long_branches_first':
+            nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            # Sort them such that tParent (connecting branch length) is descending
+            sorted_time_node_tuples = [(node.tParent, node) for node in nodesList if not node.isRoot]
+            sorted_time_node_tuples.sort(key=lambda x: x[0], reverse=True)
+            max_moves = len(sorted_time_node_tuples)
+
         total_dlogl_increase = 0
-        while n_moves < max_moves:
+        while n_moves < max_moves-1:
             n_moves += 1
 
             """Select child to be moved"""
-            # For now, this is completely random, except that we don't take the root, and not a node without sister
-            no_cand = True
-            n_candidates = self.root.n_ds_nodes
-            while no_cand:
-                cand_ind = np.random.randint(1, n_candidates)
-                candidate = self.root.select_nth_node_df(cand_ind, 0)
-                old_parent = candidate.parentNode
-                if len(old_parent.childNodes) >= 2:
-                    no_cand = False
+            if select_cand == 'long_branches_first':
+                candidate, old_parent = self.select_spr_candidate(select_cand='long_branches_first',
+                                                                  sorted_time_node_tuples=sorted_time_node_tuples,
+                                                                  n_moves=n_moves)
+            else:  # select_cand == 'random':
+                # If we're here, selection is random, except that we don't take the root, nor a node without sister
+                candidate, old_parent = self.select_spr_candidate(select_cand='random')
 
             """Remove the candidate from the tree"""
             cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g, wbar_cand_g = old_parent.detach_subtree(candidate)
@@ -3655,7 +3668,7 @@ class Tree:
                     successful_moves += 1
                     logging.info("SPR-move {} success: moving node {} as child of {}. "
                                  "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
-                                                                  opt_dlogl - dlogl_orig_pos))
+                                                                      opt_dlogl - dlogl_orig_pos))
                 total_dlogl_increase += (opt_dlogl - dlogl_orig_pos)
 
             """Perform move"""
@@ -3671,12 +3684,40 @@ class Tree:
             new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
             as_if_root_version += 1
 
-        logging.info("The {} SPR-moves led to an increase of {} of the tree loglikelihood.".format(n_moves, total_dlogl_increase))
-        logging.info("Total loglikelihood should now thus be {}, and is {} according to the normal loglik calculation.".format(origLoglik + total_dlogl_increase, self.calcLogLComplete(mem_friendly=True, recalc=True)))
+        logging.info("The {} SPR-moves led to an increase of {} "
+                     "of the tree loglikelihood.".format(n_moves + 1, total_dlogl_increase))
+        logging.info("Total loglikelihood should now thus be {}, "
+                     "and is {} according to the normal loglik "
+                     "calculation.".format(origLoglik + total_dlogl_increase,
+                                           self.calcLogLComplete(mem_friendly=True, recalc=True)))
         logging.info("Move statistics:\n"
                      "Successful: {}\n"
                      "Failed: {}\n"
                      "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
+
+    def select_spr_candidate(self, select_cand='random', sorted_time_node_tuples=None, n_moves=None):
+        no_cand = True
+        if select_cand == 'random':
+            n_candidates = self.root.n_ds_nodes
+            while no_cand:
+                cand_ind = np.random.randint(1, n_candidates)
+                candidate = self.root.select_nth_node_df(cand_ind, 0)
+                old_parent = candidate.parentNode
+                if len(old_parent.childNodes) >= 2:
+                    no_cand = False
+        elif select_cand == 'long_branches_first':
+            candidate = sorted_time_node_tuples[n_moves][1]
+            while no_cand:
+                if candidate.parentNode is None:
+                    n_moves += 1
+                    candidate = sorted_time_node_tuples[n_moves][1]
+                    continue
+                old_parent = candidate.parentNode
+                if len(old_parent.childNodes) >= 2:
+                    no_cand = False  # In this case, we have found a good candidate
+                else:
+                    candidate = old_parent  # In this case, candidate was single-child, then take parent instead
+        return candidate, old_parent
 
 
 def getNewUBInfo(xrAsIfRoot_g, WAsIfRoot_g, epsx, epsW, alldLogLsUB, UBInfo, allPairsUB, oldRoot, del_node_inds,
