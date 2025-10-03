@@ -45,6 +45,11 @@ class TreeNode:
     # This _AIRoot_version will be used when we only have to update part of the coordinates. By comparing to a higher
     # version we can disqualify coordinates that are too old, and should be re-calculated
     _AIRoot_version = -1
+    # This _spr_target_version will be used when we search for Subtree-Prune and Regraft targets. When starting from
+    # multiple startpoints, we update the version whenever we pass it, such that we don't do it again
+    _spr_target_version = -1
+    _spr_target_dlogl = None
+    _spr_target_opt_t = None
 
     prefactor = None  # Prefactor that enters loglikelihood computation that can be started from root
     dLoglikdtParent = None  # Derivative of total tree likelihood w.r.t. diff. time to parent
@@ -2675,29 +2680,40 @@ class TreeNode:
                 edgeList = child.getEdgesComplete(edgeList, src=self.nodeInd, indMap=indMap)
         return edgeList
 
-    def do_spr_search(self, ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-1e9, prev_t=None, prev_node_ind=None,
-                      as_if_root_version=None):
-        # Loop over neighbors, except for the node that you're coming from, and calculate the dlogls for those targets
-        opt_dlogl = prev_dlogl
-        opt_node = self
-        opt_t = prev_t
-        added_neighbor = [self.parentNode] if (self.parentNode is not None) else []
+    def do_spr_search(self, ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-1e9, prev_node_ind=None,
+                      opt_node=None, opt_t=None, opt_dlogl=-1e9,
+                      as_if_root_version=None, spr_target_version=None, do_local_search=True):
 
-        for target in self.childNodes + added_neighbor:
-            if target.nodeInd == prev_node_ind:
-                continue
-            dlogl_target, opt_t_curr = target.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
-                                                                 as_if_root_version=as_if_root_version)
-            if dlogl_target > opt_dlogl:
-                opt_dlogl = dlogl_target
-                opt_node = target
-                opt_t = opt_t_curr
+        # First calculate the loglikelihood when adding the candidate on this node
+        dlogl_self, opt_t_self = self.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
+                                                         as_if_root_version=as_if_root_version,
+                                                         spr_target_version=spr_target_version)
 
-        if opt_node.nodeInd != self.nodeInd:
-            # Continue the search
-            opt_node, opt_dlogl, opt_t = opt_node.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=opt_dlogl,
-                                                                prev_t=opt_t, prev_node_ind=self.nodeInd,
-                                                                as_if_root_version=as_if_root_version)
+        # If this node is better than anything we've seen before, replace the opt-info
+        if dlogl_self > opt_dlogl:
+            opt_dlogl = dlogl_self
+            opt_node = self
+            opt_t = opt_t_self
+
+        # If this node is better or comparable to previous nodes in this search, continue the search
+        if dlogl_self > prev_dlogl - 2:
+            # Make sure prev_dlogl is keeping track of the highest dlogl seen in this search
+            if dlogl_self > prev_dlogl:
+                prev_dlogl = dlogl_self
+
+            # Loop over neighbors, except for the node that you're coming from; calculate the dlogls for those targets
+            added_neighbor = [self.parentNode] if (self.parentNode is not None) else []
+            for target in self.childNodes + added_neighbor:
+                if target.nodeInd == prev_node_ind:
+                    continue
+
+                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=prev_dlogl,
+                                                                  prev_node_ind=self.nodeInd, opt_node=opt_node,
+                                                                  opt_t=opt_t, opt_dlogl=opt_dlogl,
+                                                                  as_if_root_version=as_if_root_version,
+                                                                  spr_target_version=spr_target_version,
+                                                                  do_local_search=do_local_search)
+
         return opt_node, opt_dlogl, opt_t
 
     def detach_subtree(self, candidate):
@@ -2745,7 +2761,9 @@ class TreeNode:
         n_nodes_in_subtree = candidate.n_ds_nodes
         self.add_n_nodes_upstream(n_nodes_in_subtree)
 
-    def get_dlogl_spr_move(self, ltqs_cand_g, ltqsVars_cand_g, as_if_root_version=None):
+    def get_dlogl_spr_move(self, ltqs_cand_g, ltqsVars_cand_g, as_if_root_version=None, spr_target_version=None):
+        if self._spr_target_version == spr_target_version:
+            return self._spr_target_dlogl, self._spr_target_opt_t
         # First, we have to get the coords at the target as if it's the root. The below function only calculates
         # these coords for nodes between the target and the real root, and stores them for later use
         self.getAIRootUpstream(as_if_root_version=as_if_root_version)
@@ -2761,6 +2779,10 @@ class TreeNode:
 
         dlogl_target = getLoglik2LeafTree(ltqs1_g=self.ltqsAIRoot, ltqsVars1_g=self.getLtqsVars(AIRoot=True),
                                           ltqs2_g=ltqs_cand_g, ltqsVars2_g=ltqsVars_cand_g, t=opt_t)
+        if spr_target_version is not None:
+            self._spr_target_version = spr_target_version
+            self._spr_target_dlogl = dlogl_target
+            self._spr_target_opt_t = opt_t
         return dlogl_target, opt_t
 
     def get_twin_parent(self):
@@ -3390,6 +3412,19 @@ class Tree:
         self.vert_ind_to_node = vertIndToNode
         self.root.storeParent()
 
+    def get_cluster_centers(self, cell_ids=None, n_clusters=None):
+        # Do min-pdist clustering to get branches that would be cut in the clustering procedure. As cluster-centers,
+        # we'll just take the upstream-nodes of these branches
+        nwk_str = self.to_newick(use_ids=True)
+        # mindist_edges will contain a list of tuples (downstream-node-id, upstream-node-id)
+        _, mindist_edges = get_min_pdists_clustering_from_nwk_str(tree_nwk_str=nwk_str, n_clusters=n_clusters,
+                                                                  cell_ids=cell_ids,
+                                                                  get_cell_ids_all_splits=False,
+                                                                  node_id_to_n_cells=None,
+                                                                  verbose=False)
+        cluster_center_node_ids = [md_edge[1] for md_edge in mindist_edges]
+        return cluster_center_node_ids
+
     def set_mindist_root(self, cell_ids):
         # Find parent-node "the_parent" and index of "the_child" that are on both ends of the branch that would be cut
         # to minimize the sum of pairwise distances
@@ -3563,7 +3598,7 @@ class Tree:
         self.root.renumberNodes()
         self.nNodes = bs_glob.nNodes
 
-    def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random'):
+    def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random', do_local_search=True):
         """
 
         :param max_moves: When we do random moves, this sets the number of SPR-moves
@@ -3571,17 +3606,23 @@ class Tree:
         :param select_cand: Sets the strategy with which we pick candidate-nodes to move. For now, options are
         "random" or "long_branches_first"
         :param select_target: Sets the strategy with which we pick the first target-place to attach the pruned subtree.
-        For now, options are "random", "root", "cluster_centers".
+        For now, options are "random", "root", "cluster_centers", "all".
+        :param do_local_search: Determines whether we do a greedy search around the target to find the best target.
         :return:
         """
 
         """Initialize some values"""
+        if select_target == 'all':
+            do_local_search = False
         successful_moves = 0
         unsuccessful_moves = 0
         returned_moves = 0
         np.random.seed(seed)
         as_if_root_version = 0
+        spr_target_version = 0
         n_moves = -1
+        dlogl_threshold = 1e-12 * bs_glob.nGenes * bs_glob.nCells if bs_glob.nCells is not None \
+            else 1e-12 * bs_glob.nGenes * bs_glob.nNodes
 
         """Prepare the tree"""
         # nChildren = self.root.gatherInfoDepthFirst([])
@@ -3603,20 +3644,35 @@ class Tree:
             # Sort them such that tParent (connecting branch length) is descending
             sorted_time_node_tuples = [(node.tParent, node) for node in nodesList if not node.isRoot]
             sorted_time_node_tuples.sort(key=lambda x: x[0], reverse=True)
-            max_moves = len(sorted_time_node_tuples)
+            max_moves = min(len(sorted_time_node_tuples), max_moves)
+        else:
+            sorted_time_node_tuples = None
+
+        if select_target == 'cluster_centers':
+            n_clusters = int(np.log(bs_glob.nCells)) if bs_glob.nCells is not None else np.log(bs_glob.nCells)
+            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters)
+            nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
+        else:
+            cluster_centers = None
 
         total_dlogl_increase = 0
-        while n_moves < max_moves-1:
+
+        # TODO: Remove this
+        node_of_interest = [node for node in nodesList if node.nodeInd == 1187]
+
+        while n_moves < max_moves - 1:
             n_moves += 1
+            spr_target_version += 1
 
             """Select child to be moved"""
-            if select_cand == 'long_branches_first':
-                candidate, old_parent = self.select_spr_candidate(select_cand='long_branches_first',
-                                                                  sorted_time_node_tuples=sorted_time_node_tuples,
-                                                                  n_moves=n_moves)
-            else:  # select_cand == 'random':
-                # If we're here, selection is random, except that we don't take the root, nor a node without sister
-                candidate, old_parent = self.select_spr_candidate(select_cand='random')
+            candidate, old_parent = self.select_spr_candidate(select_cand=select_cand,
+                                                              sorted_time_node_tuples=sorted_time_node_tuples,
+                                                              n_moves=n_moves)
+
+            if candidate is None:
+                unsuccessful_moves += 1
+                continue
 
             """Remove the candidate from the tree"""
             cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g, wbar_cand_g = old_parent.detach_subtree(candidate)
@@ -3630,33 +3686,32 @@ class Tree:
                                                 ltqs2_g=ltqs_cand_g, ltqsVars2_g=ltqsVars_cand_g, t=orig_t)
 
             """Select target-node to start the search for a good target"""
-            # We take anything still remaining in the main tree, except the original parent of the candidate
-            no_cand = True
-            n_candidates = self.root.n_ds_nodes
-            while no_cand:
-                target_ind = np.random.randint(n_candidates)
-                target = self.root.select_nth_node_df(target_ind, 0)
-                if target.nodeInd != old_parent.nodeInd:
-                    no_cand = False
+            # The targets-object returned is a list, which either has 1 or multiple nodes. We run the SPR search on
+            # all these targets and select the best one
+            targets = self.select_spr_targets(select_target=select_target, old_parent=old_parent,
+                                              cluster_centers=cluster_centers)
+            opt_node = None
+            opt_dlogl = -np.inf
+            opt_t = None
+            for target in targets:
+                """Check the change in loglikelihood when adding to target"""
+                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-np.inf,
+                                                                  prev_node_ind=None, opt_node=opt_node, opt_t=opt_t,
+                                                                  opt_dlogl=opt_dlogl,
+                                                                  as_if_root_version=as_if_root_version,
+                                                                  spr_target_version=spr_target_version,
+                                                                  do_local_search=do_local_search)
 
-            """Check the change in loglikelihood when adding to target"""
-            dlogl_target, opt_t_target = target.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
-                                                                   as_if_root_version=as_if_root_version)
-            """Check local neighborhood to optimize the loglikelihood increase for the spr move"""
-            opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=dlogl_target,
-                                                              prev_t=opt_t_target, prev_node_ind=None,
-                                                              as_if_root_version=as_if_root_version)
             # Check if dlogl-improvement is gained. Otherwise, just place it back at its original position
-            if dlogl_orig_pos > opt_dlogl:
+            if (dlogl_orig_pos + dlogl_threshold) > opt_dlogl:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
                 else:
                     unsuccessful_moves += 1
                 opt_node = old_parent
                 opt_t = orig_t
-                # logging.info("SPR-move {} unsuccessful, placing node {} back as child of {}".format(n_moves,
-                #                                                                                     candidate.nodeInd,
-                #                                                                                     opt_node.nodeInd))
+                logging.info("SPR-move {} unsuccessful:, "
+                             "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
             else:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
@@ -3696,8 +3751,8 @@ class Tree:
                      "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
 
     def select_spr_candidate(self, select_cand='random', sorted_time_node_tuples=None, n_moves=None):
-        no_cand = True
         if select_cand == 'random':
+            no_cand = True
             n_candidates = self.root.n_ds_nodes
             while no_cand:
                 cand_ind = np.random.randint(1, n_candidates)
@@ -3707,17 +3762,47 @@ class Tree:
                     no_cand = False
         elif select_cand == 'long_branches_first':
             candidate = sorted_time_node_tuples[n_moves][1]
-            while no_cand:
-                if candidate.parentNode is None:
-                    n_moves += 1
-                    candidate = sorted_time_node_tuples[n_moves][1]
-                    continue
-                old_parent = candidate.parentNode
-                if len(old_parent.childNodes) >= 2:
-                    no_cand = False  # In this case, we have found a good candidate
-                else:
-                    candidate = old_parent  # In this case, candidate was single-child, then take parent instead
+            if candidate.parentNode is None:
+                return None, None
+            old_parent = candidate.parentNode
+            if len(old_parent.childNodes) < 2:
+                return None, None
+
+            # If we reach this point, we have found a good candidate
         return candidate, old_parent
+
+    def select_spr_targets(self, select_target='random', old_parent=None, cluster_centers=None, all_nodes_list=None):
+        if select_target == 'root':
+            return [self.root]
+        elif select_target == 'cluster_centers':
+            # Always include the old_parent as an option
+            available_cluster_centers = [old_parent]
+            for clst_center in cluster_centers:
+                upstream_parent = clst_center
+                while upstream_parent.parentNode is not None:
+                    upstream_parent = upstream_parent.parentNode
+                if upstream_parent.isRoot:
+                    available_cluster_centers.append(clst_center)
+            return available_cluster_centers
+        elif select_target == 'all':
+            all_nodes_list = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            return all_nodes_list
+        else:  # select_target == 'random'
+            # We take anything still remaining in the main tree, except the original parent of the candidate
+            no_cand = True
+            n_candidates = self.root.n_ds_nodes
+            counter = 0
+            while no_cand:
+                target_ind = np.random.randint(n_candidates)
+                target = self.root.select_nth_node_df(target_ind, 0)
+                if (old_parent is None) or (target.nodeInd != old_parent.nodeInd):
+                    no_cand = False
+                counter += 1
+                if counter > 1e9:
+                    logging.warning("Something went wrong. Can't find a random target for an SPR move!")
+                    target = None
+                    no_cand = False
+        return [target]
 
 
 def getNewUBInfo(xrAsIfRoot_g, WAsIfRoot_g, epsx, epsW, alldLogLsUB, UBInfo, allPairsUB, oldRoot, del_node_inds,
