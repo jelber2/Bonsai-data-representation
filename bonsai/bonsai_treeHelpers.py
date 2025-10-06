@@ -13,6 +13,7 @@ from itertools import permutations
 from bonsai.bonsai_approxNN import getApproxNNs
 import pandas as pd
 from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str
+import json
 
 
 class TreeNode:
@@ -3618,6 +3619,111 @@ class Tree:
         self.root.renumberNodes()
         self.nNodes = bs_glob.nNodes
 
+    def do_spr_moveset(self, args, strategy='determ_random_determ', tracking=False, output_folder=''):
+        """
+
+        :param strategy: Current options are 'determ_random_determ', 'deterministic', 'deterministic_exhaustive'.
+        This relates to what kind of SPR-moves we propose in what order.
+        :return:
+        """
+        if tracking:
+            info_dict = {'steps': [], 'runtimes': [], 'd_loglik': [], 'successes': []}
+            orig_loglik = self.calcLogLComplete(mem_friendly=True)
+            orig_time = time.time()
+
+        if strategy == 'determ_random_determ':
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='cluster_centers',
+                                                              max_moves=10000,
+                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              tracking=tracking, info_dict=info_dict)
+
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='random',
+                                                              select_target='random',
+                                                              max_moves=10000,
+                                                              moves_id='C_random_T_random',
+                                                              tracking=tracking, info_dict=info_dict)
+
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='cluster_centers',
+                                                              max_moves=10000,
+                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              tracking=tracking, info_dict=info_dict)
+
+        elif strategy == 'deterministic_exhaustive':
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='all',
+                                                              max_moves=10000,
+                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              tracking=tracking, info_dict=info_dict)
+
+        elif strategy == 'deterministic':
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='cluster_centers',
+                                                              max_moves=10000,
+                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              tracking=tracking, info_dict=info_dict)
+
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='cluster_centers',
+                                                              max_moves=10000,
+                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              tracking=tracking, info_dict=info_dict)
+
+        if tracking:
+            info_dict['total_time'] = time.time() - orig_time
+            final_logl = self.calcLogLComplete(mem_friendly=True)
+            info_dict['total_loglik_change'] = final_logl - orig_loglik
+            mp_print("Loglikelihood of final tree is {}".format(final_logl))
+
+        with open(os.path.join(output_folder, "spr_info_strategy_{}.json".format(strategy)), "w") as f:
+            json.dump(info_dict, f, indent=4)
+
+    def do_spr_moves_with_postprocessing(self, args, select_cand, select_target, max_moves=10000,
+                                         moves_id=None, tracking=False, info_dict=None):
+        # Just some tracking
+        if tracking:
+            start_logl = self.calcLogLComplete(mem_friendly=True)
+            mp_print("Loglikelihood of inferred tree before "
+                     "{}: {}".format(moves_id, start_logl))
+            start = time.time()
+
+        # The actual moves!
+        successful_moves, total_dlogl = self.do_spr_moves(max_moves=max_moves, select_cand=select_cand,
+                                                          select_target=select_target)
+
+        # Just some tracking
+        if tracking:
+            info_dict['steps'].append(moves_id)
+            info_dict['runtimes'].append(time.time() - start)
+            new_logl = self.calcLogLComplete(mem_friendly=True)
+            info_dict['d_loglik'].append(new_logl - start_logl)
+            info_dict['successes'].append(successful_moves)
+            mp_print("Loglikelihood of inferred tree after "
+                     "{} successful SPR-moves: {}".format(successful_moves, new_logl))
+
+            start = time.time()
+            start_logl = new_logl
+
+        self.do_spr_postprocessing(args=args)
+
+        # Just some tracking
+        if tracking:
+            info_dict['steps'].append(moves_id + "_postproc")
+            info_dict['runtimes'].append(time.time() - start)
+            new_logl = self.calcLogLComplete(mem_friendly=True)
+            info_dict['d_loglik'].append(new_logl - start_logl)
+            info_dict['successes'].append(0)
+            mp_print("Loglikelihood of inferred tree after postprocessing: {}".format(new_logl))
+
+        return info_dict
+
     def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random', do_local_search=True,
                      do_postprocessing=False, verbose=False):
         """
@@ -3686,6 +3792,8 @@ class Tree:
 
         total_dlogl_increase = 0
 
+        n_print = int(min(100, max_moves/10))
+
         while n_moves < max_moves - 1:
             # TODO: Remove this
             # nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
@@ -3699,6 +3807,13 @@ class Tree:
 
             n_moves += 1
             spr_target_version += 1
+
+            if n_moves == n_print:
+                mp_print("Performing SPR move {} out of {}. "
+                         "Results so far: {} successes, {} loglikelihood-change".format(n_moves, max_moves,
+                                                                                        successful_moves,
+                                                                                        total_dlogl_increase))
+                n_print *= 2
 
             """Select child to be moved"""
             candidate, old_parent = self.select_spr_candidate(select_cand=select_cand,
@@ -3761,7 +3876,7 @@ class Tree:
                 else:
                     successful_moves += 1
                     found_new_parent = True
-                    if True:
+                    if verbose:
                         logging.info("SPR-move {} success: moving node {} as child of {}. "
                                      "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
                                                                           opt_dlogl - dlogl_orig_pos))
