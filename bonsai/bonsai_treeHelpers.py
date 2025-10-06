@@ -743,12 +743,14 @@ class TreeNode:
         toBeAdded = []
         for ind, child in enumerate(self.childNodes):
             child.deleteParentsWithOneChild()
-            if (len(child.childNodes) == 1) and (not child.isCell):
+            if (len(child.childNodes) <= 1) and (not child.isCell):
                 toBeDeleted.append(ind)
-                gchild = child.childNodes[0]
-                toBeAdded.append(gchild)
-                gchild.tParent += child.tParent
-                gchild.parentNode = self
+                child.parentNode = None
+                if len(child.childNodes) == 1:
+                    gchild = child.childNodes[0]
+                    toBeAdded.append(gchild)
+                    gchild.tParent += child.tParent
+                    gchild.parentNode = self
         self.childNodes = [child for ind, child in enumerate(self.childNodes) if ind not in toBeDeleted]
         for child in toBeAdded:
             self.childNodes.append(child)
@@ -781,6 +783,7 @@ class TreeNode:
                         self.nodeId = child.nodeId
                     childrenToBeAdded += child.childNodes
                     childIndsToBeDeleted.append(ind)
+                    child.parentNode = None
         if len(childIndsToBeDeleted) > 0:
             for child in childrenToBeAdded:
                 child.parentNode = self
@@ -966,7 +969,7 @@ class TreeNode:
         # Check whether we want to merge any of the children of this node
         nChild = len(self.childNodes)
         expNChild = 3 if self.isRoot else 2
-        if nChild == expNChild:
+        if nChild <= expNChild:
             return someMergeHappened, self.ltqs, self.getLtqsVars(), oldLtqs, oldLtqsVars
         # if (bs_glob.getHessStarTreeJax_jit is None) and (not sequential):
         #     bs_glob.getHessStarTreeJax_jit = jax.jit(getHessStarTreeJax)
@@ -3583,10 +3586,22 @@ class Tree:
     def remove_two_child_root(self):
         if len(self.root.childNodes) > 2:
             return
+        found_better_root = False
         for child in self.root.childNodes:
-            if child.isLeaf or (len(self.root.childNodes) < 2):
+            if child.isLeaf or (len(child.childNodes) < 2):
                 continue
+            found_better_root = True
             break
+
+        if not found_better_root:
+            node_list = self.getNodeListBF()
+            for child in node_list:
+                if child.isRoot:
+                    continue
+                if (not child.isLeaf) and (len(child.childNodes >= 2)):
+                    found_better_root = True
+                    break
+
         # In this case, set the root to this child
         vertIndToNode, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
         self.vert_ind_to_node = vertIndToNode
@@ -3604,7 +3619,7 @@ class Tree:
         self.nNodes = bs_glob.nNodes
 
     def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random', do_local_search=True,
-                     do_postprocessing=False):
+                     do_postprocessing=False, verbose=False):
         """
 
         :param max_moves: When we do random moves, this sets the number of SPR-moves
@@ -3732,8 +3747,9 @@ class Tree:
                 opt_node = old_parent
                 opt_t = orig_t
                 found_new_parent = False
-                logging.info("SPR-move {} unsuccessful:, "
-                             "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
+                if verbose:
+                    logging.info("SPR-move {} unsuccessful:, "
+                                 "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
             else:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
@@ -3745,9 +3761,10 @@ class Tree:
                 else:
                     successful_moves += 1
                     found_new_parent = True
-                    logging.info("SPR-move {} success: moving node {} as child of {}. "
-                                 "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
-                                                                      opt_dlogl - dlogl_orig_pos))
+                    if True:
+                        logging.info("SPR-move {} success: moving node {} as child of {}. "
+                                     "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
+                                                                          opt_dlogl - dlogl_orig_pos))
                 total_dlogl_increase += (opt_dlogl - dlogl_orig_pos)
 
             """Perform move"""
@@ -3820,6 +3837,14 @@ class Tree:
 
         :return:
         """
+        # Clean up the tree first
+        self.remove_two_child_root()
+        self.root.deleteParentsWithOneChild()
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes()
+        self.nNodes = bs_glob.nNodes
+        self.root.storeParent()
+
         # Do first re-optimization of times
         self.optTimes(verbose=False, singleProcess=True, mem_friendly=True, maxiter=100)
 
@@ -3889,6 +3914,16 @@ class Tree:
                     target = None
                     no_cand = False
         return [target]
+
+    def getNodeListBF(self):
+        nodeList = [self.root]
+        queue = [self.root]
+        while len(queue):
+            node = queue.pop(0)
+            for child in node.childNodes:
+                nodeList.append(child)
+                queue.append(child)
+        return nodeList
 
 
 def getNewUBInfo(xrAsIfRoot_g, WAsIfRoot_g, epsx, epsW, alldLogLsUB, UBInfo, allPairsUB, oldRoot, del_node_inds,
