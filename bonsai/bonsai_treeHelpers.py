@@ -733,6 +733,11 @@ class TreeNode:
             info = child.gatherInfoDepthFirstGeneral(info)
         return info
 
+    def reset_version_numbers(self, version_attr_str):
+        setattr(self, version_attr_str, -1)
+        for child in self.childNodes:
+            child.reset_version_numbers(version_attr_str)
+
     def deleteParentsWithOneChild(self, recalc_ltqs=True):
         toBeDeleted = []
         toBeAdded = []
@@ -869,7 +874,7 @@ class TreeNode:
 
     # Used
     def mergeDownstreamChildren(self, xrAsIfRoot_g, WAsIfRoot_g, sequential=True, verbose=False, ellipsoidSize=1.0,
-                                nChildNN=-1, kNN=5, mergeDownstream=True, tree=None):
+                                nChildNN=-1, kNN=5, mergeDownstream=True, tree=None, single_process=False):
         # If we update the node's position in the process, we keep the old position here. This will help in updating the
         # parent's position. Also, we store in the boolean "someMergeHappened" whether there was an update
         oldLtqs = None
@@ -880,7 +885,7 @@ class TreeNode:
                 mergeHappened, newLtqs, newLtqsVars, oldLtqsChild, oldLtqsVarsChild = child.mergeChildrenRecursive(
                     xrAsIfRoot_g, WAsIfRoot_g, sequential=sequential, verbose=verbose, ellipsoidSize=ellipsoidSize,
                     nChildNN=nChildNN, kNN=kNN,
-                    mergeDownstream=mergeDownstream, tree=tree)
+                    mergeDownstream=mergeDownstream, tree=tree, single_process=single_process)
                 if mergeHappened:  # If merge happened downstream, we need to recalculate W_g and ltqs of current node
                     someMergeHappened = True
                     xrAsIfRoot_g, WAsIfRoot_g = getLtqsAfterChildUpdate(xrAsIfRoot_g, WAsIfRoot_g, child.tParent,
@@ -908,8 +913,7 @@ class TreeNode:
         oldLtqs = None
         oldLtqsVars = None
         someMergeHappened = False
-        for ind, child in enumerate(
-                self.childNodes):  # TODO: Make this for-loop by just using child-ind instead of childNodeInd
+        for ind, child in enumerate(self.childNodes):  # TODO: Do for-loop just using child-ind instead of childNodeInd
             if child.nodeInd == childNInd:
                 mergeHappened, newLtqs, newLtqsVars, oldLtqsChild, oldLtqsVarsChild = child.mergeChildrenRecursiveSingle(
                     xrAsIfRoot_g, WAsIfRoot_g, gchildNInd, sequential=sequential, verbose=verbose,
@@ -935,12 +939,12 @@ class TreeNode:
 
     # Used
     def mergeChildrenRecursive(self, parentLtqs, parentW_g, sequential=True, verbose=False, ellipsoidSize=1.0,
-                               mpiInfo=None, nChildNN=-1, kNN=5, mergeDownstream=True, tree=None):
+                               mpiInfo=None, nChildNN=-1, kNN=5, mergeDownstream=True, tree=None, single_process=False):
         """This function loops over all candidate pairs between nodes that are children of the root-node, and checks what
         the likelihood becomes when they are merged."""
         if mpiInfo is None:
             mpiInfo = mpi_wrapper.get_mpi_info()
-        if mpiInfo.rank == 0:
+        if (mpiInfo.rank == 0) or single_process:
             if not self.isRoot:
                 # Get the mean and precision of this node's posterior when all other node-positions are integrated out
                 xrAsIfRoot_g, WAsIfRoot_g = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, parentLtqs, parentW_g)
@@ -956,7 +960,7 @@ class TreeNode:
         # downstream change
         someMergeHappened, xrAsIfRoot_g, WAsIfRoot_g, oldLtqs, oldLtqsVars = self.mergeDownstreamChildren(
             xrAsIfRoot_g, WAsIfRoot_g, sequential=sequential, verbose=verbose, ellipsoidSize=ellipsoidSize,
-            nChildNN=nChildNN, kNN=kNN,
+            nChildNN=nChildNN, kNN=kNN, single_process=single_process,
             mergeDownstream=mergeDownstream, tree=tree)
 
         # Check whether we want to merge any of the children of this node
@@ -972,7 +976,8 @@ class TreeNode:
             oldLtqsVars = self.getLtqsVars().copy()
         changedSomething = self.mergeChildrenUB(xrAsIfRoot_g, WAsIfRoot_g, sequential=sequential, verbose=verbose,
                                                 ellipsoidSize=ellipsoidSize, nChildNN=nChildNN, kNN=kNN,
-                                                mergeDownstream=mergeDownstream, tree=tree)
+                                                mergeDownstream=mergeDownstream, tree=tree,
+                                                singleProcess=single_process)
         if mpiInfo.rank == 0:
             someMergeHappened = (len(self.childNodes) < nChild) or changedSomething or someMergeHappened
         else:
@@ -982,8 +987,8 @@ class TreeNode:
     # Used
     def mergeChildrenRecursiveSingle(self, parentLtqs, parentW_g, gchildNInd, sequential=True, verbose=False,
                                      ellipsoidSize=1.0, singleProcess=False, random=False, runConfigs_inherited=None):
-        """This function loops over all candidate pairs between nodes that are children of the root-node, and checks what
-        the likelihood becomes when they are merged."""
+        """This function loops over all candidate pairs between nodes that are children of the root-node, and checks
+        what the likelihood becomes when they are merged."""
         if not self.isRoot:
             # Get the mean and precision of this node's posterior when all other node-positions are integrated out
             xrAsIfRoot_g, WAsIfRoot_g = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, parentLtqs, parentW_g)
@@ -2286,7 +2291,7 @@ class TreeNode:
         timeOptInfo = {'doTimeOpt': False, 'timeOptRoundsAgo': 0}
         if specialChild:
             timeOptInfo['timeOptRoundsAgo'] = 1
-        runConfigs['redoTimeAt'] = int(chInfo['nChild'] * redoTimeFrac)
+        runConfigs['redoTimeAt'] = max(int(chInfo['nChild'] * redoTimeFrac), 10)
         runConfigs['redoNNAt'] = int(chInfo['nChild'] * redoNNFrac)
         # if manualMerges is not None:
         #     manualMergeCounter = -1
@@ -3598,7 +3603,8 @@ class Tree:
         self.root.renumberNodes()
         self.nNodes = bs_glob.nNodes
 
-    def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random', do_local_search=True):
+    def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random', do_local_search=True,
+                     do_postprocessing=False):
         """
 
         :param max_moves: When we do random moves, this sets the number of SPR-moves
@@ -3608,6 +3614,8 @@ class Tree:
         :param select_target: Sets the strategy with which we pick the first target-place to attach the pruned subtree.
         For now, options are "random", "root", "cluster_centers", "all".
         :param do_local_search: Determines whether we do a greedy search around the target to find the best target.
+        :param do_postprocessing: Experimental for now. Resolves created polytomies immediately, but doesn't seem to
+        help much, and can be replaced by re-doing starry nodes after the whole SPR-procedure.
         :return:
         """
 
@@ -3620,12 +3628,17 @@ class Tree:
         np.random.seed(seed)
         as_if_root_version = 0
         spr_target_version = 0
+
+        self.root.reset_version_numbers('_AIRoot_version')
+        self.root.reset_version_numbers('_spr_target_version')
+
         n_moves = -1
-        dlogl_threshold = 1e-12 * bs_glob.nGenes * bs_glob.nCells if bs_glob.nCells is not None \
-            else 1e-12 * bs_glob.nGenes * bs_glob.nNodes
+        dlogl_threshold = 1e-6 * bs_glob.nGenes * bs_glob.nCells if bs_glob.nCells is not None \
+            else 1e-6 * bs_glob.nGenes * bs_glob.nNodes
 
         """Prepare the tree"""
         # nChildren = self.root.gatherInfoDepthFirst([])
+        self.remove_two_child_root()
         self.root.deleteParentsWithOneChild()
         self.root.mergeZeroTimeChilds()
         self.root.renumberNodes()
@@ -3658,10 +3671,17 @@ class Tree:
 
         total_dlogl_increase = 0
 
-        # TODO: Remove this
-        node_of_interest = [node for node in nodesList if node.nodeInd == 1187]
-
         while n_moves < max_moves - 1:
+            # TODO: Remove this
+            # nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            # node_of_interest = [node for node in nodesList if node.nodeInd==2006]
+            # # if len(node_of_interest) and node_of_interest[0].parentNode is None:
+            # # if len(node_of_interest) and (node_of_interest[0].parentNode.nodeInd ==2006):
+            # if len(node_of_interest):
+            #     child_node_of_interest = [node for node in node_of_interest[0].childNodes if node.nodeInd==44]
+            #     if not len(child_node_of_interest):
+            #         print("Hello")
+
             n_moves += 1
             spr_target_version += 1
 
@@ -3703,6 +3723,7 @@ class Tree:
                                                                   do_local_search=do_local_search)
 
             # Check if dlogl-improvement is gained. Otherwise, just place it back at its original position
+            found_new_parent = None
             if (dlogl_orig_pos + dlogl_threshold) > opt_dlogl:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
@@ -3710,17 +3731,20 @@ class Tree:
                     unsuccessful_moves += 1
                 opt_node = old_parent
                 opt_t = orig_t
+                found_new_parent = False
                 logging.info("SPR-move {} unsuccessful:, "
                              "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
             else:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
+                    found_new_parent = False
                     # logging.info("SPR-move {} returned: leaving node {} as child of {}. "
                     #              "Time-optimization led to loglikelihood increase "
                     #              "of: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
                     #                               opt_dlogl - dlogl_orig_pos))
                 else:
                     successful_moves += 1
+                    found_new_parent = True
                     logging.info("SPR-move {} success: moving node {} as child of {}. "
                                  "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
                                                                       opt_dlogl - dlogl_orig_pos))
@@ -3739,6 +3763,38 @@ class Tree:
             new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
             as_if_root_version += 1
 
+            # TODO: Eventually check if I want to remove this
+            if do_postprocessing:
+                # if found_new_parent and len(new_parent.childNodes) > 2:
+                # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
+                # likelihood increases when we add an ancestor for the candidate with some other child
+
+                # First get the coordinates of new_parent as if it's the root
+                new_parent.getAIRootUpstream(as_if_root_version=as_if_root_version)
+                changedSomething = new_parent.mergeChildrenUB(new_parent.ltqsAIRoot, new_parent.getW(AIRoot=True),
+                                                              sequential=False, verbose=False, random=False,
+                                                              specialChild=candidate.nodeInd,
+                                                              singleProcess=True, mergeDownstream=False)
+                if changedSomething:  # Now the ltqs upstream of the new_parent should be updated again
+                    new_parent.setLtqsUpstream()
+                    as_if_root_version += 1
+                    new_parent.storeParent()
+                    # Also update the n_ds_node variables upstream of the old_parent
+                    old_n_ds_nodes = new_parent.n_ds_nodes
+                    new_parent.get_ds_node_counts()
+                    added_n_ds_nodes = new_parent.n_ds_nodes - old_n_ds_nodes
+                    if added_n_ds_nodes != 0:
+                        if not new_parent.isRoot:
+                            new_parent.parentNode.add_n_nodes_upstream(added_n_ds_nodes)
+                        # for ch in new_parent.childNodes:
+                        #     if ch.parentNode is None:
+                        #         ch.parentNode = new_parent
+                        #         for gch in ch.childNodes:
+                        #             gch.parentNode = ch
+                        #     if ch.nodeId is None:
+                        #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
+
+        self.nNodes = bs_glob.nNodes
         logging.info("The {} SPR-moves led to an increase of {} "
                      "of the tree loglikelihood.".format(n_moves + 1, total_dlogl_increase))
         logging.info("Total loglikelihood should now thus be {}, "
@@ -3749,6 +3805,36 @@ class Tree:
                      "Successful: {}\n"
                      "Failed: {}\n"
                      "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
+
+        return successful_moves, total_dlogl_increase
+
+    def do_spr_postprocessing(self, args):
+        """
+        IMPORTANT: This function should be run without parallelization. Otherwise, one has to guarantee that the tree
+        topologies match on all processes, which we cannot at the moment.
+
+        This function should be run after the SPR moves. It will resolve do
+        - re-optimize all branch lengths
+        - resolve polytomies by doing the mergeChildrenUB-function on all nodes recursively
+        - re-optimize all branch lengths again
+
+        :return:
+        """
+        # Do first re-optimization of times
+        self.optTimes(verbose=False, singleProcess=True, mem_friendly=True, maxiter=100)
+
+        # Clean up the tree before resolving polytomies
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes()  # Since some nodes were merged, we need to renumber the nodes consistently
+        self.nNodes = bs_glob.nNodes
+        self.root.getAIRootInfo(None, None)
+
+        nChildNN = -1 if args.use_knn < 0 else 50
+        self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=False,
+                                         ellipsoidSize=1.0, single_process=True, mergeDownstream=True, tree=self,
+                                         nChildNN=nChildNN, kNN=args.use_knn)
+
+        self.optTimes(verbose=False, singleProcess=True, mem_friendly=True, maxiter=100)
 
     def select_spr_candidate(self, select_cand='random', sorted_time_node_tuples=None, n_moves=None):
         if select_cand == 'random':
