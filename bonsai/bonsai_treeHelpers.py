@@ -3659,7 +3659,7 @@ class Tree:
                                                               select_cand='long_branches_first',
                                                               select_target='all',
                                                               max_moves=10000,
-                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              moves_id='C_long_branches_T_all',
                                                               tracking=tracking, info_dict=info_dict)
 
         elif strategy == 'deterministic':
