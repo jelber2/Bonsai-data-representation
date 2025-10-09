@@ -31,6 +31,10 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
                          'is True, it over-rules the same argument in bonsai_config.yaml, and the other way around.')
 
 # TODO: To be removed
+parser.add_argument('--spr_strategy', type=str, default='determ_random_determ',
+                    help='Move to general config-file later. This will determine what strategy we follow for the '
+                         'spr-moves.')
+
 parser.add_argument('--store_all_nwk_folder', type=str, default='',
                     help='REMOVE LATER! This will slow down the program by storing a newick file after every change to'
                          'the tree. This is only necessary for making a tree reconstruction animation.')
@@ -114,6 +118,7 @@ parser.add_argument('--print_annotations', type=str, default='',
 args = parser.parse_args()
 
 pickup_intermediate = args.pickup_intermediate
+spr_strategy = args.spr_strategy
 # TODO: Remove
 store_all_nwk_folder = args.store_all_nwk_folder
 print_annotations = args.print_annotations
@@ -216,7 +221,7 @@ if args.step in ['core_calc', 'all']:
         mp_print("Skipping greedy merging, since --pickup_intermediate is True, and "
                  "the results of this step are already present in {}".format(results_folder))
     else:
-        # Determine where to store results
+        # Determine where to load the results
         outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, greedy=False,
                                        redo_starry=False, opt_times=False, tmp_file=os.path.basename(args.tmp_folder))
         if scData is None:
@@ -323,7 +328,7 @@ if args.step in ['core_calc', 'all']:
                                                                   loglikVarCorr=scData.metadata.loglikVarCorr)
             mp_print("Loglikelihood of inferred tree after redoing starry nodes: " + str(scData.metadata.loglik))
 
-        # Store intermediate results in merge-file.
+        # Store intermediate results.
         outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
                                        redo_starry=True, opt_times=False, tmp_file=os.path.basename(args.tmp_folder))
         mp_print("Storing result after redoing starry nodes in " + scData.result_path(outputFolder) + "\n\n")
@@ -379,6 +384,54 @@ if args.step in ['core_calc', 'all']:
             # if (mpi_wrapper.get_process_rank() == 0) and bs_glob.nwk_counter:
             #     bs_glob.nwk_counter += 100
 
+    """--------------------Optimise all times on the tree to finalise the tree reconstruction """
+    if args.skip_spr_moves:
+        mp_print("Skipping the SPR moves, since --pickup_intermediate is True, and "
+                 "the results of this step are already present in {}".format(results_folder))
+    else:
+        # Time optimization is not parallelized. Only do this on process 0
+        if mpiRank == 0:
+            mp_print("Starting SPR moves.")
+            if scData is None or args.skip_greedy_merging:
+                # Determine where to load results from
+                outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+                                               redo_starry=True, opt_times=True,
+                                               tmp_file=os.path.basename(args.tmp_folder))
+                scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
+                                                      get_cell_info=False, all_ranks=False, rel_to_results=True)
+
+            start_spr = time.time()
+            # Do the actual moves here:
+
+            # TODO: Turn on!
+            # rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
+            scData.tree.do_spr_moveset(args, strategy=spr_strategy, tracking=True,
+                                       output_folder=scData.result_path())
+            scData.tree.remove_two_child_root()
+
+            mp_print("SPR moves took " + str(time.time() - start_spr) + " seconds.")
+            scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
+                                                                  loglikVarCorr=scData.metadata.loglikVarCorr)
+            mp_print("Loglikelihood of inferred tree after SPR moves: " + str(scData.metadata.loglik))
+
+            # Store intermediate results in merge-file.
+            outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=True,
+                                           redo_starry=True, opt_times=True, tmp_file=os.path.basename(args.tmp_folder))
+            mp_print("Storing result after SPR moves in " + scData.result_path(outputFolder) + "\n")
+            scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose)
+            # Store tree topology with optimised times, and the data only for selected genes, such that it can be read
+            # by multiple cores such that the next part of the program can be run in parallel
+            # storeCurrentState(outputFolder, scData, dataOrResults='results', args=args)
+
+            # TODO: Remove eventually, only uncomment this for making animations
+            # if (mpiRank == 0) and bs_glob.nwk_counter and (scData.tree is not None):
+            #     scData.tree.to_newick(use_ids=True,
+            #                           results_path=os.path.join(bs_glob.nwk_folder,
+            #                                                     'tree_{}.nwk'.format(bs_glob.nwk_counter)))
+            #     bs_glob.nwk_counter += 1
+            # if (mpi_wrapper.get_process_rank() == 0) and bs_glob.nwk_counter:
+            #     bs_glob.nwk_counter += 100
+
     """--------------------Do random re-ordering of next-nearest-neighbour-nodes """
     if args.skip_nnn_reordering:
         mp_print("Skipping Nearest-Neighbor interchanges, since --pickup_intermediate is True, and "
@@ -390,7 +443,7 @@ if args.step in ['core_calc', 'all']:
         # Barrier to make sure that also process 0 is done with storing the results from optTimes
         mpi_wrapper.barrier()
         # Determine where to load results from
-        outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+        outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=True,
                                        redo_starry=True, opt_times=True, tmp_file=os.path.basename(args.tmp_folder))
 
         mp_print("Starting re-ordering of next-nearest-neighbour-nodes.")
@@ -440,8 +493,8 @@ if args.step in ['core_calc', 'all']:
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
         mp_print("Loglikelihood of inferred tree after optimising diffusion times: " + str(scData.metadata.loglik))
 
-        # Store intermediate results in merge-file.
-        outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+        # Store intermediate results
+        outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=True,
                                        redo_starry=True, opt_times=True, nnn_reorder=True,
                                        tmp_file=os.path.basename(args.tmp_folder))
         mp_print(
@@ -468,7 +521,7 @@ if args.step in ['core_calc', 'all']:
             mp_print("Starting setting midpoint root and reordering (left-right order) of children of all nodes.")
             if scData is None:
                 # Determine where to load results from
-                outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+                outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=True,
                                                redo_starry=True, opt_times=True, nnn_reorder=True, reorderedEdges=False,
                                                tmp_file=os.path.basename(args.tmp_folder))
                 scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
@@ -499,8 +552,8 @@ if args.step in ['core_calc', 'all']:
                                                                   loglikVarCorr=scData.metadata.loglikVarCorr)
             mp_print("Loglikelihood of inferred tree after reordering children: " + str(scData.metadata.loglik))
 
-            # Store intermediate results in merge-file.
-            outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+            # Store intermediate results
+            outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=True,
                                            redo_starry=True, opt_times=True, nnn_reorder=True, reorderedEdges=True,
                                            tmp_file=os.path.basename(args.tmp_folder))
             mp_print("Storing result after reordering children in " + scData.result_path(outputFolder) + "\n\n")

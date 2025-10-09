@@ -393,7 +393,8 @@ class TreeNode:
             self.tParent = None
             self.isRoot = True
         if len(new_children) == 0:
-            self.isLeaf = True
+            self.childNodes = []
+            # self.isLeaf = True
         else:
             self.isLeaf = False
             self.childNodes = new_children
@@ -3992,6 +3993,8 @@ class Tree:
                 return None, None
             old_parent = candidate.parentNode
             if len(old_parent.childNodes) < 2:
+                return None, None
+            if old_parent.isRoot and (len(old_parent.childNodes) < 3):
                 return None, None
 
             # If we reach this point, we have found a good candidate

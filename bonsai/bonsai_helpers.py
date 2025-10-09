@@ -63,6 +63,7 @@ class Run_Configs:
                          'skip_greedy_merging': False,
                          'skip_redo_starry': False,
                          'skip_opt_times': False,
+                         'skip_spr_moves': False,
                          'skip_nnn_reordering': False,
                          'skip_reorder_edges': False,
                          'pickup_intermediate': False,
@@ -90,8 +91,8 @@ class Run_Configs:
         # The following run-configurations are still used in Bonsai, but can no longer be set by users. Instead,
         # picking up intermediate results is only done through --pickup_intermediate and providing the correct
         # intermediate-results folders in the results-folder
-        deprecated_args = ['skip_greedy_merging', 'skip_opt_times', 'skip_redo_starry', 'skip_nnn_reordering',
-                           'skip_reorder_edges']
+        deprecated_args = ['skip_greedy_merging', 'skip_opt_times', 'skip_redo_starry', 'skip_spr_moves',
+                           'skip_nnn_reordering', 'skip_reorder_edges']
         for dep_arg in deprecated_args:
             if hasattr(self, dep_arg) and getattr(self, dep_arg):
                 setattr(self, dep_arg, False)
@@ -549,7 +550,7 @@ def get_shortest_distances_on_tree(ig_graph, indices=None):
 
 # Used
 def getOutputFolder(zscore_cutoff=-1, greedy=True, redo_starry=True, opt_times=True, final=False,
-                    reorderedEdges=False, nnn_reorder=False, tmp_file='', get_all_possibilities=False):
+                    reorderedEdges=False, spr_moves=False, nnn_reorder=False, tmp_file='', get_all_possibilities=False):
     if get_all_possibilities:
         all_possibilities = []
 
@@ -574,6 +575,10 @@ def getOutputFolder(zscore_cutoff=-1, greedy=True, redo_starry=True, opt_times=T
         all_possibilities.append(mergerFolder)
     if (opt_times or get_all_possibilities) and (not final):
         mergerFolder += "_optTimes"
+    if get_all_possibilities:
+        all_possibilities.append(mergerFolder)
+    if (spr_moves or get_all_possibilities) and (not final):
+        mergerFolder += "_sprMoves"
     if get_all_possibilities:
         all_possibilities.append(mergerFolder)
     if (nnn_reorder or get_all_possibilities) and (not final):
@@ -618,6 +623,7 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
         args.skip_greedy_merging = True
         args.skip_redo_starry = True
         args.skip_opt_times = True
+        args.skip_spr_moves = True
         args.skip_nnn_reordering = True
         args.skip_reorder_edges = True
 
@@ -631,7 +637,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
 
     # 2. Check if done all computation steps, except for the final metadata
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
-                               reorderedEdges=True, nnn_reorder=True, tmp_file=os.path.basename(args.tmp_folder))
+                               reorderedEdges=True, nnn_reorder=True, spr_moves=True,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -639,7 +646,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_reorder_edges = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
-                               nnn_reorder=True, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=True, reorderedEdges=False, spr_moves=True,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -647,7 +655,17 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_nnn_reordering = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
-                               nnn_reorder=False, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=True,
+                               tmp_file=os.path.basename(args.tmp_folder))
+    if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
+        return dir_path
+
+    # 4. Check if done everything up to SPR-moves
+    if set_skip_args:
+        args.skip_spr_moves = False
+    dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=False,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -655,7 +673,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_opt_times = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=False, final=False,
-                               nnn_reorder=False, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=False,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -663,7 +682,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_redo_starry = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=False, opt_times=False, final=False,
-                               nnn_reorder=False, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=False,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
