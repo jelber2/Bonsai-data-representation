@@ -1286,8 +1286,9 @@ class SCData:
         :param spr_strategy: Determines how we search for where to add the node.
         :return:
         """
-        cells_to_add = int(np.ceil(growth_before_cleanup * self.tree.nNodes))
-        for n_added in range(cells_to_add):
+        n_to_add_total = ltqs_to_add.shape[1]
+        n_before_cleanup = int(np.ceil(growth_before_cleanup * self.tree.nNodes))
+        for n_added in range(n_to_add_total):
             ltqs = ltqs_to_add[:, n_added]
             ltqsvars = ltqsvars_to_add[:, n_added]
 
@@ -1296,6 +1297,12 @@ class SCData:
             # Use SPR-strategy to find target for adding the node
 
             # Increase metadata (nNodes, ...?)
+
+            if n_added == n_before_cleanup:
+                n_before_cleanup = int(np.ceil(growth_before_cleanup * self.tree.nNodes))
+                n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
+
+                self.tree.do_spr_postprocessing()
 
             
 

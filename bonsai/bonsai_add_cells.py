@@ -106,6 +106,8 @@ ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, non_guide_cell_inds]
 # TODO: Store these two data-matrices in an .npy-file, such that we can do lazy reading. Then just give the filenames
 scdata_guide.add_cells(ltqs_to_add, ltqsvars_to_add)
 
+
+
 # Calculate cluster-centers
 # Loop over the remaining cells (in a random order), and add them to the tree using cluster centers
 # Keep track of how many cells attach to the root (indicating that their celltype was not represented yet?)

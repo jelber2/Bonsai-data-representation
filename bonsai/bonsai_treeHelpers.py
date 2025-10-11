@@ -3712,7 +3712,7 @@ class Tree:
             start = time.time()
             start_logl = new_logl
 
-        self.do_spr_postprocessing(args=args)
+        self.do_spr_postprocessing()
 
         # Just some tracking
         if tracking:
@@ -3941,7 +3941,7 @@ class Tree:
 
         return successful_moves, total_dlogl_increase
 
-    def do_spr_postprocessing(self, args):
+    def do_spr_postprocessing(self):
         """
         IMPORTANT: This function should be run without parallelization. Otherwise, one has to guarantee that the tree
         topologies match on all processes, which we cannot at the moment.
@@ -3970,10 +3970,9 @@ class Tree:
         self.nNodes = bs_glob.nNodes
         self.root.getAIRootInfo(None, None)
 
-        nChildNN = -1 if args.use_knn < 0 else 50
         self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=False,
                                          ellipsoidSize=1.0, single_process=True, mergeDownstream=True, tree=self,
-                                         nChildNN=nChildNN, kNN=args.use_knn)
+                                         nChildNN=-1, kNN=-1)
 
         self.optTimes(verbose=False, singleProcess=True, mem_friendly=True, maxiter=100)
 
