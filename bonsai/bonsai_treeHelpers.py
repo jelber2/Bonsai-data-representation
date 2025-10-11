@@ -3654,6 +3654,36 @@ class Tree:
                                                               moves_id='C_long_branches_T_cluster_centers',
                                                               tracking=tracking, info_dict=info_dict)
 
+        elif strategy == 'super_sure':
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='cluster_centers',
+                                                              max_moves=100000,
+                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              tracking=tracking, info_dict=info_dict)
+
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='all',
+                                                              max_moves=500,
+                                                              moves_id='C_random_T_random',
+                                                              tracking=tracking, info_dict=info_dict)
+
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='cluster_centers',
+                                                              max_moves=10000,
+                                                              moves_id='C_long_branches_T_cluster_centers',
+                                                              tracking=tracking, info_dict=info_dict)
+
+            info_dict = self.do_spr_moves_with_postprocessing(args=args,
+                                                              select_cand='long_branches_first',
+                                                              select_target='all',
+                                                              max_moves=500,
+                                                              moves_id='C_random_T_random',
+                                                              tracking=tracking, info_dict=info_dict)
+
+
         elif strategy == 'deterministic_exhaustive':
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='long_branches_first',

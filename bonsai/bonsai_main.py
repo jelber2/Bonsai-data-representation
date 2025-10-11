@@ -33,7 +33,7 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
 parser.add_argument('--spr_strategy', type=str, default='determ_random_determ',
                     help="Move to general config-file later. This will determine what strategy we follow for the "
                          "spr-moves. Current options are 'determ_random_determ', 'deterministic', "
-                         "'deterministic_exhaustive'.")
+                         "'deterministic_exhaustive', 'super_sure'.")
 
 # TODO: To be removed
 parser.add_argument('--store_all_nwk_folder', type=str, default='',
