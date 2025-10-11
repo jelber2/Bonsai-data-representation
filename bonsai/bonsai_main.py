@@ -9,8 +9,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
-from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder, find_latest_tree_folder_new, \
-    convert_dict_to_named_tuple, add_celltype_info_to_tree, str2bool
+from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, str2bool
 
 parser = ArgumentParser(
     description='Infers a cell-tree to approximate the distances in gene expression space between cells in single'
@@ -30,12 +29,13 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
                          'for the furthest developed tree reconstruction, and pick it up from there. If this argument'
                          'is True, it over-rules the same argument in bonsai_config.yaml, and the other way around.')
 
-# TODO: To be removed
+# TODO: To be moved to config file
 parser.add_argument('--spr_strategy', type=str, default='determ_random_determ',
                     help="Move to general config-file later. This will determine what strategy we follow for the "
                          "spr-moves. Current options are 'determ_random_determ', 'deterministic', "
                          "'deterministic_exhaustive'.")
 
+# TODO: To be removed
 parser.add_argument('--store_all_nwk_folder', type=str, default='',
                     help='REMOVE LATER! This will slow down the program by storing a newick file after every change to'
                          'the tree. This is only necessary for making a tree reconstruction animation.')

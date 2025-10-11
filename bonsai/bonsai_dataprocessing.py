@@ -1276,6 +1276,31 @@ class SCData:
         else:
             originalData.geneVariances = None
 
+    def add_cells(self, ltqs_to_add, ltqsvars_to_add, growth_before_cleanup=.1, spr_strategy='cluster_centers'):
+        """
+
+        :param ltqs_to_add: Numpy array (genes x cells) with coordinates of cells that should be added to the tree
+        :param ltqsvars_to_add: Numpy array (genes x cells) with corresponding uncertainties
+        :param growth_before_cleanup: Fraction of growth of number of nodes before we do a cleanup of the tree
+        (resolving polytomies + optimizing branch lengths)
+        :param spr_strategy: Determines how we search for where to add the node.
+        :return:
+        """
+        cells_to_add = int(np.ceil(growth_before_cleanup * self.tree.nNodes))
+        for n_added in range(cells_to_add):
+            ltqs = ltqs_to_add[:, n_added]
+            ltqsvars = ltqsvars_to_add[:, n_added]
+
+            # Create TreeNode that can be added
+
+            # Use SPR-strategy to find target for adding the node
+
+            # Increase metadata (nNodes, ...?)
+
+            
+
+
+
     # Used
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
     #     if (zscoreCutoff > 0) or (nGenesToKeep > 0):
