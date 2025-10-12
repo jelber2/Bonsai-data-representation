@@ -23,8 +23,12 @@ parser.add_argument('--config_filepath', type=str, default=None,
 # TODO: To be moved to config-file
 parser.add_argument('--select_target', type=str, default='cluster_centers',
                     help="This will determine what strategy we follow for the "
-                         "spr-moves. Current options are 'root', 'cluster_centers', 'exhaustive', 'leafs', "
-                         "'leafs_exhaustive'.")
+                         "spr-moves. Current options are 'root', 'cluster_centers', 'exhaustive'.")
+
+parser.add_argument('--nodes_to_add_to', type=str, default=None,
+                    help="[NOT YET IMPLEMENTED]"
+                         "One can give a filename to a txt-file containing node-IDs here (one per line). In that case,"
+                         "cells will only be added directly to one of these nodes.")
 
 parser.add_argument('--cells_to_be_added', type=str, default=None,
                     help="One can give a filename to a txt-file containing cell-IDs here (one per line). In that case,"
