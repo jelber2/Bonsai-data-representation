@@ -1336,34 +1336,34 @@ class SCData:
             candidate = TreeNode(nodeInd=new_node_ind, childNodes=[], parentNode=None, isLeaf=False, isRoot=False,
                                  ltqs=ltqs, ltqsVars=ltqsvars, tParent=None, nodeId=cell_id, isCell=True, vert_ind=None)
 
-"""REMOVE"""
-        ancNodeInd = bs_glob.nNodes - 1
-        new_parent = TreeNode(nodeInd=ancNodeInd)
-        new_parent.ltqs = self.ltqs.copy()
-        new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
-        new_parent.tParent = self.tParent
-        new_parent.nodeId = self.nodeId + '_internal_twin'
-        new_parent.n_ds_nodes = 1
-        bs_glob.nNodes += 1
-
-        # New node is created, now add "opt_node" as child
-        new_parent.childNodes = [self]
-        new_parent.isLeaf = False
-        self.tParent = 0.
-        new_parent.parentNode = self.parentNode
-        self.parentNode = new_parent
-
-        # Also, replace opt_node in the child-nodes of the original parent
-        gparent = new_parent.parentNode
-        gparent.childNodes = [child for ind, child in enumerate(gparent.childNodes) if
-                              child.nodeInd != self.nodeInd]
-        gparent.childNodes.append(new_parent)
-
-        # Since we're effectively adding a node, we should add the n_ds_nodes-values on the upstream nodes
-        new_parent.add_n_nodes_upstream(1)
-
-        return new_parent
-"""REMOVE END"""
+# """REMOVE"""
+#         ancNodeInd = bs_glob.nNodes - 1
+#         new_parent = TreeNode(nodeInd=ancNodeInd)
+#         new_parent.ltqs = self.ltqs.copy()
+#         new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
+#         new_parent.tParent = self.tParent
+#         new_parent.nodeId = self.nodeId + '_internal_twin'
+#         new_parent.n_ds_nodes = 1
+#         bs_glob.nNodes += 1
+#
+#         # New node is created, now add "opt_node" as child
+#         new_parent.childNodes = [self]
+#         new_parent.isLeaf = False
+#         self.tParent = 0.
+#         new_parent.parentNode = self.parentNode
+#         self.parentNode = new_parent
+#
+#         # Also, replace opt_node in the child-nodes of the original parent
+#         gparent = new_parent.parentNode
+#         gparent.childNodes = [child for ind, child in enumerate(gparent.childNodes) if
+#                               child.nodeInd != self.nodeInd]
+#         gparent.childNodes.append(new_parent)
+#
+#         # Since we're effectively adding a node, we should add the n_ds_nodes-values on the upstream nodes
+#         new_parent.add_n_nodes_upstream(1)
+#
+#         return new_parent
+# """REMOVE END"""
 
 
             # Use SPR-strategy to find target for adding the node
