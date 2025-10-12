@@ -2748,7 +2748,7 @@ class TreeNode:
         n_nodes_in_subtree = candidate.n_ds_nodes
         self.add_n_nodes_upstream(-n_nodes_in_subtree)
 
-        return cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g, wbar_cand_g
+        return cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g
 
     def add_subtree(self, candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g):
         self.childNodes.append(candidate)
@@ -3856,7 +3856,7 @@ class Tree:
                 continue
 
             """Remove the candidate from the tree"""
-            cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g, wbar_cand_g = old_parent.detach_subtree(candidate)
+            cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g = old_parent.detach_subtree(candidate)
             # Discard all as_if_root-information by updating the version
             as_if_root_version += 1
 
@@ -4003,7 +4003,8 @@ class Tree:
         self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=False,
                                          ellipsoidSize=1.0, single_process=True, mergeDownstream=True, tree=self,
                                          nChildNN=-1, kNN=-1)
-
+        self.root.renumberNodes()  # Since some nodes may have merged, we need to renumber the nodes consistently
+        self.nNodes = bs_glob.nNodes
         self.optTimes(verbose=False, singleProcess=True, mem_friendly=True, maxiter=100)
 
     def select_spr_candidate(self, select_cand='random', sorted_time_node_tuples=None, n_moves=None):
@@ -4029,12 +4030,20 @@ class Tree:
             # If we reach this point, we have found a good candidate
         return candidate, old_parent
 
-    def select_spr_targets(self, select_target='random', old_parent=None, cluster_centers=None, all_nodes_list=None):
+    def select_spr_targets(self, select_target='random', old_parent=None, cluster_centers=None, all_nodes_list=None,
+                           cluster_centers_guaranteed=False):
         if select_target == 'root':
             return [self.root]
         elif select_target == 'cluster_centers':
             # Always include the old_parent as an option
-            available_cluster_centers = [old_parent]
+            available_cluster_centers = []
+            if old_parent is not None:
+                available_cluster_centers.append(old_parent)
+
+            if cluster_centers_guaranteed:
+                available_cluster_centers += cluster_centers
+                return available_cluster_centers
+
             for clst_center in cluster_centers:
                 upstream_parent = clst_center
                 while upstream_parent.parentNode is not None:

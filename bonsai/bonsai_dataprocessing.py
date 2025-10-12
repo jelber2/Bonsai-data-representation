@@ -1313,8 +1313,8 @@ class SCData:
         # tree-based search of where to put the new cells
         if select_target == 'cluster_centers':
             n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
-            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters)
-            nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            cluster_center_node_ids = self.tree.get_cluster_centers(cell_ids=None, n_clusters=n_clusters)
+            nodesList = self.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
             cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
         else:
             cluster_centers = None
@@ -1330,41 +1330,17 @@ class SCData:
             ltqs = ltqs_to_add[:, n_added]
             ltqsvars = ltqsvars_to_add[:, n_added]
             cell_id = cell_ids[n_added]
-            new_node_ind = bs_glob.nNodes - 1
+            cand_node_ind = bs_glob.nNodes - 1
             bs_glob.nNodes += 1
             self.tree.nNodes += 1
-            candidate = TreeNode(nodeInd=new_node_ind, childNodes=[], parentNode=None, isLeaf=False, isRoot=False,
+            candidate = TreeNode(nodeInd=cand_node_ind, childNodes=[], parentNode=None, isLeaf=False, isRoot=False,
                                  ltqs=ltqs, ltqsVars=ltqsvars, tParent=None, nodeId=cell_id, isCell=True, vert_ind=None)
 
-# """REMOVE"""
-#         ancNodeInd = bs_glob.nNodes - 1
-#         new_parent = TreeNode(nodeInd=ancNodeInd)
-#         new_parent.ltqs = self.ltqs.copy()
-#         new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
-#         new_parent.tParent = self.tParent
-#         new_parent.nodeId = self.nodeId + '_internal_twin'
-#         new_parent.n_ds_nodes = 1
-#         bs_glob.nNodes += 1
-#
-#         # New node is created, now add "opt_node" as child
-#         new_parent.childNodes = [self]
-#         new_parent.isLeaf = False
-#         self.tParent = 0.
-#         new_parent.parentNode = self.parentNode
-#         self.parentNode = new_parent
-#
-#         # Also, replace opt_node in the child-nodes of the original parent
-#         gparent = new_parent.parentNode
-#         gparent.childNodes = [child for ind, child in enumerate(gparent.childNodes) if
-#                               child.nodeInd != self.nodeInd]
-#         gparent.childNodes.append(new_parent)
-#
-#         # Since we're effectively adding a node, we should add the n_ds_nodes-values on the upstream nodes
-#         new_parent.add_n_nodes_upstream(1)
-#
-#         return new_parent
-# """REMOVE END"""
-
+            """Select target-node to start the search for a good target"""
+            # The targets-object returned is a list, which either has 1 or multiple nodes. We run the SPR search on
+            # all these targets and select the best one
+            targets = self.tree.select_spr_targets(select_target=select_target, old_parent=None,
+                                                   cluster_centers=cluster_centers, cluster_centers_guaranteed=True)
 
             # Use SPR-strategy to find target for adding the node
             opt_node = None
@@ -1372,12 +1348,12 @@ class SCData:
             opt_t = None
             for target in targets:
                 """Check the change in loglikelihood when adding to target"""
-                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-np.inf,
+                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs, ltqsvars, prev_dlogl=-np.inf,
                                                                   prev_node_ind=None, opt_node=opt_node, opt_t=opt_t,
                                                                   opt_dlogl=opt_dlogl,
                                                                   as_if_root_version=as_if_root_version,
                                                                   spr_target_version=spr_target_version,
-                                                                  do_local_search=do_local_search)
+                                                                  do_local_search=True)
 
             # Add the node to the tree structure
             """Perform move"""
@@ -1393,7 +1369,7 @@ class SCData:
                 new_parent = opt_node
 
             # Add the candidate node on the tree, and update the coordinates
-            new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
+            new_parent.add_subtree(candidate, opt_t, ltqs, ltqsvars)
             as_if_root_version += 1
 
             # Increase metadata (nNodes, ...?)
@@ -1411,9 +1387,6 @@ class SCData:
                      "and is {} according to the normal loglik "
                      "calculation.".format(orig_loglik + total_dlogl_decrease,
                                            self.tree.calcLogLComplete(mem_friendly=True, recalc=True)))
-
-            
-
 
 
     # Used
