@@ -104,8 +104,6 @@ if cells_to_be_added is not None:
             for row in reader:
                 cell_ids_to_be_added.append(row[0])
 
-
-
 # Make sure that all ltqs are calculated at all nodes (automatically done when calculating a loglikelihood)
 scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=True,
                                                       loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
@@ -121,7 +119,8 @@ cell_ids_to_add = [scdata_all_cells.metadata.cellIds[ind] for ind in non_guide_c
 """
 This is the core of the script, the cells will be added iteratively to the guide-tree
 """
-scdata_guide.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids, growth_before_cleanup=.1, select_target=args.select_target)
+scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add, growth_before_cleanup=.1,
+                            select_target=args.select_target)
 
 
 """
