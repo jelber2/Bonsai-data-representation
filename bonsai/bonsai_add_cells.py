@@ -48,10 +48,6 @@ import bonsai.bonsai_globals as bs_glob
 mpiRank, mpiSize = startMPI(args.verbose)
 origEllipsoidSize = None
 
-# The SEQUENTIAL-variables determines whether we first optimise diff. times between merged nodes, and then to ancestor
-# from root, or all three at the same time. SEQUENTIAL=True is faster and leads to better tree likelihoods in tests
-SEQUENTIAL = False
-
 start_all = time.time()
 
 # Read in the tree that was created on a subset of the data (read in without data)
