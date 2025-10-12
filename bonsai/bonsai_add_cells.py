@@ -104,7 +104,7 @@ if cells_to_be_added is not None:
             for row in reader:
                 cell_ids_to_be_added.append(row[0])
 
-        
+
 
 # Make sure that all ltqs are calculated at all nodes (automatically done when calculating a loglikelihood)
 scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=True,
