@@ -1276,7 +1276,8 @@ class SCData:
         else:
             originalData.geneVariances = None
 
-    def add_cells(self, ltqs_to_add, ltqsvars_to_add, growth_before_cleanup=.1, spr_strategy='cluster_centers'):
+    def add_cells(self, ltqs_to_add, ltqsvars_to_add, cell_ids, growth_before_cleanup=.1,
+                  select_target='cluster_centers'):
         """
 
         :param ltqs_to_add: Numpy array (genes x cells) with coordinates of cells that should be added to the tree
@@ -1286,15 +1287,114 @@ class SCData:
         :param spr_strategy: Determines how we search for where to add the node.
         :return:
         """
+        # We initialize some variables, and do a first clean-up of the tree
+        as_if_root_version = 0
+        spr_target_version = 0
+        self.tree.root.reset_version_numbers('_AIRoot_version')
+        self.tree.root.reset_version_numbers('_spr_target_version')
+        total_dlogl_decrease = 0
+
+        """Prepare the tree"""
+        # nChildren = self.root.gatherInfoDepthFirst([])
+        self.tree.remove_two_child_root()
+        self.tree.root.deleteParentsWithOneChild()
+        self.tree.root.mergeZeroTimeChilds()
+        self.tree.root.renumberNodes()
+        self.tree.nNodes = bs_glob.nNodes
+
+        self.tree.root.storeParent()
+        self.tree.root.getLtqsComplete(mem_friendly=True)
+        orig_loglik = self.tree.calcLogLComplete(mem_friendly=True, recalc=False)
+
         n_to_add_total = ltqs_to_add.shape[1]
         n_before_cleanup = int(np.ceil(growth_before_cleanup * self.tree.nNodes))
+
+        # If select_target is cluster_centers, we get cluster-centers here, which will be used as start-points for the
+        # tree-based search of where to put the new cells
+        if select_target == 'cluster_centers':
+            n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
+            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters)
+            nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
+        else:
+            cluster_centers = None
+
+        n_print = 100
         for n_added in range(n_to_add_total):
-            ltqs = ltqs_to_add[:, n_added]
-            ltqsvars = ltqsvars_to_add[:, n_added]
+            if n_added == n_print:
+                mp_print("Adding cell {} out of {}: {}%.".format(n_added + 1, n_to_add_total,
+                                                                 100 * (n_added + 1) / n_to_add_total))
+                n_print *= 2
 
             # Create TreeNode that can be added
+            ltqs = ltqs_to_add[:, n_added]
+            ltqsvars = ltqsvars_to_add[:, n_added]
+            cell_id = cell_ids[n_added]
+            new_node_ind = bs_glob.nNodes - 1
+            bs_glob.nNodes += 1
+            self.tree.nNodes += 1
+            candidate = TreeNode(nodeInd=new_node_ind, childNodes=[], parentNode=None, isLeaf=False, isRoot=False,
+                                 ltqs=ltqs, ltqsVars=ltqsvars, tParent=None, nodeId=cell_id, isCell=True, vert_ind=None)
+
+"""REMOVE"""
+        ancNodeInd = bs_glob.nNodes - 1
+        new_parent = TreeNode(nodeInd=ancNodeInd)
+        new_parent.ltqs = self.ltqs.copy()
+        new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
+        new_parent.tParent = self.tParent
+        new_parent.nodeId = self.nodeId + '_internal_twin'
+        new_parent.n_ds_nodes = 1
+        bs_glob.nNodes += 1
+
+        # New node is created, now add "opt_node" as child
+        new_parent.childNodes = [self]
+        new_parent.isLeaf = False
+        self.tParent = 0.
+        new_parent.parentNode = self.parentNode
+        self.parentNode = new_parent
+
+        # Also, replace opt_node in the child-nodes of the original parent
+        gparent = new_parent.parentNode
+        gparent.childNodes = [child for ind, child in enumerate(gparent.childNodes) if
+                              child.nodeInd != self.nodeInd]
+        gparent.childNodes.append(new_parent)
+
+        # Since we're effectively adding a node, we should add the n_ds_nodes-values on the upstream nodes
+        new_parent.add_n_nodes_upstream(1)
+
+        return new_parent
+"""REMOVE END"""
+
 
             # Use SPR-strategy to find target for adding the node
+            opt_node = None
+            opt_dlogl = -np.inf
+            opt_t = None
+            for target in targets:
+                """Check the change in loglikelihood when adding to target"""
+                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-np.inf,
+                                                                  prev_node_ind=None, opt_node=opt_node, opt_t=opt_t,
+                                                                  opt_dlogl=opt_dlogl,
+                                                                  as_if_root_version=as_if_root_version,
+                                                                  spr_target_version=spr_target_version,
+                                                                  do_local_search=do_local_search)
+
+            # Add the node to the tree structure
+            """Perform move"""
+            # Keep track of loglikelihood decrease for a sanity check
+            total_dlogl_decrease += opt_dlogl
+
+            # Make sure to add new node if adding it downstream of a leaf
+            if opt_node.isLeaf:
+                # In this case, create a new node that is basically a copy of "opt_node", but is the parent of the original
+                # node in the tree with a zero branch length connecting them.
+                new_parent = opt_node.get_twin_parent()
+            else:
+                new_parent = opt_node
+
+            # Add the candidate node on the tree, and update the coordinates
+            new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
+            as_if_root_version += 1
 
             # Increase metadata (nNodes, ...?)
 
@@ -1303,6 +1403,14 @@ class SCData:
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
 
                 self.tree.do_spr_postprocessing()
+
+        self.tree.nNodes = bs_glob.nNodes
+        logging.info("The {} added cells led to a decrease of {} "
+                     "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
+        logging.info("Total loglikelihood should now thus be {}, "
+                     "and is {} according to the normal loglik "
+                     "calculation.".format(orig_loglik + total_dlogl_decrease,
+                                           self.tree.calcLogLComplete(mem_friendly=True, recalc=True)))
 
             
 
