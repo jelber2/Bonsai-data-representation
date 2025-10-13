@@ -55,7 +55,11 @@ class Metadata:
         if curr_metadata is not None:
             for attr in attr_list:
                 if getattr(curr_metadata, attr) is not None:
-                    setattr(self, attr, getattr(curr_metadata, attr))
+                    if attr in ['cellIds', 'geneIds', 'geneVariances']:
+                        copied_attr = getattr(curr_metadata, attr).copy()
+                    else:
+                        copied_attr = getattr(curr_metadata, attr)
+                    setattr(self, attr, copied_attr)
 
     def to_dict(self):
         self_dict = self.__dict__
