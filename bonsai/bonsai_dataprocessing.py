@@ -227,47 +227,8 @@ class SCData:
 
         if createStarTree:
             self.tree = Tree()
-            # self.tree.geneVariances = originalData.geneVariances  # TODO: Remove this if possible
-            self.tree.buildTree(originalData.ltqs, originalData.ltqsVars, self.metadata.cellIds)
-
-            # TODO: Remove eventually, only uncomment this for making animations
-            # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
-            #     self.tree.to_newick(use_ids=True,
-            #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
-            #     bs_glob.nwk_counter += 1
-
-            # Do initial optimisation of diffusion times along branches of star-tree
-            startTimeOpt = time.time()
-            if optTimes:
-                tStar, optLogLik, W_g, self.tree.root.ltqs = optimiseTStar(originalData.ltqs, originalData.ltqsVars,
-                                                                           verbose=verbose)
-                self.tree.root.setLtqsVarsOrW(W_g=W_g)
-            else:
-                tStar = np.ones(bs_glob.nCells)
-                optLogLik = -1e9
-
-            dTimeOpt = time.time() - startTimeOpt
-            self.tree.root.assignTs(tStar)
-
-            # TODO: Remove eventually, only uncomment this for making animations
-            # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
-            #     self.tree.to_newick(use_ids=True,
-            #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
-            #     bs_glob.nwk_counter += 1
-
-            if verbose and optTimes:
-                mp_print("Initial optimisation of times with EM took " + str(dTimeOpt) + " seconds.")
-                mp_print("Loglikelihood after time optimization is: " + str(
-                    self.tree.calcLogLComplete(mem_friendly=True, loglikVarCorr=self.metadata.loglikVarCorr)) + '\n')
-
-            # Specialized for the star tree:
-            # lambda_g = optimiseLambdaStar(tStar, originalData.ltqs, originalData.ltqsVars, self.metadata.geneVariances,
-            #                               verbose=verbose)
-            # self.tree.root.assignVs(lambda_g)
-            # self.metadata.geneVariances *= lambda_g
-            # self.tree.root.getLtqsComplete()
-            # self.metadata.loglikVarCorr = - self.metadata.nCells * np.sum(
-            #     np.log(self.metadata.geneVariances))  # - self.metadata.nCells * self.metadata.nGenes * np.log(2 * np.pi)
+            self.tree.initialize_star_tree(originalData.ltqs, originalData.ltqsVars, self.metadata,
+                                           opt_times=optTimes, verbose=verbose)
 
     """----------TREE MANIPULATIONS-------------------------------"""
 

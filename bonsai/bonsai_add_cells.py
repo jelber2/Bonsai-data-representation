@@ -74,6 +74,12 @@ nodes_list = scdata_guide.tree.root.getNodeList([], returnRoot=True, returnLeafs
 
 # The gene-selection will be based on all cells, so we copy the metadata based on scdata_all_cells
 scdata_guide.metadata.geneIds = scdata_all_cells.metadata.geneIds
+scdata_guide.metadata.nGenes = len(scdata_guide.metadata.geneIds)
+# Note that we call only the original cells on the guide-tree "cells" at the moment. This is for technical reasons,
+# for numbering the nodes
+bs_glob.nCells = scdata_guide.metadata.nCells
+bs_glob.nGenes = scdata_guide.metadata.nGenes
+
 scdata_guide.metadata.geneVariances = scdata_all_cells.metadata.geneVariances
 scdata_guide.metadata.loglikVarCorr = scdata_all_cells.metadata.loglikVarCorr
 scdata_guide.metadata.pathToOrigData = scdata_all_cells.metadata.pathToOrigData
@@ -98,23 +104,27 @@ non_guide_cell_inds = np.setdiff1d(np.arange(scdata_all_cells.metadata.nCells), 
 if cells_to_be_added is not None:
     cells_to_be_added = os.path.abspath(cells_to_be_added)
     if os.path.exists(cells_to_be_added):
-        cell_ids_to_be_added = []
+        # cell_ids_to_be_added = []
+        cell_inds_to_add = []
         with open(cells_to_be_added, 'r') as file:
             reader = csv.reader(file, delimiter="\t")
             for row in reader:
-                cell_ids_to_be_added.append(row[0])
+                # cell_ids_to_be_added.append(row[0])
+                cell_inds_to_add.append(cell_id_to_ind[row[0]])
+    cell_inds_to_add = np.array(cell_inds_to_add)
+    cell_inds_to_add = np.intersect1d(cell_inds_to_add, non_guide_cell_inds)
+
+# Create random order of cells to be added
+np.random.shuffle(cell_inds_to_add)
+ltqs_to_add = scdata_all_cells.originalData.ltqs[:, cell_inds_to_add]
+ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, cell_inds_to_add]
+cell_ids_to_add = [scdata_all_cells.metadata.cellIds[ind] for ind in cell_inds_to_add]
+# TODO: Store these two data-matrices in an .npy-file, such that we can do lazy reading. Then just give the filenames
 
 # Make sure that all ltqs are calculated at all nodes (automatically done when calculating a loglikelihood)
 scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=True,
                                                       loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
 mp_print("Loglikelihood of guide tree before adding cells: " + str(scdata_guide.metadata.loglik))
-
-# Create random order of cells to be added
-np.random.shuffle(non_guide_cell_inds)
-ltqs_to_add = scdata_all_cells.originalData.ltqs[:, non_guide_cell_inds]
-ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, non_guide_cell_inds]
-cell_ids_to_add = [scdata_all_cells.metadata.cellIds[ind] for ind in non_guide_cell_inds]
-# TODO: Store these two data-matrices in an .npy-file, such that we can do lazy reading. Then just give the filenames
 
 """
 This is the core of the script, the cells will be added iteratively to the guide-tree

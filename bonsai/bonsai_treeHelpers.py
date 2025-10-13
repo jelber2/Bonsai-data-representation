@@ -2839,14 +2839,47 @@ class Tree:
     def __repr__(self):
         return "Tree(root=%r\n\nloglik=%r,nNodes=%r)" % (self.root, self.loglik, self.nNodes)
 
+    def initialize_star_tree(self, ltqs, ltqsvars, metadata, opt_times=True, verbose=False):
+        self.buildTree(ltqs, ltqsvars, metadata.cellIds)
+
+        # TODO: Remove eventually, only uncomment this for making animations
+        # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
+        #     self.to_newick(use_ids=True,
+        #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
+        #     bs_glob.nwk_counter += 1
+
+        # Do initial optimisation of diffusion times along branches of star-tree
+        start_timeopt = time.time()
+        if opt_times:
+            t_star, opt_loglik, W_g, self.root.ltqs = optimiseTStar(ltqs, ltqsvars, verbose=verbose)
+            self.root.setLtqsVarsOrW(W_g=W_g)
+        else:
+            t_star = np.ones(bs_glob.nCells)
+            opt_loglik = -1e9
+
+        d_timeopt = time.time() - start_timeopt
+        self.root.assignTs(t_star)
+
+        if verbose and opt_times:
+            mp_print("Initial optimisation of times with EM took " + str(d_timeopt) + " seconds.")
+            mp_print("Loglikelihood after time optimization is: " + str(
+                self.calcLogLComplete(mem_friendly=True, loglikVarCorr=metadata.loglikVarCorr)) + '\n')
+
+        # TODO: Remove eventually, only uncomment this for making animations
+        # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
+        #     self.to_newick(use_ids=True,
+        #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
+        #     bs_glob.nwk_counter += 1
+
     # Used
     def buildTree(self, ltqs, ltqsVars, cellIds):
         self.root.childNodes = []
-        for ind in range(bs_glob.nCells):
+        n_cells = len(cellIds)
+        for ind in range(n_cells):
             self.root.childNodes.append(
                 TreeNode(nodeInd=ind, childNodes=[], isLeaf=True, ltqs=ltqs[:, ind], tParent=1,
                          ltqsVars=ltqsVars[:, ind], nodeId=cellIds[ind], isCell=True))
-        bs_glob.nNodes = bs_glob.nCells + 1
+        bs_glob.nNodes = n_cells + 1
 
     def copy_tree_topology(self):
         tree_copy = Tree()
@@ -4489,7 +4522,7 @@ def logLGradStarTreeLogLambdaSingleGene(logLambda, t_i, ltqs_i, ltqsVars_i, nCel
 # Used
 def optimiseTStar(ltqs_gi, ltqsVars_gi, nChilds=None, verbose=False):
     if nChilds is None:
-        nChilds = bs_glob.nCells
+        nChilds = ltqs_gi.shape[1]
     t_i = np.ones(nChilds)
     tnew_i = np.zeros(nChilds)
     converged = False

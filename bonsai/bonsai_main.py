@@ -198,9 +198,8 @@ if args.step in ['preprocess', 'all']:
         args.store_yaml(scData.result_path('used_run_configs.yaml'))
 
         if mpiRank == 0:
-            # Store tree topology with optimised times, and the data only for selected genes, such that it can be read in
-            # by multiple cores such that the next part of the program can be run in parallel
-            # storeCurrentState(outputFolder, scData, filename='tmp_tree.dat', args=args)
+            # Store tree topology with optimised times, and the data only for selected genes, such that it can be read
+            # in by multiple cores such that the next part of the program can be run in parallel
             mp_print("Storing result of preprocessing in " + scData.result_path(outputFolder) + "\n\n")
             scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose,
                                      cleanup_tree=False)

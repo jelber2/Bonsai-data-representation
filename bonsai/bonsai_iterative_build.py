@@ -67,6 +67,7 @@ from bonsai.bonsai_dataprocessing import initializeSCData, getMetadata, loadReco
     nnnReorder, nnnReorderRandom, Metadata, storeData
 from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder, get_latest_intermediate, \
     clean_up_redundant_data_files, str2bool
+from bonsai.bonsai_treeHelpers import Tree
 import bonsai.bonsai_globals as bs_glob
 
 # Some of the code can be run in parallel, parallelization is done via mpi4py
@@ -97,19 +98,33 @@ for subset_ind, subset in enumerate(subsets):
     metadata_subset = Metadata(curr_metadata=scdata.metadata)
     metadata_subset.cellIds = [scdata.metadata.cellIds[ind] for ind in subset]
     metadata_subset.nCells = len(subset)
+    bs_glob.nCells = metadata_subset.nCells
     metadata_subset.dataset = os.path.join(scdata.metadata.dataset, 'subset_{}'.format(subset_ind))
     metadata_subset.results_folder = os.path.join(scdata.metadata.results_folder, 'subset_{}'.format(subset_ind))
 
     scdata_subset = SCData(onlyObject=True, dataset=metadata_subset.dataset,
                            results_folder=metadata_subset.results_folder)
 
-    metadata_subset.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed'
-                                                                    % args.zscore_cutoff)
+    scdata_subset.metadata = metadata_subset
+    scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed'
+                                                                           % args.zscore_cutoff)
     ltqs_subset = scdata.originalData.ltqs[:, subset].copy()
     ltqsvars_subset = scdata.originalData.ltqsVars[:, subset].copy()
     mp_print("Storing subset {} with {} cells in folder: {}".format(subset_ind, len(subset),
-                                                                    metadata_subset.processedDatafolder))
-    storeData(metadata_subset, ltqs_subset, ltqsvars_subset)
+                                                                    scdata_subset.metadata.processedDatafolder))
+    storeData(scdata_subset.metadata, ltqs_subset, ltqsvars_subset)
+
+    if mpi_rank == 0:
+        scdata_subset.tree = Tree()
+        scdata_subset.tree.initialize_star_tree(ltqs_subset, ltqsvars_subset, scdata_subset.metadata,
+                                                opt_times=True, verbose=args.verbose)
+        # Store tree topology with optimised times, and the data only for selected genes, such that it can be read
+        # in by multiple cores such that the next part of the program can be run in parallel
+        outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, greedy=False,
+                                       redo_starry=False, opt_times=False)
+        mp_print("Storing result of preprocessing in " + scdata_subset.result_path(outputFolder) + "\n\n")
+        scdata_subset.storeTreeInFolder(scdata_subset.result_path(outputFolder), with_coords=True, verbose=args.verbose,
+                                        cleanup_tree=False)
 
 if mpi_rank != 0:
     mp_print("The script 'bonsai_iterative_build.py' is not designed to use multiple CPUs in all steps. Currently,"
