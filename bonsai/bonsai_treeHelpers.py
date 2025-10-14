@@ -2768,8 +2768,9 @@ class TreeNode:
         self.setLtqsUpstream()
 
         # Also update the n_ds_node variables upstream of the old_parent
-        n_nodes_in_subtree = candidate.n_ds_nodes
-        self.add_n_nodes_upstream(n_nodes_in_subtree)
+        if self.n_ds_nodes is not None:
+            n_nodes_in_subtree = candidate.n_ds_nodes
+            self.add_n_nodes_upstream(n_nodes_in_subtree)
 
     def get_dlogl_spr_move(self, ltqs_cand_g, ltqsVars_cand_g, as_if_root_version=None, spr_target_version=None):
         if self._spr_target_version == spr_target_version:
@@ -2802,7 +2803,8 @@ class TreeNode:
         new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
         new_parent.tParent = self.tParent
         new_parent.nodeId = self.nodeId + '_internal_twin'
-        new_parent.n_ds_nodes = 1
+        if self.n_ds_nodes is not None:
+            new_parent.n_ds_nodes = 1
         bs_glob.nNodes += 1
 
         # New node is created, now add "opt_node" as child
@@ -2819,7 +2821,8 @@ class TreeNode:
         gparent.childNodes.append(new_parent)
 
         # Since we're effectively adding a node, we should add the n_ds_nodes-values on the upstream nodes
-        new_parent.add_n_nodes_upstream(1)
+        if self.n_ds_nodes is not None:
+            new_parent.add_n_nodes_upstream(1)
 
         return new_parent
 
@@ -3633,7 +3636,7 @@ class Tree:
             for child in node_list:
                 if child.isRoot:
                     continue
-                if (not child.isLeaf) and (len(child.childNodes >= 2)):
+                if (not child.isLeaf) and (len(child.childNodes) >= 2):
                     found_better_root = True
                     break
 
@@ -4125,6 +4128,8 @@ class Tree:
         :param spr_strategy: Determines how we search for where to add the node.
         :return:
         """
+        # TODO: Turn this off
+        very_verbose = True
         # We initialize some variables, and do a first clean-up of the tree
         as_if_root_version = 0
         spr_target_version = 0
@@ -4206,15 +4211,25 @@ class Tree:
             else:
                 new_parent = opt_node
 
+            if very_verbose:
+                mp_print("Adding cell {} downstream of {} with branch length {}".format(candidate.nodeId,
+                                                                                        opt_node.nodeId, opt_t))
+
             # Add the candidate node on the tree, and update the coordinates
             new_parent.add_subtree(candidate, opt_t, ltqs, ltqsvars)
             as_if_root_version += 1
+            spr_target_version += 1
 
             # Increase metadata (nNodes, ...?)
 
             if n_added == n_before_cleanup:
                 n_before_cleanup = int(np.ceil(growth_before_cleanup * self.nNodes))
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
+
+                nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+                node_oi = [node for node in nodesList if node.nodeInd == 256][0]
+                if not len(node_oi.childNodes):
+                    print("STOP HERE!")
 
                 self.do_spr_postprocessing()
 

@@ -20,6 +20,11 @@ parser.add_argument('--config_filepath', type=str, default=None,
                     help='Absolute (or relative to "bonsai-development") path to YAML-file that contains all arguments'
                          'needed to run Bonsai.')
 
+parser.add_argument('--guide_tree_folder', type=str, default=None,
+                    help="Path that should point to folder where an existing Bonsai-tree is stored. This folder"
+                         "is typically called 'final_...' in a Bonsai-results folder. Then this script will start "
+                         "adding cells to that 'guide-tree'.")
+
 # TODO: To be moved to config-file
 parser.add_argument('--select_target', type=str, default='cluster_centers',
                     help="This will determine what strategy we follow for the "
@@ -37,7 +42,7 @@ parser.add_argument('--cells_to_be_added', type=str, default=None,
 args = parser.parse_args()
 select_target = args.select_target
 cells_to_be_added = args.cells_to_be_added
-
+guide_tree_folder = args.guide_tree_folder
 args = Run_Configs(args.config_filepath)
 args.select_target = select_target
 
@@ -48,6 +53,11 @@ from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder, get_lates
     clean_up_redundant_data_files, str2bool
 import bonsai.bonsai_globals as bs_glob
 
+if guide_tree_folder is None:
+    mp_print("Cannot add cells if 'guide_tree_folder' is not defined, don't know where to find the guide tree.",
+             ERROR=True)
+    exit()
+
 # Some of the code can be run in parallel, parallelization is done via mpi4py
 mpiRank, mpiSize = startMPI(args.verbose)
 origEllipsoidSize = None
@@ -55,15 +65,14 @@ origEllipsoidSize = None
 start_all = time.time()
 
 # Read in the tree that was created on a subset of the data (read in without data)
-scdata_tmp = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
-results_folder = scdata_tmp.result_path()
+# scdata_tmp = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
+# results_folder = scdata_tmp.result_path()
 
-output_folder = find_latest_tree_folder_new(args, results_folder, not_final=True)
 all_genes = False
 
-scdata_guide = loadReconstructedTreeAndData(args, output_folder, all_genes=all_genes, get_cell_info=False,
-                                      reprocess_data=False, all_ranks=True, rel_to_results=True, get_data=False,
-                                      no_data_needed=True, get_posterior_ltqs=False, otherRanksMinimalInfo=True)
+scdata_guide = loadReconstructedTreeAndData(args, guide_tree_folder, all_genes=all_genes, get_cell_info=False,
+                                            reprocess_data=False, all_ranks=True, rel_to_results=True, get_data=False,
+                                            no_data_needed=True, get_posterior_ltqs=False, otherRanksMinimalInfo=True)
 
 # Read in the data for all cells, and preprocess it like normal
 scdata_all_cells = initializeSCData(args, createStarTree=False, getOrigData=False, otherRanksMinimalInfo=True)
@@ -113,6 +122,8 @@ if cells_to_be_added is not None:
                 cell_inds_to_add.append(cell_id_to_ind[row[0]])
     cell_inds_to_add = np.array(cell_inds_to_add)
     cell_inds_to_add = np.intersect1d(cell_inds_to_add, non_guide_cell_inds)
+else:
+    cell_inds_to_add = non_guide_cell_inds
 
 # Create random order of cells to be added
 np.random.shuffle(cell_inds_to_add)
@@ -123,7 +134,7 @@ cell_ids_to_add = [scdata_all_cells.metadata.cellIds[ind] for ind in cell_inds_t
 
 # Make sure that all ltqs are calculated at all nodes (automatically done when calculating a loglikelihood)
 scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=True,
-                                                      loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
+                                                                  loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
 mp_print("Loglikelihood of guide tree before adding cells: " + str(scdata_guide.metadata.loglik))
 
 """
@@ -131,7 +142,6 @@ This is the core of the script, the cells will be added iteratively to the guide
 """
 scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add, growth_before_cleanup=.1,
                             select_target=args.select_target)
-
 
 """
 Store the resulting tree in a folder, such that another script can pick it up. In that script, we should then
@@ -141,7 +151,7 @@ format.
 
 mp_print("Adding cells took " + str(time.time() - start_all) + " seconds.")
 scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=True,
-                                                      loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
+                                                                  loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
 mp_print("Loglikelihood of inferred tree after adding cells: " + str(scdata_guide.metadata.loglik))
 
 # Store intermediate results
@@ -169,6 +179,3 @@ scdata_guide.storeTreeInFolder(scdata_guide.result_path(outputFolder), with_coor
 # Still do SPR-moves and NNI-moves maybe.
 
 # Store like normal
-
-
-
