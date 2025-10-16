@@ -3701,7 +3701,7 @@ class Tree:
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='long_branches_first',
                                                               select_target='all',
-                                                              max_moves=2000,
+                                                              max_moves=1000,
                                                               moves_id='C_random_T_random',
                                                               tracking=tracking, info_dict=info_dict)
 
@@ -3712,12 +3712,12 @@ class Tree:
                                                               moves_id='C_long_branches_T_cluster_centers',
                                                               tracking=tracking, info_dict=info_dict)
 
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='all',
-                                                              max_moves=2000,
-                                                              moves_id='C_random_T_random',
-                                                              tracking=tracking, info_dict=info_dict)
+            # info_dict = self.do_spr_moves_with_postprocessing(args=args,
+            #                                                   select_cand='long_branches_first',
+            #                                                   select_target='all',
+            #                                                   max_moves=2000,
+            #                                                   moves_id='C_random_T_random',
+            #                                                   tracking=tracking, info_dict=info_dict)
 
 
         elif strategy == 'deterministic_exhaustive':
