@@ -2314,7 +2314,7 @@ class TreeNode:
                     tmp_tree_ind = tmpTreeInd + 1
                 else:
                     tmp_tree_ind = 0
-        breakOut = False
+        breakOut = False or (chInfo['nChild'] <= chInfo['expNChild'])
         pairsDoneInfo = {'totalPairsDone': 0, 'pairsDoneList': []}
 
         initNoneVars = (newAnc, del_node_inds, oldRoot, UBInfo, pairs)
