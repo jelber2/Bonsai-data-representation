@@ -3672,7 +3672,7 @@ class Tree:
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='long_branches_first',
                                                               select_target='cluster_centers',
-                                                              max_moves=10000,
+                                                              max_moves=100000,
                                                               moves_id='C_long_branches_T_cluster_centers',
                                                               tracking=tracking, info_dict=info_dict)
 
@@ -3686,7 +3686,7 @@ class Tree:
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='long_branches_first',
                                                               select_target='cluster_centers',
-                                                              max_moves=10000,
+                                                              max_moves=100000,
                                                               moves_id='C_long_branches_T_cluster_centers',
                                                               tracking=tracking, info_dict=info_dict)
 
