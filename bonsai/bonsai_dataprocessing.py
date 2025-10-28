@@ -330,7 +330,7 @@ class SCData:
         mpiRank = mpi_wrapper.get_process_rank()
         if cleanup_tree:
             self.tree.root.mergeZeroTimeChilds()
-            self.tree.root.renumberNodes(change_node_inds=True)
+            self.tree.root.renumberNodes(change_node_inds=False)
             self.tree.nNodes = bs_glob.nNodes
         if (mpiRank == 0) or all_ranks:
             Path(treeFolder).mkdir(parents=True, exist_ok=True)
@@ -1246,6 +1246,8 @@ class SCData:
         for node in nodes_list:
             if node.nodeId in cell_id_to_ind:
                 node.nodeInd = cell_id_to_ind[node.nodeId]
+        bs_glob.max_node_ind = np.max(list(cell_id_to_ind.values()))
+        self.tree.max_node_ind = bs_glob.max_node_ind
         self.metadata.nCells = len(cell_id_to_ind)
         bs_glob.nCells = self.metadata.nCells
         self.tree.root.renumberNodes(change_node_inds=True)

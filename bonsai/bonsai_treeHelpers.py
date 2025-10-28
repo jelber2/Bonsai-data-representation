@@ -818,6 +818,8 @@ class TreeNode:
                 self.nodeInd = bs_glob.max_node_ind + 1
                 bs_glob.max_node_ind += 1
                 self.nodeId = 'internal_' + str(self.nodeInd)
+            if self.nodeId is None:
+                self.nodeId = 'internal_' + str(self.nodeInd)
             bs_glob.nNodes += 1
 
     def renumber_verts(self, vertIndToNode, vert_count, include_nodeInd=False, old_ind_to_new_ind=None):
@@ -2853,8 +2855,8 @@ class Tree:
     def __init__(self):
         self.root = TreeNode(nodeInd=-1, isRoot=True, nodeId='root')
         bs_glob.nNodes = 1
-        bs_glob.max_node_ind = -1
-        self.max_node_ind = -1
+        # bs_glob.max_node_ind = -1
+        # self.max_node_ind = -1
 
     def __repr__(self):
         return "Tree(root=%r\n\nloglik=%r,nNodes=%r)" % (self.root, self.loglik, self.nNodes)
@@ -3278,8 +3280,9 @@ class Tree:
                 nodeIndToNode[edge[1]] = childNode
                 candidatesList.append(childNode)
                 self.nNodes += 1
-                if edge[1] > self.max_node_ind:
-                    self.max_node_ind = edge[1]
+                if edge[1] > bs_glob.max_node_ind:
+                    bs_glob.max_node_ind = edge[1]
+                    self.max_node_ind = bs_glob.max_node_ind
             childNode = nodeIndToNode[edge[1]]
             childNode.tParent = edge[2]
             childNode.parentNode = parentNode
@@ -3294,6 +3297,7 @@ class Tree:
             parentNode.childNodes.append(childNode)
 
         # Recalculate ltqs of all ancestors in the subtree
+        # print(mostUSNode.nodeInd)
         mostUSNode.getLtqsNoneOnly()
         # Recalculate ltqs of everything that is upstream of subtree
         mostUSNode.setLtqsUpstream()
@@ -3339,10 +3343,13 @@ class Tree:
         tree.root.childNodes = tree.root.childNodes[1:] + tree.root.childNodes[0].childNodes
         bs_glob.nNodes -= 1
 
-        # Do mergeChildren-routine to greedily approximate the optimal tree for this small startree
+        # Do mergeChildren-routine to greedily approximate the optimal tree for this small star-tree
+        old_max_node_ind = bs_glob.max_node_ind
         tree.optTimes(verbose=False, singleProcess=singleProcess, tol=1e-4)  # TODO: Test if you want to do this.
         tree.root.mergeChildrenUB(tree.root.ltqs, tree.root.getW(), sequential=True,
                                   verbose=False, singleProcess=singleProcess, random=random)
+        # Only increase max_node_ind when this re-order is truly processed
+        bs_glob.max_node_ind = old_max_node_ind
 
         if trackCloseness:
             dsNode.cumClosenessNNN = 0.
@@ -3409,29 +3416,29 @@ class Tree:
         nUSnb = len(usNeighbours)
         tree = Tree()
         bs_glob.nNodes = 2 + nDSnb + nUSnb
-        treeIndToOrigInd = {-1: usNode.nodeInd}
-        tree.root = TreeNode(nodeInd=-1, childNodes=[], isLeaf=False, isRoot=True,
+        treeIndToOrigInd = {usNode.nodeInd: usNode.nodeInd}
+        tree.root = TreeNode(nodeInd=usNode.nodeInd, childNodes=[], isLeaf=False, isRoot=True,
                              ltqs=None, ltqsVars=None, isCell=usNode.isCell)
-        treeIndToOrigInd[bs_glob.nNodes - 2] = dsNode.nodeInd
-        dsNodeCopy = TreeNode(nodeInd=bs_glob.nNodes - 2, childNodes=[], isLeaf=False, isRoot=False,
+        treeIndToOrigInd[bs_glob.max_node_ind + 1] = dsNode.nodeInd
+        dsNodeCopy = TreeNode(nodeInd=dsNode.nodeInd, childNodes=[], isLeaf=False, isRoot=False,
                               ltqs=None, ltqsVars=None, isCell=False,
                               tParent=dsNode.tParent, parentNode=tree.root)
         tree.root.childNodes.append(dsNodeCopy)
         for ind, nb in enumerate(usNeighbours):
-            treeIndToOrigInd[ind] = nb.nodeInd
-            tree.root.childNodes.append(TreeNode(nodeInd=ind, childNodes=[], isLeaf=True, isRoot=False,
+            treeIndToOrigInd[nb.nodeInd] = nb.nodeInd
+            tree.root.childNodes.append(TreeNode(nodeInd=nb.nodeInd, childNodes=[], isLeaf=True, isRoot=False,
                                                  ltqs=usNeighboursLtqs[:, ind], ltqsVars=usNeighboursLtqsVars[:, ind],
                                                  isCell=True, tParent=usTParents[ind]))
         mostUSNode = tree.root.childNodes[-1] if (usNode.parentNode is not None) else tree.root
 
         for ind, nb in enumerate(dsNeighbours):
-            treeIndToOrigInd[ind + nUSnb] = nb.nodeInd
-            dsNodeCopy.childNodes.append(TreeNode(nodeInd=ind + nUSnb, childNodes=[], isLeaf=True, isRoot=False,
+            treeIndToOrigInd[nb.nodeInd] = nb.nodeInd
+            dsNodeCopy.childNodes.append(TreeNode(nodeInd=nb.nodeInd, childNodes=[], isLeaf=True, isRoot=False,
                                                   ltqs=dsNeighboursLtqs[:, ind], ltqsVars=dsNeighboursLtqsVars[:, ind],
                                                   isCell=True, tParent=dsTParents[ind]))
         # How many ancestors do we expect: for n leaves, we have max. n-2 ancestors. So add some nodeInds if necessary
         for ind in range(nDSnb + nUSnb - 4):
-            treeIndToOrigInd[ind + nDSnb + nUSnb + 1] = self.max_node_ind + ind
+            treeIndToOrigInd[bs_glob.max_node_ind + 2 + ind] = bs_glob.max_node_ind + 1 + ind
         return True, tree, usNode, dsNodeCopy, mostUSNode, treeIndToOrigInd, mostUSInfo
 
     def get_vert_ind_to_node_DF(self, update=False):
