@@ -280,48 +280,48 @@ class SCData:
         return edge_list, dist_list, orig_vert_names, starryYN
 
     # Not Used
-    def buildTreeFromMergers(self, mergers):
-        edgeList, distList, origVertNames, starryYN = self.compile_tree_from_mergers(mergers)
-        tree = Tree()
-        tree.starryYN = starryYN
-        rootInd = edgeList[0][0]
-        tree.root.nodeInd = rootInd
-        tree.root.childNodes = []
-        currInds = [rootInd]
-        currNodes = [tree.root]
-        # Build tree from edgeList, distList
-        for ind, edge in enumerate(edgeList):
-            dist = distList[ind]
-            if edge[0] in currInds:
-                parentInd = currInds.index(edge[0])
-                childInd = edge[1]
-            else:
-                parentInd = currInds.index(edge[1])
-                childInd = edge[0]
-            parent = currNodes[parentInd]
-            if dist > 0 or (origVertNames[ind + 1][:8] != 'internal'):
-                parent.isLeaf = False
-                child = TreeNode(nodeInd=childInd, tParent=dist, childNodes=[], isLeaf=True)
-                parent.childNodes.append(child)
-                bs_glob.nNodes += 1
-                currInds.append(childInd)
-                currNodes.append(child)
-            else:
-                currInds.append(childInd)
-                currNodes.append(parent)
-
-        # Add ltq-information to leafs of the tree
-        for cellInd, cellId in enumerate(self.metadata.cellIds):
-            nodeInd = origVertNames.index(cellId)
-            node = currNodes[nodeInd]
-            node.nodeId = cellId
-            node.isCell = True
-            if self.originalData is not None:
-                node.ltqs = self.originalData.ltqs[:, cellInd]
-                node.ltqsVars = self.originalData.ltqsVars[:, cellInd]
-            node.nodeInd = cellInd
-        tree.root.renumberNodes(change_node_inds=False)
-        return tree
+    # def buildTreeFromMergers(self, mergers):
+    #     edgeList, distList, origVertNames, starryYN = self.compile_tree_from_mergers(mergers)
+    #     tree = Tree()
+    #     tree.starryYN = starryYN
+    #     rootInd = edgeList[0][0]
+    #     tree.root.nodeInd = rootInd
+    #     tree.root.childNodes = []
+    #     currInds = [rootInd]
+    #     currNodes = [tree.root]
+    #     # Build tree from edgeList, distList
+    #     for ind, edge in enumerate(edgeList):
+    #         dist = distList[ind]
+    #         if edge[0] in currInds:
+    #             parentInd = currInds.index(edge[0])
+    #             childInd = edge[1]
+    #         else:
+    #             parentInd = currInds.index(edge[1])
+    #             childInd = edge[0]
+    #         parent = currNodes[parentInd]
+    #         if dist > 0 or (origVertNames[ind + 1][:8] != 'internal'):
+    #             parent.isLeaf = False
+    #             child = TreeNode(nodeInd=childInd, tParent=dist, childNodes=[], isLeaf=True)
+    #             parent.childNodes.append(child)
+    #             bs_glob.nNodes += 1
+    #             currInds.append(childInd)
+    #             currNodes.append(child)
+    #         else:
+    #             currInds.append(childInd)
+    #             currNodes.append(parent)
+    #
+    #     # Add ltq-information to leafs of the tree
+    #     for cellInd, cellId in enumerate(self.metadata.cellIds):
+    #         nodeInd = origVertNames.index(cellId)
+    #         node = currNodes[nodeInd]
+    #         node.nodeId = cellId
+    #         node.isCell = True
+    #         if self.originalData is not None:
+    #             node.ltqs = self.originalData.ltqs[:, cellInd]
+    #             node.ltqsVars = self.originalData.ltqsVars[:, cellInd]
+    #         node.nodeInd = cellInd
+    #     tree.root.renumberNodes(change_node_inds=False)
+    #     return tree
 
     # Used
     def storeTreeInFolder(self, treeFolder, with_coords=False, verbose=False, all_ranks=False, cleanup_tree=True,
@@ -1706,50 +1706,50 @@ def correct_means_stds(originalData, priorVariances, all_genes=False):
 
 
 # Not used
-def recoverTmpTree(args, tmpFolder, optimizeTimes=True):
-    scData = recoverTreeFromFile(args, tmpFolder, allRanks=False)
-
-    # If tmp-tree comes from unfinished run, optimal branch lengths to root have not been stored.
-    mpiRank = mpi_wrapper.get_process_rank()
-    if (mpiRank == 0) and (scData.tree.starryYN or optimizeTimes):
-        startTimeOpt = time.time()
-        # Get ltqs and ltqsVars of children
-        scData.tree.root.getLtqsComplete(mem_friendly=True)
-        scData.tree.optTimes(verbose=args.verbose, mem_friendly=True)
-        scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
-                                                              loglikVarCorr=scData.metadata.loglikVarCorr)
-        # scData.tree.root.setLtqsVarsOrW(W_g=W_g)
-        dTimeOpt = time.time() - startTimeOpt
-        if args.verbose:
-            mp_print("Initial optimisation of times of recovered tree took " + str(dTimeOpt) + " seconds.")
-            mp_print("Optimal loglikelihood is: " + str(scData.metadata.loglik))
-
-    scData = broadcastRecursiveStruct(scData, root=0)
-    communicateGlobalVars()
-    return scData
+# def recoverTmpTree(args, tmpFolder, optimizeTimes=True):
+#     scData = recoverTreeFromFile(args, tmpFolder, allRanks=False)
+#
+#     # If tmp-tree comes from unfinished run, optimal branch lengths to root have not been stored.
+#     mpiRank = mpi_wrapper.get_process_rank()
+#     if (mpiRank == 0) and (scData.tree.starryYN or optimizeTimes):
+#         startTimeOpt = time.time()
+#         # Get ltqs and ltqsVars of children
+#         scData.tree.root.getLtqsComplete(mem_friendly=True)
+#         scData.tree.optTimes(verbose=args.verbose, mem_friendly=True)
+#         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
+#                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
+#         # scData.tree.root.setLtqsVarsOrW(W_g=W_g)
+#         dTimeOpt = time.time() - startTimeOpt
+#         if args.verbose:
+#             mp_print("Initial optimisation of times of recovered tree took " + str(dTimeOpt) + " seconds.")
+#             mp_print("Optimal loglikelihood is: " + str(scData.metadata.loglik))
+#
+#     scData = broadcastRecursiveStruct(scData, root=0)
+#     communicateGlobalVars()
+#     return scData
 
 
 # Not used
-def recoverTreeFromFile(args, mergerFilename, allRanks=True):
-    mpiRank = mpi_wrapper.get_process_rank()
-    if mpiRank == 0:
-        scData = SCData(dataset=args.dataset, filenamesData=args.filenames_data, verbose=args.verbose,
-                        pathToOrigData=args.data_folder, zscoreCutoff=args.zscore_cutoff,
-                        createStarTree=False)
-
-        scData.mergers = np.loadtxt(scData.result_path(mergerFilename))
-        scData.tree = scData.buildTreeFromMergers(scData.mergers)
-        scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
-                                                              loglikVarCorr=scData.metadata.loglikVarCorr)
-        if args.verbose:
-            mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik) + '\n')
-    else:
-        scData = None
-    if allRanks:
-        # scData = mpi_wrapper.bcast(scData, root=0)
-        scData = broadcastRecursiveStruct(scData, root=0)
-        communicateGlobalVars()
-    return scData
+# def recoverTreeFromFile(args, mergerFilename, allRanks=True):
+#     mpiRank = mpi_wrapper.get_process_rank()
+#     if mpiRank == 0:
+#         scData = SCData(dataset=args.dataset, filenamesData=args.filenames_data, verbose=args.verbose,
+#                         pathToOrigData=args.data_folder, zscoreCutoff=args.zscore_cutoff,
+#                         createStarTree=False)
+#
+#         scData.mergers = np.loadtxt(scData.result_path(mergerFilename))
+#         scData.tree = scData.buildTreeFromMergers(scData.mergers)
+#         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
+#                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
+#         if args.verbose:
+#             mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik) + '\n')
+#     else:
+#         scData = None
+#     if allRanks:
+#         # scData = mpi_wrapper.bcast(scData, root=0)
+#         scData = broadcastRecursiveStruct(scData, root=0)
+#         communicateGlobalVars()
+#     return scData
 
 
 # Used
