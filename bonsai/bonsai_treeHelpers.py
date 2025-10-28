@@ -106,6 +106,13 @@ class TreeNode:
         else:
             return nwk
 
+    def get_max_node_ind(self, max_node_ind):
+        max_node_ind = max(max_node_ind, self.nodeInd)
+        for child in self.childNodes:
+            max_node_ind = child.get_max_node_ind(max_node_ind)
+
+        return max_node_ind
+
     def get_edge_dict_node(self, edge_dict, nodeIdToVertInd=None):
         for child in self.childNodes:
             if nodeIdToVertInd is None:
@@ -807,7 +814,9 @@ class TreeNode:
                 child.renumberNodes(change_node_inds=change_node_inds)
         if not self.isRoot:
             if change_node_inds:
-                self.nodeInd = bs_glob.nNodes - 1
+                # self.nodeInd = bs_glob.nNodes - 1
+                self.nodeInd = bs_glob.max_node_ind + 1
+                bs_glob.max_node_ind += 1
                 self.nodeId = 'internal_' + str(self.nodeInd)
             bs_glob.nNodes += 1
 
@@ -2393,7 +2402,7 @@ class TreeNode:
             # optTimes in the first calculation))
             optTimes = getOptTimesSingleDLogLWrapper(xrAsIfRoot_g, WAsIfRoot_g, optChild1, optChild2,
                                                      sequential=sequential, verbose=verbose, tol=1e-9)
-            newTDict = {optNodeInd1: optTimes[0], optNodeInd2: optTimes[1], bs_glob.nNodes - 1: optTimes[2]}
+            newTDict = {optNodeInd1: optTimes[0], optNodeInd2: optTimes[1], bs_glob.max_node_ind + 1: optTimes[2]}
 
         # Communicate merge information with other computing processes
         # if mpiInfo.size > 1:
@@ -2435,12 +2444,12 @@ class TreeNode:
                 #                                            self.childNodes[nodeIndToChildInd[ancNodeInd]].celltype))
                 mp_print("\nAdding %d as child of %d with the following times: root -> %d = %f, %d -> %d = %f. "
                          "Increase in loglikelihood: %f per gene.\n" % (
-                             gchildInds[0], ancNodeInd, ancNodeInd, newTDict[bs_glob.nNodes - 1], ancNodeInd,
+                             gchildInds[0], ancNodeInd, ancNodeInd, newTDict[bs_glob.max_node_ind + 1], ancNodeInd,
                              gchildInds[0], newTDict[gchildInds[0]], dLogLOpt / bs_glob.nGenes),
                          ALL_RANKS=singleProcess)
         else:
             # Create new node that will be added as ancestor of the children with nodeInd1, nodeInd2
-            ancNodeInd = bs_glob.nNodes - 1
+            ancNodeInd = bs_glob.max_node_ind + 1
             newNode = TreeNode(nodeInd=ancNodeInd)
             newNode.childNodes = []
             gchildInds = [nodeInd1, nodeInd2]
@@ -2450,8 +2459,8 @@ class TreeNode:
                                                      self.childNodes[nodeIndToChildInd[nodeInd2]].nodeId))
                 mp_print(
                     "Merging nodes " + str(nodeInd1) + " and " + str(nodeInd2) + " into ancestor " + str(
-                        bs_glob.nNodes - 1) + ', with times ' + str([newTDict[nodeInd1], newTDict[nodeInd2], newTDict[
-                        bs_glob.nNodes - 1]]) + '. Increase in loglikelihood: ' + str(
+                        bs_glob.max_node_ind + 1) + ', with times ' + str([newTDict[nodeInd1], newTDict[nodeInd2], newTDict[
+                        bs_glob.max_node_ind + 1]]) + '. Increase in loglikelihood: ' + str(
                         dLogLOpt / bs_glob.nGenes) + ' per gene.', ALL_RANKS=singleProcess)
 
                 # TODO: Remove this later. Only uncomment this for printing cell-annotations
@@ -2508,7 +2517,7 @@ class TreeNode:
         #     plot_ciphers = False
 
         # We add the optimal time from the new ancestor to the root
-        newNode.tParent = newTDict[bs_glob.nNodes - 1]
+        newNode.tParent = newTDict[bs_glob.max_node_ind + 1]
         # We get the ltqs of the ancestor based on the ltqs of the two merged children
         # TODO: Maybe do the following more efficiently by updating the node-ltqs already above
         newNode.getLtqsUponMerge()
@@ -2570,7 +2579,7 @@ class TreeNode:
         self.childNodes = [child for ind, child in enumerate(self.childNodes) if ind not in delInds]
         if not addAsChild:
             self.childNodes.append(newNode)
-            bs_glob.nNodes += 1
+            bs_glob.max_node_ind += 1
 
         # If one of children was added below the other. Ask if it wants to merge with one of the other grand-children
         if addAsChild and mergeDownstream:
@@ -2801,7 +2810,8 @@ class TreeNode:
         return dlogl_target, opt_t
 
     def get_twin_parent(self):
-        ancNodeInd = bs_glob.nNodes - 1
+        ancNodeInd = bs_glob.max_node_ind + 1
+        bs_glob.max_node_ind += 1
         new_parent = TreeNode(nodeInd=ancNodeInd)
         new_parent.ltqs = self.ltqs.copy()
         new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
@@ -2836,12 +2846,15 @@ class Tree:
     loglik = None
     starryYN = None
     nNodes = None
+    max_node_ind = None
 
     vert_ind_to_node = None
 
     def __init__(self):
         self.root = TreeNode(nodeInd=-1, isRoot=True, nodeId='root')
         bs_glob.nNodes = 1
+        bs_glob.max_node_ind = -1
+        self.max_node_ind = -1
 
     def __repr__(self):
         return "Tree(root=%r\n\nloglik=%r,nNodes=%r)" % (self.root, self.loglik, self.nNodes)
@@ -2887,10 +2900,14 @@ class Tree:
                 TreeNode(nodeInd=ind, childNodes=[], isLeaf=True, ltqs=ltqs[:, ind], tParent=1,
                          ltqsVars=ltqsVars[:, ind], nodeId=cellIds[ind], isCell=True))
         bs_glob.nNodes = n_cells + 1
+        bs_glob.max_node_ind = n_cells - 1
+        self.nNodes = bs_glob.nNodes
+        self.max_node_ind = bs_glob.max_node_ind
 
     def copy_tree_topology(self):
         tree_copy = Tree()
         tree_copy.nNodes = self.nNodes
+        tree_copy.max_node_ind = self.max_node_ind
         tree_copy.root = self.root.copy_node_topology()
         return tree_copy
 
@@ -3261,6 +3278,8 @@ class Tree:
                 nodeIndToNode[edge[1]] = childNode
                 candidatesList.append(childNode)
                 self.nNodes += 1
+                if edge[1] > self.max_node_ind:
+                    self.max_node_ind = edge[1]
             childNode = nodeIndToNode[edge[1]]
             childNode.tParent = edge[2]
             childNode.parentNode = parentNode
@@ -3412,7 +3431,7 @@ class Tree:
                                                   isCell=True, tParent=dsTParents[ind]))
         # How many ancestors do we expect: for n leaves, we have max. n-2 ancestors. So add some nodeInds if necessary
         for ind in range(nDSnb + nUSnb - 4):
-            treeIndToOrigInd[ind + nDSnb + nUSnb + 1] = self.nNodes - 1 + ind
+            treeIndToOrigInd[ind + nDSnb + nUSnb + 1] = self.max_node_ind + ind
         return True, tree, usNode, dsNodeCopy, mostUSNode, treeIndToOrigInd, mostUSInfo
 
     def get_vert_ind_to_node_DF(self, update=False):
@@ -3624,6 +3643,8 @@ class Tree:
                         curr_node.childNodes = []
                 curr_node = None
         self.root = level_to_nodes[0][0]
+        self.max_node_ind = self.root.get_max_node_ind(-1e6)
+        bs_glob.max_node_ind = self.max_node_ind
 
     def remove_two_child_root(self, change_node_inds=False):
         if len(self.root.childNodes) > 2:
@@ -4178,7 +4199,9 @@ class Tree:
             ltqs = ltqs_to_add[:, n_added]
             ltqsvars = ltqsvars_to_add[:, n_added]
             cell_id = cell_ids[n_added]
-            cand_node_ind = bs_glob.nNodes - 1
+            cand_node_ind = bs_glob.max_node_ind
+            bs_glob.max_node_ind += 1
+            self.max_node_ind += 1
             bs_glob.nNodes += 1
             self.nNodes += 1
             candidate = TreeNode(nodeInd=cand_node_ind, childNodes=[], parentNode=None, isLeaf=True, isRoot=False,

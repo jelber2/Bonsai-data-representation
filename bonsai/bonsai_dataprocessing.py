@@ -1985,6 +1985,8 @@ def reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=False):
         vertIndToNodeId[vert_ind] = node.nodeId
         vertIndToNodeInd[vert_ind] = node.nodeInd
     tree_tuple = vertIndToNode, vertIndToNodeInd, vertIndToNodeId, edgeList, distList
+    scData.tree.max_node_ind = scData.tree.root.get_max_node_ind(-1e6)
+    bs_glob.max_node_ind = scData.tree.max_node_ind
     if verbose:
         mp_print("\n\nReconstructed tree loaded from: \n%s \n%s" % (edgeFile, vertFile))
     return tree_tuple

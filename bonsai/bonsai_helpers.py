@@ -843,25 +843,25 @@ def create_celltypefile_from_cellstates(cellstates_file, celltype_file, multipli
             file.write(cellstate + '\n')
 
 
-def storeCurrentState(outputFolder, scData, filename='tmp_tree.dat', dataOrResults='data', args=None, dataFolder=None):
-    if mpi_wrapper.get_process_rank() == 0:
-        if dataFolder is None:
-            if args.dataset is not None:
-                dataFolder = os.path.join(dataOrResults, args.dataset)
-            else:
-                dataFolder = args.data_folder
-        tmpDataPath = os.path.join(dataFolder, outputFolder)
-        Path(tmpDataPath).mkdir(parents=True, exist_ok=True)
-
-        scData.tree.nNodes = bs_glob.nNodes
-        mp_print("Printing tree at %s" % os.path.join(tmpDataPath, filename))
-        try:
-            with open(os.path.join(tmpDataPath, filename), 'wb') as file:
-                pickle.dump(scData, file)
-        except RecursionError:
-            with RecursionLimit():
-                with open(os.path.join(tmpDataPath, filename), 'wb') as file:
-                    pickle.dump(scData, file)
+# def storeCurrentState(outputFolder, scData, filename='tmp_tree.dat', dataOrResults='data', args=None, dataFolder=None):
+#     if mpi_wrapper.get_process_rank() == 0:
+#         if dataFolder is None:
+#             if args.dataset is not None:
+#                 dataFolder = os.path.join(dataOrResults, args.dataset)
+#             else:
+#                 dataFolder = args.data_folder
+#         tmpDataPath = os.path.join(dataFolder, outputFolder)
+#         Path(tmpDataPath).mkdir(parents=True, exist_ok=True)
+#
+#         scData.tree.nNodes = bs_glob.nNodes
+#         mp_print("Printing tree at %s" % os.path.join(tmpDataPath, filename))
+#         try:
+#             with open(os.path.join(tmpDataPath, filename), 'wb') as file:
+#                 pickle.dump(scData, file)
+#         except RecursionError:
+#             with RecursionLimit():
+#                 with open(os.path.join(tmpDataPath, filename), 'wb') as file:
+#                     pickle.dump(scData, file)
 
 
 def get_latest_intermediate(intermediateFiles, base=None):
@@ -887,30 +887,30 @@ def get_latest_intermediate(intermediateFiles, base=None):
     return intermediateFiles[latestIntFile], tmpTreeInd
 
 
-def pickleTree(pickleFolder, filename, tree):
-    Path(pickleFolder).mkdir(parents=True, exist_ok=True)
-    tree.nNodes = bs_glob.nNodes
-    try:
-        with open(os.path.join(pickleFolder, filename), 'wb') as file:
-            pickle.dump(tree, file)
-    except RecursionError:
-        with RecursionLimit():
-            with open(os.path.join(pickleFolder, filename), 'wb') as file:
-                pickle.dump(tree, file)
+# def pickleTree(pickleFolder, filename, tree):
+#     Path(pickleFolder).mkdir(parents=True, exist_ok=True)
+#     tree.nNodes = bs_glob.nNodes
+#     try:
+#         with open(os.path.join(pickleFolder, filename), 'wb') as file:
+#             pickle.dump(tree, file)
+#     except RecursionError:
+#         with RecursionLimit():
+#             with open(os.path.join(pickleFolder, filename), 'wb') as file:
+#                 pickle.dump(tree, file)
 
 
-def unpickleTree(pickleFolder, filename):
-    mp_print("Trying to unpickle tree from ", os.path.join(pickleFolder, filename), ALL_RANKS=True)
-    try:
-        with open(os.path.join(pickleFolder, filename), 'rb') as file:
-            tree = pickle.load(file)
-    except RecursionError:
-        with RecursionLimit():
-            with open(os.path.join(pickleFolder, filename), 'rb') as file:
-                tree = pickle.load(file)
-    bs_glob.nNodes = tree.nNodes
-    bs_glob.nGenes = len(tree.root.ltqs)
-    return tree
+# def unpickleTree(pickleFolder, filename):
+#     mp_print("Trying to unpickle tree from ", os.path.join(pickleFolder, filename), ALL_RANKS=True)
+#     try:
+#         with open(os.path.join(pickleFolder, filename), 'rb') as file:
+#             tree = pickle.load(file)
+#     except RecursionError:
+#         with RecursionLimit():
+#             with open(os.path.join(pickleFolder, filename), 'rb') as file:
+#                 tree = pickle.load(file)
+#     bs_glob.nNodes = tree.nNodes
+#     bs_glob.nGenes = len(tree.root.ltqs)
+#     return tree
 
 
 def remove_tree_folders(tree_folder, removeDir=False, notRemove=None, base=None):
