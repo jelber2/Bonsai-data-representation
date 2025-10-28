@@ -906,7 +906,7 @@ class TreeNode:
                         self.ltqs, W_g = getLtqsAfterChildUpdate(self.ltqs, self.getW(), child.tParent, oldLtqsChild,
                                                                  oldLtqsVarsChild, child.ltqs, child.getLtqsVars())
                         self.setLtqsVarsOrW(W_g=W_g)
-                
+
         if someMergeHappened:
             if self.isRoot:
                 self.setLtqsVarsOrW(W_g=WAsIfRoot_g)
@@ -4230,13 +4230,8 @@ class Tree:
             if n_added == n_before_cleanup:
                 n_before_cleanup += int(np.ceil(growth_before_cleanup * self.nNodes))
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
-                # TODO: REMOVE THIS!
-                nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
-                node_oi = [node for node in nodesList if node.nodeInd == 256][0]
-                if not len(node_oi.childNodes):
-                    print("STOP HERE!")
 
-                self.do_spr_postprocessing(change_node_inds=False)
+                self.do_spr_postprocessing(change_node_inds=False, verbose=True)
 
                 if select_target == 'cluster_centers':
                     n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
