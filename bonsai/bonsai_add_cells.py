@@ -73,7 +73,7 @@ all_genes = False
 scdata_guide = loadReconstructedTreeAndData(args, guide_tree_folder, all_genes=all_genes, get_cell_info=False,
                                             reprocess_data=False, all_ranks=True, rel_to_results=True, get_data=False,
                                             no_data_needed=True, get_posterior_ltqs=False, otherRanksMinimalInfo=True)
-
+# TODO: Replace this initializeSCData by just reading from the already-processed (zscorefiltered) data
 # Read in the data for all cells, and preprocess it like normal
 scdata_all_cells = initializeSCData(args, createStarTree=False, getOrigData=False, otherRanksMinimalInfo=True)
 cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scdata_all_cells.metadata.cellIds)}
@@ -143,6 +143,13 @@ This is the core of the script, the cells will be added iteratively to the guide
 scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add, growth_before_cleanup=.1,
                             select_target=args.select_target)
 
+# Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,
+# Internal nodes start at nCells and increase in depth-first manner.
+scdata_guide.metadata.nCells = len(cell_id_to_ind)
+bs_glob.nCells = scdata_guide.metadata.nCells
+scdata_guide.cleanup_node_inds(cell_id_to_ind)
+scdata_guide.metadata.cellIds = scdata_all_cells.metadata.cellIds
+
 """
 Store the resulting tree in a folder, such that another script can pick it up. In that script, we should then
 decide (through some arguments) how many tree-moves we still do, or if we just store the information in the final 
@@ -155,16 +162,16 @@ scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=T
 mp_print("Loglikelihood of inferred tree after adding cells: " + str(scdata_guide.metadata.loglik))
 
 # Store intermediate results
-outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=False,
-                               redo_starry=False, opt_times=False, nnn_reorder=False, reorderedEdges=False,
-                               tmp_file=os.path.basename(args.tmp_folder))
-if cells_to_be_added is None:
-    outputFolder += '_addedallcells'
-else:
-    outputFolder += '_addedcells{}'.format(os.path.basename(cells_to_be_added))
+# outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=False,
+#                                redo_starry=False, opt_times=False, nnn_reorder=False, reorderedEdges=False,
+#                                tmp_file=os.path.basename(args.tmp_folder))
+# if cells_to_be_added is None:
+#     outputFolder += '_addedallcells'
+# else:
+#     outputFolder += '_addedcells{}'.format(os.path.basename(cells_to_be_added))
 
-mp_print("Storing result after reordering children in " + scdata_guide.result_path(outputFolder) + "\n\n")
-scdata_guide.storeTreeInFolder(scdata_guide.result_path(outputFolder), with_coords=True, verbose=args.verbose)
+mp_print("Storing result after reordering children in " + scdata_guide.result_path() + "\n\n")
+scdata_guide.storeTreeInFolder(scdata_guide.result_path(), with_coords=True, verbose=args.verbose)
 
 # Calculate cluster-centers
 # Loop over the remaining cells (in a random order), and add them to the tree using cluster centers

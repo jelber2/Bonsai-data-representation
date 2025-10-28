@@ -279,7 +279,7 @@ class SCData:
             orig_vert_names.append(right_child)
         return edge_list, dist_list, orig_vert_names, starryYN
 
-    # Used
+    # Not Used
     def buildTreeFromMergers(self, mergers):
         edgeList, distList, origVertNames, starryYN = self.compile_tree_from_mergers(mergers)
         tree = Tree()
@@ -320,7 +320,7 @@ class SCData:
                 node.ltqs = self.originalData.ltqs[:, cellInd]
                 node.ltqsVars = self.originalData.ltqsVars[:, cellInd]
             node.nodeInd = cellInd
-        tree.root.renumberNodes()
+        tree.root.renumberNodes(change_node_inds=False)
         return tree
 
     # Used
@@ -330,7 +330,7 @@ class SCData:
         mpiRank = mpi_wrapper.get_process_rank()
         if cleanup_tree:
             self.tree.root.mergeZeroTimeChilds()
-            self.tree.root.renumberNodes()
+            self.tree.root.renumberNodes(change_node_inds=True)
             self.tree.nNodes = bs_glob.nNodes
         if (mpiRank == 0) or all_ranks:
             Path(treeFolder).mkdir(parents=True, exist_ok=True)
@@ -1241,6 +1241,15 @@ class SCData:
         else:
             originalData.geneVariances = None
 
+    def cleanup_node_inds(self, cell_id_to_ind):
+        nodes_list = self.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
+        for node in nodes_list:
+            if node.nodeId in cell_id_to_ind:
+                node.nodeInd = cell_id_to_ind[node.nodeId]
+        self.metadata.nCells = len(cell_id_to_ind)
+        bs_glob.nCells = self.metadata.nCells
+        self.tree.root.renumberNodes(change_node_inds=True)
+
 
     # Used
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
@@ -1319,7 +1328,7 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
                                                   get_cell_info=False, all_ranks=False, rel_to_results=True)
         Path(tmp_folder).mkdir(parents=True, exist_ok=True)
         scData.tree.root.mergeZeroTimeChilds()
-        scData.tree.root.renumberNodes()
+        scData.tree.root.renumberNodes(change_node_inds=False)
         scData.tree.nNodes = bs_glob.nNodes
 
         # First make sure every node knows where its parent node is
@@ -1696,6 +1705,7 @@ def correct_means_stds(originalData, priorVariances, all_genes=False):
     return uncorrected, genes_to_keep, problematic_cells
 
 
+# Not used
 def recoverTmpTree(args, tmpFolder, optimizeTimes=True):
     scData = recoverTreeFromFile(args, tmpFolder, allRanks=False)
 
@@ -1719,7 +1729,7 @@ def recoverTmpTree(args, tmpFolder, optimizeTimes=True):
     return scData
 
 
-# Used
+# Not used
 def recoverTreeFromFile(args, mergerFilename, allRanks=True):
     mpiRank = mpi_wrapper.get_process_rank()
     if mpiRank == 0:

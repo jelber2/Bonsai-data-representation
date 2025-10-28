@@ -793,19 +793,22 @@ class TreeNode:
             self.childNodes += childrenToBeAdded
 
     # Used
-    def renumberNodes(self):
+    def renumberNodes(self, change_node_inds=False):
         # This function renumbers internal nodes to make these indices consistent again after nodes were deleted
-        # It assumes that the cells have nodeInds from 0 to nCells-1, and it doesn't change that
+        # If change_node_inds=True, it assumes that the cells have nodeInds from 0 to nCells - 1, and doesn't change it
+        # If change_node_inds=False, then this function is just re-counting the nodes for bs_glob.nNodes
         if self.isRoot:
             bs_glob.nNodes = bs_glob.nCells + 1
-            self.nodeInd = -1
-            self.nodeId = 'root'
+            if change_node_inds:
+                self.nodeInd = -1
+                self.nodeId = 'root'
         for child in self.childNodes:
             if not child.isLeaf:
-                child.renumberNodes()
+                child.renumberNodes(change_node_inds=change_node_inds)
         if not self.isRoot:
-            self.nodeInd = bs_glob.nNodes - 1
-            self.nodeId = 'internal_' + str(self.nodeInd)
+            if change_node_inds:
+                self.nodeInd = bs_glob.nNodes - 1
+                self.nodeId = 'internal_' + str(self.nodeInd)
             bs_glob.nNodes += 1
 
     def renumber_verts(self, vertIndToNode, vert_count, include_nodeInd=False, old_ind_to_new_ind=None):
@@ -903,6 +906,7 @@ class TreeNode:
                         self.ltqs, W_g = getLtqsAfterChildUpdate(self.ltqs, self.getW(), child.tParent, oldLtqsChild,
                                                                  oldLtqsVarsChild, child.ltqs, child.getLtqsVars())
                         self.setLtqsVarsOrW(W_g=W_g)
+                
         if someMergeHappened:
             if self.isRoot:
                 self.setLtqsVarsOrW(W_g=WAsIfRoot_g)
@@ -3621,7 +3625,7 @@ class Tree:
                 curr_node = None
         self.root = level_to_nodes[0][0]
 
-    def remove_two_child_root(self):
+    def remove_two_child_root(self, change_node_inds=False):
         if len(self.root.childNodes) > 2:
             return
         found_better_root = False
@@ -3653,7 +3657,7 @@ class Tree:
 
         self.root.deleteParentsWithOneChild()
         self.root.mergeZeroTimeChilds()
-        self.root.renumberNodes()
+        self.root.renumberNodes(change_node_inds=change_node_inds)
         self.nNodes = bs_glob.nNodes
 
     def do_spr_moveset(self, args, strategy='determ_random_determ', tracking=False, output_folder=''):
@@ -3829,7 +3833,7 @@ class Tree:
         self.remove_two_child_root()
         self.root.deleteParentsWithOneChild()
         self.root.mergeZeroTimeChilds()
-        self.root.renumberNodes()
+        self.root.renumberNodes(change_node_inds=False)
         self.nNodes = bs_glob.nNodes
 
         self.root.storeParent()
@@ -4007,7 +4011,7 @@ class Tree:
 
         return successful_moves, total_dlogl_increase
 
-    def do_spr_postprocessing(self):
+    def do_spr_postprocessing(self, change_node_inds=False, verbose=False):
         """
         IMPORTANT: This function should be run without parallelization. Otherwise, one has to guarantee that the tree
         topologies match on all processes, which we cannot at the moment.
@@ -4020,28 +4024,29 @@ class Tree:
         :return:
         """
         # Clean up the tree first
-        self.remove_two_child_root()
+        self.remove_two_child_root(change_node_inds=change_node_inds)
         self.root.deleteParentsWithOneChild()
         self.root.mergeZeroTimeChilds()
-        self.root.renumberNodes()
+        self.root.renumberNodes(change_node_inds=change_node_inds)
         self.nNodes = bs_glob.nNodes
         self.root.storeParent()
 
         # Do first re-optimization of times
-        self.optTimes(verbose=False, singleProcess=True, mem_friendly=True, maxiter=100)
+        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100)
 
         # Clean up the tree before resolving polytomies
         self.root.mergeZeroTimeChilds()
-        self.root.renumberNodes()  # Since some nodes were merged, we need to renumber the nodes consistently
+        self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes
         self.nNodes = bs_glob.nNodes
         self.root.getAIRootInfo(None, None)
 
-        self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=False,
+        self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=verbose,
                                          ellipsoidSize=1.0, single_process=True, mergeDownstream=True, tree=self,
                                          nChildNN=-1, kNN=-1)
-        self.root.renumberNodes()  # Since some nodes may have merged, we need to renumber the nodes consistently
+        self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes
         self.nNodes = bs_glob.nNodes
-        self.optTimes(verbose=False, singleProcess=True, mem_friendly=True, maxiter=100)
+        self.root.storeParent()
+        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100)
 
     def select_spr_candidate(self, select_cand='random', sorted_time_node_tuples=None, n_moves=None):
         if select_cand == 'random':
@@ -4142,7 +4147,7 @@ class Tree:
         self.remove_two_child_root()
         self.root.deleteParentsWithOneChild()
         self.root.mergeZeroTimeChilds()
-        self.root.renumberNodes()
+        self.root.renumberNodes(change_node_inds=False)
         self.nNodes = bs_glob.nNodes
 
         self.root.storeParent()
@@ -4156,7 +4161,7 @@ class Tree:
         # tree-based search of where to put the new cells
         if select_target == 'cluster_centers':
             n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
-            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters)
+            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters + 1)
             nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
             cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
         else:
@@ -4176,14 +4181,14 @@ class Tree:
             cand_node_ind = bs_glob.nNodes - 1
             bs_glob.nNodes += 1
             self.nNodes += 1
-            candidate = TreeNode(nodeInd=cand_node_ind, childNodes=[], parentNode=None, isLeaf=False, isRoot=False,
+            candidate = TreeNode(nodeInd=cand_node_ind, childNodes=[], parentNode=None, isLeaf=True, isRoot=False,
                                  ltqs=ltqs, ltqsVars=ltqsvars, tParent=None, nodeId=cell_id, isCell=True, vert_ind=None)
 
             """Select target-node to start the search for a good target"""
             # The targets-object returned is a list, which either has 1 or multiple nodes. We run the SPR search on
             # all these targets and select the best one
             targets = self.select_spr_targets(select_target=select_target, old_parent=None,
-                                                   cluster_centers=cluster_centers, cluster_centers_guaranteed=True)
+                                              cluster_centers=cluster_centers, cluster_centers_guaranteed=True)
 
             # Use SPR-strategy to find target for adding the node
             opt_node = None
@@ -4223,15 +4228,21 @@ class Tree:
             # Increase metadata (nNodes, ...?)
 
             if n_added == n_before_cleanup:
-                n_before_cleanup = int(np.ceil(growth_before_cleanup * self.nNodes))
+                n_before_cleanup += int(np.ceil(growth_before_cleanup * self.nNodes))
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
-
+                # TODO: REMOVE THIS!
                 nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
                 node_oi = [node for node in nodesList if node.nodeInd == 256][0]
                 if not len(node_oi.childNodes):
                     print("STOP HERE!")
 
-                self.do_spr_postprocessing()
+                self.do_spr_postprocessing(change_node_inds=False)
+
+                if select_target == 'cluster_centers':
+                    n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
+                    cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters + 1)
+                    nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+                    cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
 
         self.nNodes = bs_glob.nNodes
         logging.info("The {} added cells led to a decrease of {} "

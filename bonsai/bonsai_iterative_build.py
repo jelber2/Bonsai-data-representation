@@ -118,8 +118,9 @@ for subset_ind, subset in enumerate(subsets):
                            results_folder=metadata_subset.results_folder)
 
     scdata_subset.metadata = metadata_subset
-    scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed'
-                                                                           % args.zscore_cutoff)
+    # scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed'
+    #                                                                        % args.zscore_cutoff)
+    scdata_subset.metadata.processedDatafolder = scdata.metadata.processedDatafolder
     ltqs_subset = scdata.originalData.ltqs[:, subset].copy()
     ltqsvars_subset = scdata.originalData.ltqsVars[:, subset].copy()
     # mp_print("Storing subset {} with {} cells in folder: {}".format(subset_ind, len(subset),
