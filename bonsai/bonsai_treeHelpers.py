@@ -3893,6 +3893,8 @@ class Tree:
 
         n_print = int(min(100, max_moves/10))
 
+        node_id_list = []
+        t_parent_list = []
         while n_moves < max_moves - 1:
             # TODO: Remove this
             # nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
@@ -3922,6 +3924,9 @@ class Tree:
             if candidate is None:
                 unsuccessful_moves += 1
                 continue
+
+            node_id_list.append(candidate.nodeId)
+            t_parent_list.append(candidate.tParent)
 
             """Remove the candidate from the tree"""
             cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g = old_parent.detach_subtree(candidate)
@@ -4024,6 +4029,8 @@ class Tree:
                         #             gch.parentNode = ch
                         #     if ch.nodeId is None:
                         #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
+
+        print(','.join(map(str, t_parent_list)))
 
         self.nNodes = bs_glob.nNodes
         logging.info("The {} SPR-moves led to an increase of {} "
