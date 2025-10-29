@@ -4030,9 +4030,7 @@ class Tree:
                         #     if ch.nodeId is None:
                         #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
 
-        # print(','.join(map(str, t_parent_list)))
-        with open('/Users/Daan/Documents/postdoc/Private-bonsai/local_scripts/tparents_new.txt', 'w') as f:
-            f.write(','.join(map(str, t_parent_list)))
+        print(','.join(map(str, t_parent_list)))
 
         self.nNodes = bs_glob.nNodes
         logging.info("The {} SPR-moves led to an increase of {} "
