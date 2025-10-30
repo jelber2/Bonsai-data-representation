@@ -3650,7 +3650,7 @@ class Tree:
                         curr_node.childNodes = []
                 curr_node = None
         self.root = level_to_nodes[0][0]
-        self.max_node_ind = self.root.get_max_node_ind(-1e6)
+        self.max_node_ind = self.root.get_max_node_ind(-np.inf)
         bs_glob.max_node_ind = self.max_node_ind
 
     def remove_two_child_root(self, change_node_inds=False):
@@ -4206,7 +4206,7 @@ class Tree:
             ltqs = ltqs_to_add[:, n_added]
             ltqsvars = ltqsvars_to_add[:, n_added]
             cell_id = cell_ids[n_added]
-            cand_node_ind = bs_glob.max_node_ind
+            cand_node_ind = bs_glob.max_node_ind + 1
             bs_glob.max_node_ind += 1
             self.max_node_ind += 1
             bs_glob.nNodes += 1

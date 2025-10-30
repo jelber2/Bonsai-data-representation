@@ -36,6 +36,10 @@ parser.add_argument('--n_initial_cells', type=int, default=10000,
                     help="If --iterative_cell_lists is None, this number will determine the size of the subset of "
                          "cells on which we will make the initial guide-tree.")
 
+parser.add_argument('--growth_before_cleanup', type=float, default=.5,
+                    help="When adding cells, this factor (larger than 0) determines after what growth factor (so .1 "
+                         "means 10% growth) we re-optimize the tree before adding another set of cells.")
+
 parser.add_argument('--return_commands', type=str2bool, default=False,
                     help="If True, this script will only return a file with the commands that should be run, "
                          "but not run them. This is useful for running these commands using parallel computing.\n"
@@ -53,6 +57,7 @@ args = parser.parse_args()
 
 # TODO: Make sure that Run_configs initialization just copies all arguments that were originally in args
 pickup_intermediate = args.pickup_intermediate
+growth_before_cleanup = args.growth_before_cleanup
 select_target = args.select_target
 iterative_cell_lists = args.iterative_cell_lists
 n_initial_cells = args.n_initial_cells
@@ -64,6 +69,7 @@ args = Run_Configs(args.config_filepath)
 
 args.select_target = select_target
 args.iterative_cell_lists = iterative_cell_lists
+args.growth_before_cleanup = growth_before_cleanup
 args.n_initial_cells = n_initial_cells
 args.return_commands = return_commands
 args.config_filepath = config_filepath
@@ -120,11 +126,14 @@ for subset_ind, subset in enumerate(subsets):
     scdata_subset.metadata = metadata_subset
     # scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed'
     #                                                                        % args.zscore_cutoff)
-    scdata_subset.metadata.processedDatafolder = scdata.metadata.processedDatafolder
+    # scdata_subset.metadata.processedDatafolder = scdata.metadata.processedDatafolder
     ltqs_subset = scdata.originalData.ltqs[:, subset].copy()
     ltqsvars_subset = scdata.originalData.ltqsVars[:, subset].copy()
-    # mp_print("Storing subset {} with {} cells in folder: {}".format(subset_ind, len(subset),
-    #                                                                 scdata_subset.metadata.processedDatafolder))
+
+    scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed' % args.zscore_cutoff)
+    storeData(scdata_subset.metadata, ltqs_subset, ltqsvars_subset)
+    mp_print("Storing subset {} with {} cells in folder: {}".format(subset_ind, len(subset),
+                                                                    scdata_subset.metadata.processedDatafolder))
     # storeData(scdata_subset.metadata, ltqs_subset, ltqsvars_subset)
 
     if mpi_rank == 0:
@@ -239,11 +248,12 @@ print(output1.stderr)
 add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
                  '--config_filepath', config_filepath,
                  '--guide_tree_folder', results_dir_subset0,
+                 '--growth_before_cleanup', args.growth_before_cleanup,
                  '--select_target', 'cluster_centers']
 # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 
 if not args.return_commands:
-    output1 = subprocess.run(bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
+    output1 = subprocess.run(add_cells_cmd, stdout=subprocess.PIPE, text=True)
     print(output1.stdout)
     print(output1.stderr)
 else:
@@ -280,3 +290,6 @@ else:
           "{}".format(commands_file, cmd))
     with open(commands_file, "a") as file:
         file.write(cmd + '\n')
+
+print_text = 'only printing commands' if args.return_commands else "performing all calculations"
+print("Running the iterative-bonsai script while {} took {} seconds.".format(print_text, time.time() - start_all))

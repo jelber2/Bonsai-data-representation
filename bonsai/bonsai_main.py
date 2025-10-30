@@ -332,7 +332,7 @@ if args.step in ['core_calc', 'all']:
         outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
                                        redo_starry=True, opt_times=False, tmp_file=os.path.basename(args.tmp_folder))
         mp_print("Storing result after redoing starry nodes in " + scData.result_path(outputFolder) + "\n\n")
-        scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=False, verbose=args.verbose)
+        scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose)
         # storeCurrentState(outputFolder, scData, dataOrResults='results', args=args)
 
         # TODO: Remove eventually, only uncomment this for making animations
@@ -499,7 +499,7 @@ if args.step in ['core_calc', 'all']:
                                        tmp_file=os.path.basename(args.tmp_folder))
         mp_print(
             "Storing result after next-to-nearest neighbour reorder in " + scData.result_path(outputFolder) + "\n\n")
-        scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=False, verbose=args.verbose)
+        scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose)
         # storeCurrentState(outputFolder, scData, dataOrResults='results', args=args)
 
         # TODO: Remove eventually, only uncomment this for making animations
@@ -557,7 +557,7 @@ if args.step in ['core_calc', 'all']:
                                            redo_starry=True, opt_times=True, nnn_reorder=True, reorderedEdges=True,
                                            tmp_file=os.path.basename(args.tmp_folder))
             mp_print("Storing result after reordering children in " + scData.result_path(outputFolder) + "\n\n")
-            scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=False, verbose=args.verbose)
+            scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose)
             # storeCurrentState(outputFolder, scData, dataOrResults='results', args=args)
 
     if startGML is not None:

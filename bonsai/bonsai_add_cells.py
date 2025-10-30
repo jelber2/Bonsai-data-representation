@@ -25,6 +25,10 @@ parser.add_argument('--guide_tree_folder', type=str, default=None,
                          "is typically called 'final_...' in a Bonsai-results folder. Then this script will start "
                          "adding cells to that 'guide-tree'.")
 
+parser.add_argument('--growth_before_cleanup', type=float, default=.5,
+                    help="When adding cells, this factor (larger than 0) determines after what growth factor (so .1 "
+                         "means 10% growth) we re-optimize the tree before adding another set of cells.")
+
 # TODO: To be moved to config-file
 parser.add_argument('--select_target', type=str, default='cluster_centers',
                     help="This will determine what strategy we follow for the "
@@ -140,7 +144,8 @@ mp_print("Loglikelihood of guide tree before adding cells: " + str(scdata_guide.
 """
 This is the core of the script, the cells will be added iteratively to the guide-tree
 """
-scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add, growth_before_cleanup=.1,
+scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
+                            growth_before_cleanup=args.growth_before_cleanup,
                             select_target=args.select_target)
 
 # Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,

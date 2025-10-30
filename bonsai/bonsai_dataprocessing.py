@@ -1148,7 +1148,7 @@ class SCData:
                 if (n_unq_ids != self.metadata.nCells) or (len(self.metadata.cellIds) != self.metadata.nCells):
                     mp_print("Number of unique object-IDs given in {} does not "
                              "match the number of columns in your feature"
-                         "matrix.\n "
+                             "matrix.\n "
                              "Please resolve this and start Bonsai again.".format(self.data_path('cellID.txt')),
                              ERROR=True)
                     exit()
@@ -1451,7 +1451,7 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
             max_rand_loglik = logliks[bestTreeInd]
             take_original_tree = False
             if max_rand_loglik < origLoglik:
-                mp_print("Best random tree still has lower likelihood than the original tree. This is probably normal"
+                mp_print("Best random tree still has lower likelihood than the original tree. This is probably normal "
                          "and desired behavior, but maybe check if something didn't go terribly wrong.", WARNING=True)
                 take_original_tree = True
             if verbose and (not take_original_tree):
@@ -1987,7 +1987,7 @@ def reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=False):
         vertIndToNodeId[vert_ind] = node.nodeId
         vertIndToNodeInd[vert_ind] = node.nodeInd
     tree_tuple = vertIndToNode, vertIndToNodeInd, vertIndToNodeId, edgeList, distList
-    scData.tree.max_node_ind = scData.tree.root.get_max_node_ind(-1e6)
+    scData.tree.max_node_ind = scData.tree.root.get_max_node_ind(-np.inf)
     bs_glob.max_node_ind = scData.tree.max_node_ind
     if verbose:
         mp_print("\n\nReconstructed tree loaded from: \n%s \n%s" % (edgeFile, vertFile))
@@ -2049,6 +2049,9 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
                 print_ind = 1000
                 ltqs_cg = np.load(meanspath, allow_pickle=False, mmap_mode='r')
                 ltqsVars_cg = np.load(varspath, allow_pickle=False, mmap_mode='r')
+                if ltqs_cg.shape[0] != bs_glob.nNodes:
+                    raise Exception("Trying to load data for {} nodes, "
+                                    "while tree has {} nodes.".format(ltqs_cg.shape[0], bs_glob.nNodes))
                 for vert_ind in range(bs_glob.nNodes):
                     if (vert_ind == print_ind) and verbose:
                         print_ind *= 2
@@ -2076,9 +2079,16 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
                     varspath = os.path.join(origFolder, 'delta_vars.npy')
                     scData.originalData.ltqs = np.load(meanspath, allow_pickle=False, mmap_mode='r')
                     scData.originalData.ltqsVars = np.load(varspath, allow_pickle=False, mmap_mode='r')
+                    if scData.originalData.ltqs.shape[1] != len(scData.metadata.cellIds):
+                        raise Exception("Trying to load data for {} cells from folder {}, "
+                                        "while tree seems to have {} cells.".format(scData.originalData.ltqs.shape[1],
+                                                                                    origFolder,
+                                                                                    len(scData.metadata.cellIds)))
                     # scData.originalData.ltqs = ltqs_cg.T
                     # scData.originalData.ltqsVars = ltqsVars_cg.T
                 elif os.path.exists(os.path.join(origFolder, 'delta_vmax.txt')):
+                    raise Exception("Trying to load data from folder {}, "
+                                    "but no pre-processed data can be found.".format(origFolder))
                     scData.originalData.ltqs = np.loadtxt(os.path.join(origFolder, 'delta_vmax.txt'))
                     scData.originalData.ltqsVars = np.loadtxt(os.path.join(origFolder, 'd_delta_vmax.txt')) ** 2
                 elif no_data_needed:
@@ -2237,7 +2247,8 @@ def loglik_given_true_var_log(true_var_log, inferred_vals, inferred_vars):
         np.sum(alpha))  # the middle term was missing in the other implementation
 
 
-def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff, mpiInfo, verbose=False, all_genes=False):
+def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff, mpiInfo, verbose=False,
+                    all_genes=False):
     """
     Reads in means and standard deviations line by line (i.e per gene/feature), possibly parallelized over multiple
     processes. For each gene, we determine if it makes the zscore-cutoff before adding it to the data to save memory.
@@ -2293,8 +2304,8 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
                          "Make sure to run Sanity with the argument '-max_v only_max_output'", ERROR=True)
             else:
                 mp_print("Could not find (the right) Sanity-output.\n"
-                 "Are you sure the argument --input_is_sanity_output should be set to True?"
-                 "\nAre you sure you are running Sanity with the extended-output flag -e 1, "
+                         "Are you sure the argument --input_is_sanity_output should be set to True?"
+                         "\nAre you sure you are running Sanity with the extended-output flag -e 1, "
                          "and the vmax-argument: -vmax true?", ERROR=True)
             exit()
     else:
