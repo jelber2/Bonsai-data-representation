@@ -4199,6 +4199,7 @@ class Tree:
             cluster_centers = None
 
         n_print = 100
+        n_added = 0
         for n_added in range(n_to_add_total):
             if n_added == n_print:
                 mp_print("Adding cell {} out of {}: {:.2f}%.".format(n_added + 1, n_to_add_total,
