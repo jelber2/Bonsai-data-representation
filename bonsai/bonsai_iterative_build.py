@@ -248,7 +248,7 @@ print(output1.stderr)
 add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
                  '--config_filepath', config_filepath,
                  '--guide_tree_folder', results_dir_subset0,
-                 '--growth_before_cleanup', args.growth_before_cleanup,
+                 '--growth_before_cleanup', str(args.growth_before_cleanup),
                  '--select_target', 'cluster_centers']
 # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 

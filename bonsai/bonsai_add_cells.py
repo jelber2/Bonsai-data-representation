@@ -47,8 +47,10 @@ args = parser.parse_args()
 select_target = args.select_target
 cells_to_be_added = args.cells_to_be_added
 guide_tree_folder = args.guide_tree_folder
+growth_before_cleanup = args.growth_before_cleanup
 args = Run_Configs(args.config_filepath)
 args.select_target = select_target
+args.growth_before_cleanup = growth_before_cleanup
 
 import bonsai.mpi_wrapper as mpi_wrapper
 from bonsai.bonsai_dataprocessing import initializeSCData, getMetadata, loadReconstructedTreeAndData, SCData, \

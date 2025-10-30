@@ -3704,21 +3704,21 @@ class Tree:
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='long_branches_first',
                                                               select_target='cluster_centers',
-                                                              max_moves=100000,
+                                                              max_moves=None,
                                                               moves_id='C_long_branches_T_cluster_centers',
                                                               tracking=tracking, info_dict=info_dict)
 
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='random',
                                                               select_target='random',
-                                                              max_moves=10000,
+                                                              max_moves=None,
                                                               moves_id='C_random_T_random',
                                                               tracking=tracking, info_dict=info_dict)
 
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='long_branches_first',
                                                               select_target='cluster_centers',
-                                                              max_moves=100000,
+                                                              max_moves=None,
                                                               moves_id='C_long_branches_T_cluster_centers',
                                                               tracking=tracking, info_dict=info_dict)
 
@@ -3784,8 +3784,11 @@ class Tree:
         with open(os.path.join(output_folder, "spr_info_strategy_{}.json".format(strategy)), "w") as f:
             json.dump(info_dict, f, indent=4)
 
-    def do_spr_moves_with_postprocessing(self, args, select_cand, select_target, max_moves=10000,
+    def do_spr_moves_with_postprocessing(self, args, select_cand, select_target, max_moves=None,
                                          moves_id=None, tracking=False, info_dict=None):
+        if max_moves is None:
+            max_moves = bs_glob.nNodes
+
         # Just some tracking
         if tracking:
             start_logl = self.calcLogLComplete(mem_friendly=True)
@@ -4162,7 +4165,7 @@ class Tree:
         :return:
         """
         # TODO: Turn this off
-        very_verbose = True
+        very_verbose = False
         # We initialize some variables, and do a first clean-up of the tree
         as_if_root_version = 0
         spr_target_version = 0
@@ -4198,7 +4201,7 @@ class Tree:
         n_print = 100
         for n_added in range(n_to_add_total):
             if n_added == n_print:
-                mp_print("Adding cell {} out of {}: {}%.".format(n_added + 1, n_to_add_total,
+                mp_print("Adding cell {} out of {}: {:.2f}%.".format(n_added + 1, n_to_add_total,
                                                                  100 * (n_added + 1) / n_to_add_total))
                 n_print *= 2
 
@@ -4261,7 +4264,7 @@ class Tree:
                 n_before_cleanup += int(np.ceil(growth_before_cleanup * self.nNodes))
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
 
-                self.do_spr_postprocessing(change_node_inds=False, verbose=True)
+                self.do_spr_postprocessing(change_node_inds=False, verbose=False)
 
                 if select_target == 'cluster_centers':
                     n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
