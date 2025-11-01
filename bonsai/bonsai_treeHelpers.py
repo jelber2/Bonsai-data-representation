@@ -2818,7 +2818,7 @@ class TreeNode:
         new_parent.ltqs = self.ltqs.copy()
         new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
         new_parent.tParent = self.tParent
-        new_parent.nodeId = self.nodeId + '_internal_twin'
+        new_parent.nodeId = 'internal_{}'.format(ancNodeInd)
         if self.n_ds_nodes is not None:
             new_parent.n_ds_nodes = 1
         bs_glob.nNodes += 1
