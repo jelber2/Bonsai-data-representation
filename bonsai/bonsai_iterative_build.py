@@ -106,9 +106,9 @@ if args.iterative_cell_lists is not None:
     # Last set of cell-IDs should not be in there, is assumed to be the complement
     pass
 
+np.random.seed(seed)
 if subsets is None:
     n_initial_cells = min(args.n_initial_cells, scdata.metadata.nCells)
-    np.random.seed(seed)
     subsets = [np.random.choice(np.arange(scdata.metadata.nCells), size=n_initial_cells, replace=False)]
 
 list_scdata_subsets = []
@@ -245,11 +245,13 @@ output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=T
 print(output1.stdout)
 print(output1.stderr)
 
+add_cells_seed = np.random.randint(1e6)
 add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
                  '--config_filepath', config_filepath,
                  '--guide_tree_folder', results_dir_subset0,
                  '--growth_before_cleanup', str(args.growth_before_cleanup),
-                 '--select_target', 'cluster_centers']
+                 '--select_target', 'cluster_centers',
+                 '--seed', str(add_cells_seed)]
 # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 
 if not args.return_commands:

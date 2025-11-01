@@ -29,6 +29,10 @@ parser.add_argument('--growth_before_cleanup', type=float, default=.5,
                     help="When adding cells, this factor (larger than 0) determines after what growth factor (so .1 "
                          "means 10% growth) we re-optimize the tree before adding another set of cells.")
 
+parser.add_argument('--resolve_polytomies_immediately', type=str2bool, default=True,
+                    help="Determines whether, when adding a cell downstream of a node, we immediately test whether it "
+                         "wants to merge with one of the other children of that node.")
+
 # TODO: To be moved to config-file
 parser.add_argument('--select_target', type=str, default='cluster_centers',
                     help="This will determine what strategy we follow for the "
@@ -43,14 +47,21 @@ parser.add_argument('--cells_to_be_added', type=str, default=None,
                     help="One can give a filename to a txt-file containing cell-IDs here (one per line). In that case,"
                          "only these cell-IDs will be added.")
 
+parser.add_argument('--seed', type=int, default=1231,
+                    help="Random seed for order of adding the cells.")
+
 args = parser.parse_args()
+np.random.seed(args.seed)
+
 select_target = args.select_target
 cells_to_be_added = args.cells_to_be_added
 guide_tree_folder = args.guide_tree_folder
 growth_before_cleanup = args.growth_before_cleanup
+resolve_polytomies_immediately = args.resolve_polytomies_immediately
 args = Run_Configs(args.config_filepath)
 args.select_target = select_target
 args.growth_before_cleanup = growth_before_cleanup
+args.resolve_polytomies_immediately = resolve_polytomies_immediately
 
 import bonsai.mpi_wrapper as mpi_wrapper
 from bonsai.bonsai_dataprocessing import initializeSCData, getMetadata, loadReconstructedTreeAndData, SCData, \
@@ -148,7 +159,8 @@ This is the core of the script, the cells will be added iteratively to the guide
 """
 scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
                             growth_before_cleanup=args.growth_before_cleanup,
-                            select_target=args.select_target)
+                            select_target=args.select_target,
+                            resolve_polytomies_immediately=args.resolve_polytomies_immediately)
 
 # Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,
 # Internal nodes start at nCells and increase in depth-first manner.

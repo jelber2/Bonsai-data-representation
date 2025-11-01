@@ -4043,7 +4043,7 @@ class Tree:
 
         return successful_moves, total_dlogl_increase
 
-    def do_spr_postprocessing(self, change_node_inds=False, verbose=False):
+    def do_spr_postprocessing(self, change_node_inds=False, only_time_opt=False, verbose=False):
         """
         IMPORTANT: This function should be run without parallelization. Otherwise, one has to guarantee that the tree
         topologies match on all processes, which we cannot at the moment.
@@ -4070,6 +4070,10 @@ class Tree:
         self.root.mergeZeroTimeChilds()
         self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes
         self.nNodes = bs_glob.nNodes
+
+        if only_time_opt:
+            return
+
         self.root.getAIRootInfo(None, None)
 
         self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=verbose,
@@ -4155,7 +4159,7 @@ class Tree:
         return nodeList
 
     def add_cells(self, ltqs_to_add, ltqsvars_to_add, cell_ids, growth_before_cleanup=.1,
-                  select_target='cluster_centers'):
+                  select_target='cluster_centers', resolve_polytomies_immediately=True):
         """
 
         :param ltqs_to_add: Numpy array (genes x cells) with coordinates of cells that should be added to the tree
@@ -4260,13 +4264,36 @@ class Tree:
             as_if_root_version += 1
             spr_target_version += 1
 
+            # TODO: Eventually check if I want to remove this
+            if resolve_polytomies_immediately and (len(new_parent.childNodes) > 2):
+                # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
+                # likelihood increases when we add an ancestor for the candidate with some other child
+
+                # First get the coordinates of new_parent as if it's the root
+                new_parent.getAIRootUpstream(as_if_root_version=as_if_root_version)
+                changedSomething = new_parent.mergeChildrenUB(new_parent.ltqsAIRoot, new_parent.getW(AIRoot=True),
+                                                              sequential=False, verbose=False, random=False,
+                                                              specialChild=candidate.nodeInd,
+                                                              singleProcess=True, mergeDownstream=False)
+                if changedSomething:  # Now the ltqs upstream of the new_parent should be updated again
+                    new_parent.setLtqsUpstream()
+                    as_if_root_version += 1
+                    new_parent.storeParent()
+                    # Also update the n_ds_node variables upstream of the old_parent
+                    # old_n_ds_nodes = new_parent.n_ds_nodes
+                    # new_parent.get_ds_node_counts()
+                    # added_n_ds_nodes = new_parent.n_ds_nodes - old_n_ds_nodes
+                    # if (added_n_ds_nodes != 0) and (not new_parent.isRoot):
+                    #     new_parent.parentNode.add_n_nodes_upstream(added_n_ds_nodes)
+
             # Increase metadata (nNodes, ...?)
 
             if n_added == n_before_cleanup:
                 n_before_cleanup += int(np.ceil(growth_before_cleanup * self.nNodes))
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
 
-                self.do_spr_postprocessing(change_node_inds=False, verbose=False)
+                self.do_spr_postprocessing(change_node_inds=False, verbose=False,
+                                           only_time_opt=resolve_polytomies_immediately)
 
                 if select_target == 'cluster_centers':
                     n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
@@ -4277,8 +4304,8 @@ class Tree:
         self.nNodes = bs_glob.nNodes
         logging.info("The {} added cells led to a decrease of {} "
                      "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
-        logging.info("Total loglikelihood should now thus be {}, "
-                     "and is {} according to the normal loglik "
+        logging.info("Not taking account intermediate resolving of polytomies: total loglikelihood should now be {}, "
+                     "and it is {} according to the normal loglik "
                      "calculation.".format(orig_loglik + total_dlogl_decrease,
                                            self.calcLogLComplete(mem_friendly=True, recalc=True)))
 
