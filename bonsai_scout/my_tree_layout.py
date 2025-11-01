@@ -494,7 +494,7 @@ class Layout_TreeNode:
             self.tParent = None
             self.isRoot = True
         if len(new_children) == 0:
-            # self.isLeaf = True
+            self.isLeaf = True
             self.childNodes = new_children
         else:
             self.isLeaf = False
