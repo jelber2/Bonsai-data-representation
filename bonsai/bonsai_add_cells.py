@@ -154,8 +154,8 @@ scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
 # Internal nodes start at nCells and increase in depth-first manner.
 scdata_guide.metadata.nCells = len(cell_id_to_ind)
 bs_glob.nCells = scdata_guide.metadata.nCells
-scdata_guide.cleanup_node_inds(cell_id_to_ind)
 scdata_guide.metadata.cellIds = scdata_all_cells.metadata.cellIds
+scdata_guide.cleanup_node_inds()
 
 """
 Store the resulting tree in a folder, such that another script can pick it up. In that script, we should then

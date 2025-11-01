@@ -330,7 +330,8 @@ class SCData:
         mpiRank = mpi_wrapper.get_process_rank()
         if cleanup_tree:
             self.tree.root.mergeZeroTimeChilds()
-            self.tree.root.renumberNodes(change_node_inds=False)
+            self.cleanup_node_inds()
+            # self.tree.root.renumberNodes(change_node_inds=False)
             self.tree.nNodes = bs_glob.nNodes
         if (mpiRank == 0) or all_ranks:
             Path(treeFolder).mkdir(parents=True, exist_ok=True)
@@ -1241,14 +1242,24 @@ class SCData:
         else:
             originalData.geneVariances = None
 
-    def cleanup_node_inds(self, cell_id_to_ind):
+    def cleanup_node_inds(self):
+        if self.metadata.cellIds is None:
+            mp_print("Cannot cleanup node-indices without defined metadata.cellIds.", WARNING=True)
+            return
+        cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(self.metadata.cellIds)}
         nodes_list = self.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
+        bs_glob.max_node_ind = -1
+        n_cells = 0
         for node in nodes_list:
             if node.nodeId in cell_id_to_ind:
+                n_cells += 1
                 node.nodeInd = cell_id_to_ind[node.nodeId]
-        bs_glob.max_node_ind = np.max(list(cell_id_to_ind.values()))
+                node.isCell = True
+                bs_glob.max_node_ind = max(node.nodeInd, bs_glob.max_node_ind)
+
+        # bs_glob.max_node_ind = np.max(list(cell_id_to_ind.values()))
         self.tree.max_node_ind = bs_glob.max_node_ind
-        self.metadata.nCells = len(cell_id_to_ind)
+        self.metadata.nCells = n_cells
         bs_glob.nCells = self.metadata.nCells
         self.tree.root.renumberNodes(change_node_inds=True)
 

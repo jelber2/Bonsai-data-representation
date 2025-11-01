@@ -813,7 +813,8 @@ class TreeNode:
             if not child.isLeaf:
                 child.renumberNodes(change_node_inds=change_node_inds)
         if not self.isRoot:
-            if change_node_inds:
+            is_cell = self.isCell if (self.isCell is not None) else self.isLeaf
+            if change_node_inds and (not is_cell):
                 # self.nodeInd = bs_glob.nNodes - 1
                 self.nodeInd = bs_glob.max_node_ind + 1
                 bs_glob.max_node_ind += 1
