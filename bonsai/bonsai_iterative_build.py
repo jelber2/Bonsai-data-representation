@@ -147,7 +147,7 @@ scdata_subset.metadata = metadata_subset
 scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed' % args.zscore_cutoff)
 
 # Store this subset in a file such that the other script can read it in.
-print("Writing cell IDs to file:")
+mp_print("Writing cell IDs to file:")
 with open(scdata.result_path('starting_cell_ids.txt'), 'w') as f:
     for ID in cell_ids_subset:
         f.write("%s\n" % ID)
@@ -159,11 +159,11 @@ preprocess_cmd = [sys.executable, 'bonsai/bonsai_iterative_first_split.py',
 
 if not args.return_commands:
     output1 = subprocess.run(preprocess_cmd, stdout=subprocess.PIPE, text=True)
-    print(output1.stdout)
-    print(output1.stderr)
+    mp_print(output1.stdout)
+    mp_print(output1.stderr)
 else:
     cmd = ' '.join(preprocess_cmd)
-    print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
+    mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
           "{}".format(commands_file, cmd))
     with open(commands_file, "w") as file:
         file.write(cmd + '\n')
@@ -215,8 +215,8 @@ def get_command_config_file(args, dataset, result_path, data_folder=None, tmp_fo
 create_config_command_1, config_filepath = get_command_config_file(args, scdata_subset.metadata.dataset,
                                                                    scdata_subset.result_path())
 output1 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
-print(output1.stdout)
-print(output1.stderr)
+mp_print(output1.stdout)
+mp_print(output1.stderr)
 
 # Run Bonsai on the new config-file
 bonsai_subset1_cmd = [sys.executable, 'bonsai/bonsai_main.py',
@@ -226,11 +226,11 @@ bonsai_subset1_cmd = [sys.executable, 'bonsai/bonsai_main.py',
 
 if not args.return_commands:
     output1 = subprocess.run(bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
-    print(output1.stdout)
-    print(output1.stderr)
+    mp_print(output1.stdout)
+    mp_print(output1.stderr)
 else:
     cmd = ' '.join(bonsai_subset1_cmd)
-    print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
+    mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
           "{}".format(commands_file, cmd))
     with open(commands_file, "a") as file:
         file.write(cmd + '\n')
@@ -250,8 +250,8 @@ create_config_command_1, config_filepath = get_command_config_file(args, final_d
                                                                    data_folder=args.data_folder,
                                                                    tmp_folder=scdata_subset.result_path())
 output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
-print(output1.stdout)
-print(output1.stderr)
+mp_print(output1.stdout)
+mp_print(output1.stderr)
 
 add_cells_seed = np.random.randint(1e6)
 add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
@@ -265,11 +265,11 @@ add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
 
 if not args.return_commands:
     output1 = subprocess.run(add_cells_cmd, stdout=subprocess.PIPE, text=True)
-    print(output1.stdout)
-    print(output1.stderr)
+    mp_print(output1.stdout)
+    mp_print(output1.stderr)
 else:
     cmd = ' '.join(add_cells_cmd)
-    print("Command for adding remaining cells to guide tree (stored in {}):\n{}".format(commands_file, cmd))
+    mp_print("Command for adding remaining cells to guide tree (stored in {}):\n{}".format(commands_file, cmd))
     with open(commands_file, "a") as file:
         file.write(cmd + '\n')
 
@@ -282,8 +282,8 @@ Step 4: Run Bonsai one more time starting from the created tree to see what spr-
 create_config_command_1, config_filepath = get_command_config_file(args, scdata.metadata.dataset, scdata.result_path(),
                                                                    tmp_folder=final_result_folder)
 output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
-print(output1.stdout)
-print(output1.stderr)
+mp_print(output1.stdout)
+mp_print(output1.stderr)
 
 # Run Bonsai on the new config-file
 bonsai_subset1_cmd = [sys.executable, 'bonsai/bonsai_main.py',
@@ -293,14 +293,14 @@ bonsai_subset1_cmd = [sys.executable, 'bonsai/bonsai_main.py',
 
 if not args.return_commands:
     output1 = subprocess.run(bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
-    print(output1.stdout)
-    print(output1.stderr)
+    mp_print(output1.stdout)
+    mp_print(output1.stderr)
 else:
     cmd = ' '.join(bonsai_subset1_cmd)
-    print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
+    mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
           "{}".format(commands_file, cmd))
     with open(commands_file, "a") as file:
         file.write(cmd + '\n')
 
 print_text = 'only printing commands' if args.return_commands else "performing all calculations"
-print("Running the iterative-bonsai script while {} took {} seconds.".format(print_text, time.time() - start_all))
+mp_print("Running the iterative-bonsai script while {} took {} seconds.".format(print_text, time.time() - start_all))
