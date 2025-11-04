@@ -89,74 +89,68 @@ mpi_rank, mpi_size = startMPI(verbose=True)
 
 start_all = time.time()
 
+if mpi_rank != 0:
+    mp_print("The script 'bonsai_iterative_build.py' is not designed to use multiple CPUs in all steps."
+             "Instead, please run this script with the command '--return_commands True'. "
+             "It will then return the commands in a text-file "
+             "(and printed out on the console) that you can then run yourself using multiple CPUs.",
+             ALL_RANKS=True, WARNING=True)
+    exit()
+
 """
 ------------------------------------------------------------------------------------------
 Step 1: Get a subset of the cells and store their information in a subfolder.
 ------------------------------------------------------------------------------------------
 """
 
-scdata = initializeSCData(args, createStarTree=False, getOrigData=True, otherRanksMinimalInfo=True)
-
+scdata = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
 if args.return_commands:
     commands_file = scdata.result_path('iterative_build_commands.txt')
 
-subsets = None
-if args.iterative_cell_lists is not None:
-    # TODO: Implement this still. Create list of np-arrays of cell-indices in subsets-variable.
-    # Last set of cell-IDs should not be in there, is assumed to be the complement
-    pass
+scdata.metadata.pathToOrigData = args.data_folder
+# Get cell-IDs of whole dataset
+scdata.metadata.cellIds = []
+if os.path.exists(scdata.data_path('cellID.txt')):
+    with open(scdata.data_path('cellID.txt'), 'r') as file:
+        reader = csv.reader(file, delimiter="\t")
+        for row in reader:
+            scdata.metadata.cellIds.append(row[0])
+    scdata.metadata.nCells = len(scdata.metadata.cellIds)
+    n_unq_ids = len(np.unique(scdata.metadata.cellIds))
+    if scdata.metadata.nCells is not None:
+        if n_unq_ids != scdata.metadata.nCells:
+            mp_print("Cell-IDs are not unique.\n "
+                     "Please resolve this and start this script again.", ERROR=True)
+            exit()
 
+# Select a subset of the cell-IDs to build a first guide-tree on
 np.random.seed(seed)
-if subsets is None:
-    n_initial_cells = min(args.n_initial_cells, scdata.metadata.nCells)
-    subsets = [np.random.choice(np.arange(scdata.metadata.nCells), size=n_initial_cells, replace=False)]
 
-list_scdata_subsets = []
-for subset_ind, subset in enumerate(subsets):
-    metadata_subset = Metadata(curr_metadata=scdata.metadata)
-    metadata_subset.cellIds = [scdata.metadata.cellIds[ind] for ind in subset]
-    metadata_subset.nCells = len(subset)
-    bs_glob.nCells = metadata_subset.nCells
-    metadata_subset.dataset = os.path.join(scdata.metadata.dataset, 'subset_{}'.format(subset_ind))
-    metadata_subset.results_folder = os.path.join(scdata.metadata.results_folder, 'subset_{}'.format(subset_ind))
+n_initial_cells = min(args.n_initial_cells, scdata.metadata.nCells)
+subset = np.random.choice(np.arange(scdata.metadata.nCells), size=n_initial_cells, replace=False)
+cell_ids_subset = [scdata.metadata.cellIds[ind] for ind in subset]
 
-    scdata_subset = SCData(onlyObject=True, dataset=metadata_subset.dataset,
-                           results_folder=metadata_subset.results_folder)
+# Store this subset in a file such that the other script can read it in.
+print("Writing cell IDs to file:")
+with open(scdata.result_path('starting_cell_ids.txt'), 'w') as f:
+    for ID in cell_ids_subset:
+        f.write("%s\n" % ID)
 
-    scdata_subset.metadata = metadata_subset
-    # scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed'
-    #                                                                        % args.zscore_cutoff)
-    # scdata_subset.metadata.processedDatafolder = scdata.metadata.processedDatafolder
-    ltqs_subset = scdata.originalData.ltqs[:, subset].copy()
-    ltqsvars_subset = scdata.originalData.ltqsVars[:, subset].copy()
+# Run the script that will read in and preprocess the data, and create the star-tree for the first guide-tree
+preprocess_cmd = [sys.executable, 'bonsai/bonsai_iterative_first_split.py',
+                  '--config_filepath', args.config_filepath,
+                  '--starting_cell_ids', scdata.result_path('starting_cell_ids.txt')]
 
-    scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed' % args.zscore_cutoff)
-    storeData(scdata_subset.metadata, ltqs_subset, ltqsvars_subset)
-    mp_print("Storing subset {} with {} cells in folder: {}".format(subset_ind, len(subset),
-                                                                    scdata_subset.metadata.processedDatafolder))
-    # storeData(scdata_subset.metadata, ltqs_subset, ltqsvars_subset)
-
-    if mpi_rank == 0:
-        scdata_subset.tree = Tree()
-        scdata_subset.tree.initialize_star_tree(ltqs_subset, ltqsvars_subset, scdata_subset.metadata,
-                                                opt_times=True, verbose=args.verbose)
-        # Store tree topology with optimised times, and the data only for selected genes, such that it can be read
-        # in by multiple cores such that the next part of the program can be run in parallel
-        outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, greedy=False,
-                                       redo_starry=False, opt_times=False)
-        mp_print("Storing result of preprocessing in " + scdata_subset.result_path(outputFolder) + "\n\n")
-        scdata_subset.storeTreeInFolder(scdata_subset.result_path(outputFolder), with_coords=True, verbose=args.verbose,
-                                        cleanup_tree=False)
-        list_scdata_subsets.append(scdata_subset)
-
-if mpi_rank != 0:
-    mp_print("The script 'bonsai_iterative_build.py' is not designed to use multiple CPUs in all steps. Currently,"
-             "only the preprocessing of the data and creating the subsets of the data benefits from parallelization."
-             "Instead, please run the script with the command '--return_commands True'. "
-             "It will then return the commands in a text-file "
-             "(and printed out on the console) that you can then run yourself using multiple CPUs.",
-             ALL_RANKS=True, WARNING=True)
-    exit()
+if not args.return_commands:
+    output1 = subprocess.run(preprocess_cmd, stdout=subprocess.PIPE, text=True)
+    print(output1.stdout)
+    print(output1.stderr)
+else:
+    cmd = ' '.join(preprocess_cmd)
+    print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
+          "{}".format(commands_file, cmd))
+    with open(commands_file, "w") as file:
+        file.write(cmd + '\n')
 
 """
 ------------------------------------------------------------------------------------------
@@ -200,8 +194,6 @@ def get_command_config_file(args, dataset, result_path, data_folder=None, tmp_fo
     return command1, config_filepath
 
 
-#
-# TODO: Look up how you use subprocess in the Jupyter notebook and copy that
 # Create new config-file for the subset
 scdata_subset = list_scdata_subsets[0]
 create_config_command_1, config_filepath = get_command_config_file(args, scdata_subset.metadata.dataset,
@@ -271,7 +263,7 @@ Step 4: Run Bonsai one more time starting from the created tree to see what spr-
 """
 
 create_config_command_1, config_filepath = get_command_config_file(args, scdata.metadata.dataset, scdata.result_path(),
-                                                  tmp_folder=final_result_folder)
+                                                                   tmp_folder=final_result_folder)
 output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
 print(output1.stdout)
 print(output1.stderr)
