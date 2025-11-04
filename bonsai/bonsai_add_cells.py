@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 import numpy as np
 import time
-from pathlib import Path
 import os, sys, csv
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -24,6 +23,9 @@ parser.add_argument('--guide_tree_folder', type=str, default=None,
                     help="Path that should point to folder where an existing Bonsai-tree is stored. This folder"
                          "is typically called 'final_...' in a Bonsai-results folder. Then this script will start "
                          "adding cells to that 'guide-tree'.")
+
+parser.add_argument('--preprocessed_data_folder', type=str, default=None,
+                    help="Folderpath where data is stored that was already preprocessed for all cells.")
 
 parser.add_argument('--growth_before_cleanup', type=float, default=.5,
                     help="When adding cells, this factor (larger than 0) determines after what growth factor (so .1 "
@@ -58,16 +60,16 @@ cells_to_be_added = args.cells_to_be_added
 guide_tree_folder = args.guide_tree_folder
 growth_before_cleanup = args.growth_before_cleanup
 resolve_polytomies_immediately = args.resolve_polytomies_immediately
+preprocessed_data_folder = args.preprocessed_data_folder
 args = Run_Configs(args.config_filepath)
+args.preprocessed_data_folder = preprocessed_data_folder
 args.select_target = select_target
 args.growth_before_cleanup = growth_before_cleanup
 args.resolve_polytomies_immediately = resolve_polytomies_immediately
 
-import bonsai.mpi_wrapper as mpi_wrapper
-from bonsai.bonsai_dataprocessing import initializeSCData, getMetadata, loadReconstructedTreeAndData, SCData, \
-    nnnReorder, nnnReorderRandom
-from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder, get_latest_intermediate, \
-    clean_up_redundant_data_files, str2bool
+from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
+    OriginalData, Metadata
+from bonsai.bonsai_helpers import mp_print, startMPI
 import bonsai.bonsai_globals as bs_glob
 
 if guide_tree_folder is None:
@@ -91,8 +93,22 @@ scdata_guide = loadReconstructedTreeAndData(args, guide_tree_folder, all_genes=a
                                             reprocess_data=False, all_ranks=True, rel_to_results=True, get_data=False,
                                             no_data_needed=True, get_posterior_ltqs=False, otherRanksMinimalInfo=True)
 # TODO: Replace this initializeSCData by just reading from the already-processed (zscorefiltered) data
-# Read in the data for all cells, and preprocess it like normal
-scdata_all_cells = initializeSCData(args, createStarTree=False, getOrigData=False, otherRanksMinimalInfo=True)
+
+# Read in the data for all cells
+if args.preprocessed_data_folder is not None:
+    scdata_all_cells = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
+    scdata_all_cells.metadata = Metadata(json_filepath=os.path.join(args.preprocessed_data_folder, 'metadata.json'),
+                                         curr_metadata=scdata_all_cells.metadata)
+
+    scdata_all_cells.originalData = OriginalData()
+    scdata_all_cells.originalData.ltqs = np.load(os.path.join(args.preprocessed_data_folder, 'delta.npy'),
+                                                 allow_pickle=False, mmap_mode='r')
+    scdata_all_cells.originalData.ltqsVars = np.load(os.path.join(args.preprocessed_data_folder, 'delta_vars.npy'),
+                                                     allow_pickle=False, mmap_mode='r')
+else:
+    scdata_all_cells = initializeSCData(args, createStarTree=False, getOrigData=False, otherRanksMinimalInfo=True)
+
+
 cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scdata_all_cells.metadata.cellIds)}
 
 # Create list of cells that is already on the tree, and get cell-ID to node dictionary to be able to add ltq-info
@@ -180,28 +196,5 @@ scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=T
                                                                   loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
 mp_print("Loglikelihood of inferred tree after adding cells: " + str(scdata_guide.metadata.loglik))
 
-# Store intermediate results
-# outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff, spr_moves=False,
-#                                redo_starry=False, opt_times=False, nnn_reorder=False, reorderedEdges=False,
-#                                tmp_file=os.path.basename(args.tmp_folder))
-# if cells_to_be_added is None:
-#     outputFolder += '_addedallcells'
-# else:
-#     outputFolder += '_addedcells{}'.format(os.path.basename(cells_to_be_added))
-
 mp_print("Storing result after reordering children in " + scdata_guide.result_path() + "\n\n")
 scdata_guide.storeTreeInFolder(scdata_guide.result_path(), with_coords=True, verbose=args.verbose)
-
-# Calculate cluster-centers
-# Loop over the remaining cells (in a random order), and add them to the tree using cluster centers
-# Keep track of how many cells attach to the root (indicating that their celltype was not represented yet?)
-
-# Every N cells we postprocess: re-optimize branch lengths, resolve-polytomies, re-optimize branch lengths,
-# and calculate new cluster-centers
-# Maybe N should be 100-1000, or it should scale with the number of cells already in the tree (after ~10% increase)
-
-# Do this until all cells are added
-
-# Still do SPR-moves and NNI-moves maybe.
-
-# Store like normal

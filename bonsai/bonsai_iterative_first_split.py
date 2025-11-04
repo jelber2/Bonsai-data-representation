@@ -55,7 +55,7 @@ with open(args.starting_cell_ids, 'r') as file:
     for row in reader:
         cell_ids_subset.append(row[0])
 
-orig_cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scdata.metadata.cellIDs)}
+orig_cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scdata.metadata.cellIds)}
 subset_inds = np.array([orig_cell_id_to_ind[cell_id] for cell_id in cell_ids_subset])
 
 metadata_subset = Metadata(curr_metadata=scdata.metadata)
@@ -74,7 +74,7 @@ ltqsvars_subset = scdata.originalData.ltqsVars[:, subset_inds].copy()
 
 scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed' % args.zscore_cutoff)
 storeData(scdata_subset.metadata, ltqs_subset, ltqsvars_subset)
-mp_print("Storing subset {} with {} cells in folder: {}".format(subset_inds, len(subset_inds),
+mp_print("Storing subset {} with {} cells in folder: {}".format(0, len(subset_inds),
                                                                 scdata_subset.metadata.processedDatafolder))
 # storeData(scdata_subset.metadata, ltqs_subset, ltqsvars_subset)
 

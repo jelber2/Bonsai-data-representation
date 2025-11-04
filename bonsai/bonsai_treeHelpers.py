@@ -4191,7 +4191,8 @@ class Tree:
         orig_loglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
 
         n_to_add_total = ltqs_to_add.shape[1]
-        n_before_cleanup = int(np.ceil(growth_before_cleanup * self.nNodes))
+        tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
+        n_before_cleanup = int(np.ceil(growth_before_cleanup * tree_size))
 
         # If select_target is cluster_centers, we get cluster-centers here, which will be used as start-points for the
         # tree-based search of where to put the new cells
@@ -4208,7 +4209,7 @@ class Tree:
         for n_added in range(n_to_add_total):
             if n_added == n_print:
                 mp_print("Adding cell {} out of {}: {:.2f}%.".format(n_added + 1, n_to_add_total,
-                                                                 100 * (n_added + 1) / n_to_add_total))
+                                                                     100 * (n_added + 1) / n_to_add_total))
                 n_print *= 2
 
             # Create TreeNode that can be added
@@ -4263,7 +4264,7 @@ class Tree:
             new_parent.add_subtree(candidate, opt_t, ltqs, ltqsvars)
             as_if_root_version += 1
             spr_target_version += 1
-
+            bs_glob.nCells += 1
             # TODO: Eventually check if I want to remove this
             if resolve_polytomies_immediately and (len(new_parent.childNodes) > 2):
                 # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
@@ -4289,7 +4290,8 @@ class Tree:
             # Increase metadata (nNodes, ...?)
 
             if n_added == n_before_cleanup:
-                n_before_cleanup += int(np.ceil(growth_before_cleanup * self.nNodes))
+                tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
+                n_before_cleanup += int(np.ceil(growth_before_cleanup * tree_size))
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
 
                 self.do_spr_postprocessing(change_node_inds=False, verbose=False,

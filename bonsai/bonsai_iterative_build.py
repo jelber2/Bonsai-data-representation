@@ -123,12 +123,28 @@ if os.path.exists(scdata.data_path('cellID.txt')):
                      "Please resolve this and start this script again.", ERROR=True)
             exit()
 
+scdata.metadata.processedDatafolder = scdata.result_path('zscorefiltered_%.3f_and_processed' % args.zscore_cutoff)
+
 # Select a subset of the cell-IDs to build a first guide-tree on
 np.random.seed(seed)
 
 n_initial_cells = min(args.n_initial_cells, scdata.metadata.nCells)
 subset = np.random.choice(np.arange(scdata.metadata.nCells), size=n_initial_cells, replace=False)
 cell_ids_subset = [scdata.metadata.cellIds[ind] for ind in subset]
+
+# Also create a scdata-object for the subset
+metadata_subset = Metadata(curr_metadata=scdata.metadata)
+metadata_subset.cellIds = cell_ids_subset
+metadata_subset.nCells = len(cell_ids_subset)
+bs_glob.nCells = metadata_subset.nCells
+metadata_subset.dataset = os.path.join(scdata.metadata.dataset, 'subset_0')
+metadata_subset.results_folder = os.path.join(scdata.metadata.results_folder, 'subset_0')
+
+scdata_subset = SCData(onlyObject=True, dataset=metadata_subset.dataset,
+                       results_folder=metadata_subset.results_folder)
+
+scdata_subset.metadata = metadata_subset
+scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed' % args.zscore_cutoff)
 
 # Store this subset in a file such that the other script can read it in.
 print("Writing cell IDs to file:")
@@ -151,6 +167,7 @@ else:
           "{}".format(commands_file, cmd))
     with open(commands_file, "w") as file:
         file.write(cmd + '\n')
+
 
 """
 ------------------------------------------------------------------------------------------
@@ -195,7 +212,6 @@ def get_command_config_file(args, dataset, result_path, data_folder=None, tmp_fo
 
 
 # Create new config-file for the subset
-scdata_subset = list_scdata_subsets[0]
 create_config_command_1, config_filepath = get_command_config_file(args, scdata_subset.metadata.dataset,
                                                                    scdata_subset.result_path())
 output1 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
@@ -216,7 +232,7 @@ else:
     cmd = ' '.join(bonsai_subset1_cmd)
     print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
           "{}".format(commands_file, cmd))
-    with open(commands_file, "w") as file:
+    with open(commands_file, "a") as file:
         file.write(cmd + '\n')
 
 results_dir_subset0 = scdata_subset.result_path(getOutputFolder(zscore_cutoff=args.zscore_cutoff, final=True))
@@ -241,6 +257,7 @@ add_cells_seed = np.random.randint(1e6)
 add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
                  '--config_filepath', config_filepath,
                  '--guide_tree_folder', results_dir_subset0,
+                 '--preprocessed_data_folder', scdata.metadata.processedDatafolder,
                  '--growth_before_cleanup', str(args.growth_before_cleanup),
                  '--select_target', 'cluster_centers',
                  '--seed', str(add_cells_seed)]
