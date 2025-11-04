@@ -153,12 +153,12 @@ with open(scdata.result_path('starting_cell_ids.txt'), 'w') as f:
         f.write("%s\n" % ID)
 
 # Run the script that will read in and preprocess the data, and create the star-tree for the first guide-tree
-preprocess_cmd = [sys.executable, 'bonsai/bonsai_iterative_first_split.py',
+preprocess_cmd = ['bonsai/bonsai_iterative_first_split.py',
                   '--config_filepath', args.config_filepath,
                   '--starting_cell_ids', scdata.result_path('starting_cell_ids.txt')]
 
 if not args.return_commands:
-    output1 = subprocess.run(preprocess_cmd, stdout=subprocess.PIPE, text=True)
+    output1 = subprocess.run([sys.executable] + preprocess_cmd, stdout=subprocess.PIPE, text=True)
     mp_print(output1.stdout)
     mp_print(output1.stderr)
 else:
@@ -219,13 +219,13 @@ mp_print(output1.stdout)
 mp_print(output1.stderr)
 
 # Run Bonsai on the new config-file
-bonsai_subset1_cmd = [sys.executable, 'bonsai/bonsai_main.py',
+bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
                       '--config_filepath', config_filepath,
                       '--step', 'all',
                       '--pickup_intermediate', 'True']
 
 if not args.return_commands:
-    output1 = subprocess.run(bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
+    output1 = subprocess.run([sys.executable] + bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
     mp_print(output1.stdout)
     mp_print(output1.stderr)
 else:
@@ -254,7 +254,7 @@ mp_print(output1.stdout)
 mp_print(output1.stderr)
 
 add_cells_seed = np.random.randint(1e6)
-add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
+add_cells_cmd = ['bonsai/bonsai_add_cells.py',
                  '--config_filepath', config_filepath,
                  '--guide_tree_folder', results_dir_subset0,
                  '--preprocessed_data_folder', scdata.metadata.processedDatafolder,
@@ -264,7 +264,7 @@ add_cells_cmd = [sys.executable, 'bonsai/bonsai_add_cells.py',
 # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 
 if not args.return_commands:
-    output1 = subprocess.run(add_cells_cmd, stdout=subprocess.PIPE, text=True)
+    output1 = subprocess.run([sys.executable] + add_cells_cmd, stdout=subprocess.PIPE, text=True)
     mp_print(output1.stdout)
     mp_print(output1.stderr)
 else:
@@ -286,13 +286,13 @@ mp_print(output1.stdout)
 mp_print(output1.stderr)
 
 # Run Bonsai on the new config-file
-bonsai_subset1_cmd = [sys.executable, 'bonsai/bonsai_main.py',
+bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
                       '--config_filepath', config_filepath,
                       '--step', 'all',
                       '--pickup_intermediate', 'True']
 
 if not args.return_commands:
-    output1 = subprocess.run(bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
+    output1 = subprocess.run([sys.executable] + bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
     mp_print(output1.stdout)
     mp_print(output1.stderr)
 else:
