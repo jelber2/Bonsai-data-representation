@@ -49,6 +49,9 @@ mpi_rank, mpi_size = startMPI(verbose=True)
 
 scdata = initializeSCData(args, createStarTree=False, getOrigData=True, otherRanksMinimalInfo=True)
 
+if mpi_rank != 0:
+    mp_print("My job here is done.", ALL_RANKS=True)
+    exit()
 cell_ids_subset = []
 with open(args.starting_cell_ids, 'r') as file:
     reader = csv.reader(file, delimiter="\t")
