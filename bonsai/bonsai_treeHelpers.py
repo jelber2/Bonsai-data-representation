@@ -4291,6 +4291,9 @@ class Tree:
 
             if n_added == n_before_cleanup:
                 tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
+                mp_print("Performing intermediate time-optimization and calculating new cluster-centers. "
+                         "Current number of cells: {}".format(tree_size))
+
                 n_before_cleanup += int(np.ceil(growth_before_cleanup * tree_size))
                 n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
 
