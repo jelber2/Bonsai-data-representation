@@ -27,6 +27,8 @@ parser.add_argument('--starting_cell_ids', type=str, default=None,
 
 args = parser.parse_args()
 
+start_all = time.time()
+
 # TODO: Make sure that Run_configs initialization just copies all arguments that were originally in args
 config_filepath = args.config_filepath
 starting_cell_ids = args.starting_cell_ids
@@ -92,3 +94,5 @@ if mpi_rank == 0:
     mp_print("Storing result of preprocessing in " + scdata_subset.result_path(outputFolder) + "\n\n")
     scdata_subset.storeTreeInFolder(scdata_subset.result_path(outputFolder), with_coords=True, verbose=args.verbose,
                                     cleanup_tree=False)
+
+mp_print("Reading and filtering data took " + str(time.time() - start_all) + " seconds.")
