@@ -4064,7 +4064,7 @@ class Tree:
         self.root.storeParent()
 
         # Do first re-optimization of times
-        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100)
+        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-3)
 
         # Clean up the tree before resolving polytomies
         self.root.mergeZeroTimeChilds()
