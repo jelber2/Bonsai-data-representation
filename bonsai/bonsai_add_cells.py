@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 import numpy as np
 import time
 import os, sys, csv
+from pathlib import Path
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
@@ -9,7 +10,7 @@ sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
 from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, \
-    convert_dict_to_named_tuple, str2bool
+    convert_dict_to_named_tuple, str2bool, get_latest_intermediate
 
 parser = ArgumentParser(
     description='Starts from cell-data and a tree on which some of the cells are already placed. Cells that are not on'
@@ -89,10 +90,32 @@ start_all = time.time()
 
 all_genes = False
 
-scdata_guide = loadReconstructedTreeAndData(args, guide_tree_folder, all_genes=all_genes, get_cell_info=False,
-                                            reprocess_data=False, all_ranks=True, rel_to_results=True, get_data=False,
-                                            no_data_needed=True, get_posterior_ltqs=False, otherRanksMinimalInfo=True)
-# TODO: Replace this initializeSCData by just reading from the already-processed (zscorefiltered) data
+# Now try to find if some cells were already added in an earlier (aborted) run
+scdata_tmp = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
+tmp_folder = scdata_tmp.result_path('tmp_added')
+Path(tmp_folder).mkdir(parents=True, exist_ok=True)
+tmp_found = False
+if (mpiRank == 0) and args.pickup_intermediate and os.path.exists(tmp_folder):
+    try:
+        intermediateFolders = os.listdir(tmp_folder)
+        if len(intermediateFolders):
+            intermediateFolder, tmp_tree_ind = get_latest_intermediate(intermediateFolders, base='added')
+            if intermediateFolder is not None:
+                scdata_guide = loadReconstructedTreeAndData(args, os.path.join(tmp_folder, intermediateFolder),
+                                                            reprocess_data=False, all_genes=False, get_cell_info=False,
+                                                            all_ranks=False, rel_to_results=False, calc_loglik=True)
+        tmp_found = True
+    except:
+        mp_print("Tried to find intermediate results in {}, but could not find any. "
+                 "Starting from guide tree.".format(tmp_folder))
+
+if not tmp_found:
+    # If no intermediate result is present, take the guide tree here. Otherwise take the intermediate result.
+    tmp_tree_ind = 0
+    scdata_guide = loadReconstructedTreeAndData(args, guide_tree_folder, all_genes=all_genes, get_cell_info=False,
+                                                reprocess_data=False, all_ranks=True, rel_to_results=True,
+                                                get_data=False, no_data_needed=True, get_posterior_ltqs=False,
+                                                otherRanksMinimalInfo=True)
 
 # Read in the data for all cells
 if args.preprocessed_data_folder is not None:
@@ -107,7 +130,6 @@ if args.preprocessed_data_folder is not None:
                                                      allow_pickle=False, mmap_mode='r')
 else:
     scdata_all_cells = initializeSCData(args, createStarTree=False, getOrigData=False, otherRanksMinimalInfo=True)
-
 
 cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scdata_all_cells.metadata.cellIds)}
 
@@ -173,10 +195,12 @@ mp_print("Loglikelihood of guide tree before adding cells: " + str(scdata_guide.
 """
 This is the core of the script, the cells will be added iteratively to the guide-tree
 """
+
 scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
                             growth_before_cleanup=args.growth_before_cleanup,
                             select_target=args.select_target,
-                            resolve_polytomies_immediately=args.resolve_polytomies_immediately)
+                            resolve_polytomies_immediately=args.resolve_polytomies_immediately,
+                            scdata=scdata_guide, tmp_folder=tmp_folder, tmp_tree_ind=tmp_tree_ind)
 
 # Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,
 # Internal nodes start at nCells and increase in depth-first manner.

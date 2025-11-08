@@ -4159,7 +4159,8 @@ class Tree:
         return nodeList
 
     def add_cells(self, ltqs_to_add, ltqsvars_to_add, cell_ids, growth_before_cleanup=.1,
-                  select_target='cluster_centers', resolve_polytomies_immediately=True):
+                  select_target='cluster_centers', resolve_polytomies_immediately=True, scdata=None, tmp_folder=None,
+                  tmp_tree_ind=0):
         """
 
         :param ltqs_to_add: Numpy array (genes x cells) with coordinates of cells that should be added to the tree
@@ -4306,7 +4307,15 @@ class Tree:
                     nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
                     cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
 
+                if (scdata is not None) and (tmp_folder is not None):
+                    scdata.storeTreeInFolder(os.path.join(tmp_folder, 'added_%d' % tmp_tree_ind),
+                                             with_coords=False, verbose=True, cleanup_tree=False)
+                    remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
+                    tmp_tree_ind += 1
+
         self.nNodes = bs_glob.nNodes
+        if tmp_folder is not None:
+            remove_tree_folders(tmp_folder, removeDir=True, base='added')
         logging.info("The {} added cells led to a decrease of {} "
                      "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
         logging.info("Not taking account intermediate resolving of polytomies: total loglikelihood should now be {}, "
