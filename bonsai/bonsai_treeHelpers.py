@@ -2273,8 +2273,10 @@ class TreeNode:
         runConfigs['nChildNN'] = nChildNN
         runConfigs['nChildUB'] = nChildUB
         runConfigs['kNN'] = kNN
-        NNInfo = {'NNcounter': 0, 'conn_mat': lil_array((2 * bs_glob.nCells, 2 * bs_glob.nCells), dtype=bool),
-                  'subtracted_mean': None}
+        # We initialize NNInfo, even if NNs are not used, to prevent bugs, but initializing the lil_array takes time
+        NNInfo = {'NNcounter': 0, 'conn_mat': None, 'subtracted_mean': None}
+        if runConfigs['useNN']:
+            NNInfo['conn_mat'] = lil_array((2 * bs_glob.nCells, 2 * bs_glob.nCells), dtype=bool)
 
         # Determine how we communicate data between processes (mem-friendly, using memmap) or not
         runConfigs['n_mem_friendly'] = n_mem_friendly
@@ -2708,7 +2710,7 @@ class TreeNode:
 
     def do_spr_search(self, ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-1e9, prev_node_ind=None,
                       opt_node=None, opt_t=None, opt_dlogl=-1e9,
-                      as_if_root_version=None, spr_target_version=None, do_local_search=True):
+                      as_if_root_version=None, spr_target_version=None, do_local_search=True, search_tol=2):
 
         # First calculate the loglikelihood when adding the candidate on this node
         dlogl_self, opt_t_self = self.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
@@ -2722,7 +2724,7 @@ class TreeNode:
             opt_t = opt_t_self
 
         # If this node is better or comparable to previous nodes in this search, continue the search
-        if dlogl_self > prev_dlogl - 2:
+        if dlogl_self > prev_dlogl - search_tol:
             # Make sure prev_dlogl is keeping track of the highest dlogl seen in this search
             if dlogl_self > prev_dlogl:
                 prev_dlogl = dlogl_self
@@ -2738,7 +2740,8 @@ class TreeNode:
                                                                   opt_t=opt_t, opt_dlogl=opt_dlogl,
                                                                   as_if_root_version=as_if_root_version,
                                                                   spr_target_version=spr_target_version,
-                                                                  do_local_search=do_local_search)
+                                                                  do_local_search=do_local_search,
+                                                                  search_tol=search_tol)
 
         return opt_node, opt_dlogl, opt_t
 
@@ -4160,7 +4163,7 @@ class Tree:
 
     def add_cells(self, ltqs_to_add, ltqsvars_to_add, cell_ids, growth_before_cleanup=.1,
                   select_target='cluster_centers', resolve_polytomies_immediately=True, scdata=None, tmp_folder=None,
-                  tmp_tree_ind=0):
+                  tmp_tree_ind=0, search_tol=2, n_centers=None):
         """
 
         :param ltqs_to_add: Numpy array (genes x cells) with coordinates of cells that should be added to the tree
@@ -4198,8 +4201,11 @@ class Tree:
         # If select_target is cluster_centers, we get cluster-centers here, which will be used as start-points for the
         # tree-based search of where to put the new cells
         if select_target == 'cluster_centers':
-            n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
-            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters + 1)
+            if n_centers is None:
+                n_cntrs = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
+            else:
+                n_cntrs = n_centers
+            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_cntrs + 1)
             nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
             cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
         else:
@@ -4208,6 +4214,9 @@ class Tree:
         n_print = 100
         n_added = 0
         for n_added in range(n_to_add_total):
+            # TODO Remove this
+            # if n_added == 1000:
+            #     exit()
             if n_added == n_print:
                 mp_print("Adding cell {} out of {}: {:.2f}%.".format(n_added + 1, n_to_add_total,
                                                                      100 * (n_added + 1) / n_to_add_total))
@@ -4242,7 +4251,7 @@ class Tree:
                                                                   opt_dlogl=opt_dlogl,
                                                                   as_if_root_version=as_if_root_version,
                                                                   spr_target_version=spr_target_version,
-                                                                  do_local_search=True)
+                                                                  do_local_search=True, search_tol=search_tol)
 
             # Add the node to the tree structure
             """Perform move"""
@@ -4302,8 +4311,11 @@ class Tree:
                                            only_time_opt=resolve_polytomies_immediately)
 
                 if select_target == 'cluster_centers':
-                    n_clusters = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
-                    cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters + 1)
+                    if n_centers is None:
+                        n_cntrs = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
+                    else:
+                        n_cntrs = n_centers
+                    cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_cntrs + 1)
                     nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
                     cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
 
