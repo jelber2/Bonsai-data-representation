@@ -49,6 +49,10 @@ parser.add_argument('--cells_to_be_added', type=str, default=None,
                     help="One can give a filename to a txt-file containing cell-IDs here (one per line). In that case,"
                          "only these cell-IDs will be added.")
 
+parser.add_argument('--search_tol', type=float, default=2,
+                    help="Gives the loglikelihood-margin by which a new SPR-search has to be worse than a previous one"
+                         "before we discard this search direction")
+
 parser.add_argument('--seed', type=int, default=1231,
                     help="Random seed for order of adding the cells.")
 
@@ -61,11 +65,13 @@ guide_tree_folder = args.guide_tree_folder
 growth_before_cleanup = args.growth_before_cleanup
 resolve_polytomies_immediately = args.resolve_polytomies_immediately
 preprocessed_data_folder = args.preprocessed_data_folder
+search_tol = args.search_tol
 args = Run_Configs(args.config_filepath)
 args.preprocessed_data_folder = preprocessed_data_folder
 args.select_target = select_target
 args.growth_before_cleanup = growth_before_cleanup
 args.resolve_polytomies_immediately = resolve_polytomies_immediately
+args.search_tol = search_tol
 
 from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
     OriginalData, Metadata
@@ -173,10 +179,16 @@ mp_print("Loglikelihood of guide tree before adding cells: " + str(scdata_guide.
 """
 This is the core of the script, the cells will be added iteratively to the guide-tree
 """
+if args.select_target == 'root':
+    n_centers = 1
+    args.select_target = 'cluster_centers'
+else:
+    n_centers = None
 scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
                             growth_before_cleanup=args.growth_before_cleanup,
                             select_target=args.select_target,
-                            resolve_polytomies_immediately=args.resolve_polytomies_immediately)
+                            resolve_polytomies_immediately=args.resolve_polytomies_immediately,
+                            search_tol=args.search_tol, n_centers=n_centers)
 
 # Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,
 # Internal nodes start at nCells and increase in depth-first manner.
