@@ -107,10 +107,15 @@ if (mpiRank == 0) and args.pickup_intermediate and os.path.exists(tmp_folder):
         if len(intermediateFolders):
             intermediateFolder, tmp_tree_ind = get_latest_intermediate(intermediateFolders, base='added')
             if intermediateFolder is not None:
+                # scdata_guide = loadReconstructedTreeAndData(args, os.path.join(tmp_folder, intermediateFolder),
+                #                                             reprocess_data=False, all_genes=False, get_cell_info=False,
+                #                                             all_ranks=False, rel_to_results=False, calc_loglik=True)
                 scdata_guide = loadReconstructedTreeAndData(args, os.path.join(tmp_folder, intermediateFolder),
-                                                            reprocess_data=False, all_genes=False, get_cell_info=False,
-                                                            all_ranks=False, rel_to_results=False, calc_loglik=True)
-        tmp_found = True
+                                                            all_genes=all_genes, get_cell_info=False,
+                                                            reprocess_data=False, all_ranks=False, rel_to_results=False,
+                                                            get_data=False, no_data_needed=True,
+                                                            get_posterior_ltqs=False, otherRanksMinimalInfo=True)
+                tmp_found = True
     except:
         mp_print("Tried to find intermediate results in {}, but could not find any. "
                  "Starting from guide tree.".format(tmp_folder))

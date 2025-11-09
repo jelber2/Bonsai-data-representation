@@ -4275,6 +4275,8 @@ class Tree:
             as_if_root_version += 1
             spr_target_version += 1
             bs_glob.nCells += 1
+            scdata.metadata.nCells += 1
+            scdata.metadata.cellIds.append(cell_id)
             # TODO: Eventually check if I want to remove this
             if resolve_polytomies_immediately and (len(new_parent.childNodes) > 2):
                 # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
