@@ -5086,7 +5086,7 @@ def calcSingleDLogL(xrAsIfRoot_g, WAsIfRoot_g, ltqs1, ltqsVars1, wbar1_g, tOld1,
         mp_print("Times cannot be optimized for this pair, probably too many noisy genes are taken into account. "
                  "Try running Bonsai with higher zscore-cutoff.", WARNING=True)
         newLogLik = -np.inf
-        optTimes = None
+        optTimes = calcTInit(tOld1, tOld2, False)
     if onlyTimes:
         return optTimes
     # Then calculate three-leaf star-tree likelihood with leafs (ltqs1, t1 + ltqsVars1) (ltqs2, t2 + ltqsVars2)
