@@ -4246,8 +4246,8 @@ class Tree:
         n_added = 0
         counts_search_moves = []
         for n_added in range(n_to_add_total):
-            # TODO Remove this
-            # if n_added == 1000:
+            # # TODO Remove this
+            # if n_added == 7500:
             #     exit()
             if n_added == n_print:
                 mp_print("Adding cell {} out of {}: {:.2f}%.".format(n_added + 1, n_to_add_total,

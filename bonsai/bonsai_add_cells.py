@@ -54,6 +54,11 @@ parser.add_argument('--search_tol', type=float, default=2,
                     help="Gives the loglikelihood-margin by which a new SPR-search has to be worse than a previous one"
                          "before we discard this search direction")
 
+parser.add_argument('--pickup_intermediate', type=str2bool, default=True,
+                    help='Optional: Set this argument to true if Bonsai needs to search in the indicated results-folder'
+                         'for the furthest developed tree reconstruction, and pick it up from there. If this argument'
+                         'is True, it over-rules the same argument in bonsai_config.yaml, and the other way around.')
+
 parser.add_argument('--seed', type=int, default=1231,
                     help="Random seed for order of adding the cells.")
 
@@ -66,6 +71,7 @@ guide_tree_folder = args.guide_tree_folder
 growth_before_cleanup = args.growth_before_cleanup
 resolve_polytomies_immediately = args.resolve_polytomies_immediately
 preprocessed_data_folder = args.preprocessed_data_folder
+pickup_intermediate = args.pickup_intermediate
 search_tol = args.search_tol
 args = Run_Configs(args.config_filepath)
 args.preprocessed_data_folder = preprocessed_data_folder
@@ -73,6 +79,7 @@ args.select_target = select_target
 args.growth_before_cleanup = growth_before_cleanup
 args.resolve_polytomies_immediately = resolve_polytomies_immediately
 args.search_tol = search_tol
+args.pickup_intermediate = pickup_intermediate
 
 from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
     OriginalData, Metadata
