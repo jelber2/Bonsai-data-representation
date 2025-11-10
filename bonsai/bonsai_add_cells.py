@@ -217,7 +217,7 @@ scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
                             select_target=args.select_target,
                             resolve_polytomies_immediately=args.resolve_polytomies_immediately,
                             scdata=scdata_guide, tmp_folder=tmp_folder, tmp_tree_ind=tmp_tree_ind,
-                            search_tol=args.search_tol, n_centers=n_centers)
+                            search_tol=args.search_tol, n_centers=n_centers, only_count_search_moves=False)
 
 # Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,
 # Internal nodes start at nCells and increase in depth-first manner.

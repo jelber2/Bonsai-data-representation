@@ -2464,8 +2464,9 @@ class TreeNode:
                                                      self.childNodes[nodeIndToChildInd[nodeInd2]].nodeId))
                 mp_print(
                     "Merging nodes " + str(nodeInd1) + " and " + str(nodeInd2) + " into ancestor " + str(
-                        bs_glob.max_node_ind + 1) + ', with times ' + str([newTDict[nodeInd1], newTDict[nodeInd2], newTDict[
-                        bs_glob.max_node_ind + 1]]) + '. Increase in loglikelihood: ' + str(
+                        bs_glob.max_node_ind + 1) + ', with times ' + str(
+                        [newTDict[nodeInd1], newTDict[nodeInd2], newTDict[
+                            bs_glob.max_node_ind + 1]]) + '. Increase in loglikelihood: ' + str(
                         dLogLOpt / bs_glob.nGenes) + ' per gene.', ALL_RANKS=singleProcess)
 
                 # TODO: Remove this later. Only uncomment this for printing cell-annotations
@@ -2708,42 +2709,72 @@ class TreeNode:
                 edgeList = child.getEdgesComplete(edgeList, src=self.nodeInd, indMap=indMap)
         return edgeList
 
-    def do_spr_search(self, ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-1e9, prev_node_ind=None,
-                      opt_node=None, opt_t=None, opt_dlogl=-1e9,
-                      as_if_root_version=None, spr_target_version=None, do_local_search=True, search_tol=2):
+    def do_spr_search(self, ltqs_cand_g, ltqsVars_cand_g, dlogl_self=None, prev_dlogl=-1e9,
+                      prev_node_ind=None, opt_node=None, opt_t=None, opt_dlogl=-1e9, as_if_root_version=None,
+                      spr_target_version=None, do_local_search=True, search_tol=2, search_count=0):
 
+        search_count += 1
         # First calculate the loglikelihood when adding the candidate on this node
-        dlogl_self, opt_t_self = self.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
-                                                         as_if_root_version=as_if_root_version,
-                                                         spr_target_version=spr_target_version)
+        if dlogl_self is None:
+            # We only enter this if-statement, if we do not get this information from the parent process, which is when
+            # the search actually starts at this node
+            dlogl_self, opt_t_self = self.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
+                                                             as_if_root_version=as_if_root_version,
+                                                             spr_target_version=spr_target_version)
 
-        # If this node is better than anything we've seen before, replace the opt-info
-        if dlogl_self > opt_dlogl:
-            opt_dlogl = dlogl_self
-            opt_node = self
-            opt_t = opt_t_self
+            # If this node is better than anything we've seen before, replace the opt-info
+            if dlogl_self > opt_dlogl:
+                opt_dlogl = dlogl_self
+                opt_node = self
+                opt_t = opt_t_self
 
-        # If this node is better or comparable to previous nodes in this search, continue the search
-        if dlogl_self > prev_dlogl - search_tol:
             # Make sure prev_dlogl is keeping track of the highest dlogl seen in this search
             if dlogl_self > prev_dlogl:
                 prev_dlogl = dlogl_self
 
-            # Loop over neighbors, except for the node that you're coming from; calculate the dlogls for those targets
-            added_neighbor = [self.parentNode] if (self.parentNode is not None) else []
-            for target in self.childNodes + added_neighbor:
-                if target.nodeInd == prev_node_ind:
-                    continue
+        # Loop over neighbors, except for the node that you're coming from; calculate the dlogls for those targets
+        added_neighbor = [self.parentNode] if (self.parentNode is not None) else []
+        targets_info = []  # Will contain tuples (target_node, target_dlogl)
+        for target in self.childNodes + added_neighbor:
+            if target.nodeInd == prev_node_ind:
+                continue
+            dlogl_target, opt_t_target = target.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
+                                                                   as_if_root_version=as_if_root_version,
+                                                                   spr_target_version=spr_target_version)
+            targets_info.append((target, dlogl_target))
 
-                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=prev_dlogl,
-                                                                  prev_node_ind=self.nodeInd, opt_node=opt_node,
-                                                                  opt_t=opt_t, opt_dlogl=opt_dlogl,
-                                                                  as_if_root_version=as_if_root_version,
-                                                                  spr_target_version=spr_target_version,
-                                                                  do_local_search=do_local_search,
-                                                                  search_tol=search_tol)
+            # We keep track of two things:
+            # - opt_dlogl. This is the dlogl for the optimal target that we've ever seen for this candidate
+            # - prev_dlogl. This captures the highest dlogl that we've seen during *this* search (i.e. starting from
+            # this initial point)
+            # If this target is better than anything we've seen before, replace the opt-info
+            if dlogl_target > opt_dlogl:
+                opt_dlogl = dlogl_target
+                opt_node = target
+                opt_t = opt_t_target
 
-        return opt_node, opt_dlogl, opt_t
+            # If this node is better than previous in the search starting from this initial point, replace that info
+            if dlogl_target > prev_dlogl:
+                prev_dlogl = dlogl_target
+
+        # Now, we loop over the targets again, and only for those nodes that are within a tolerance below prev_dlogl,
+        # we continue the search.
+        for target, dlogl_target in targets_info:
+            if dlogl_target < prev_dlogl - search_tol:
+                continue
+            opt_node, opt_dlogl, opt_t, search_count = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g,
+                                                                            dlogl_self=dlogl_target,
+                                                                            prev_dlogl=prev_dlogl,
+                                                                            prev_node_ind=self.nodeInd,
+                                                                            opt_node=opt_node, opt_t=opt_t,
+                                                                            opt_dlogl=opt_dlogl,
+                                                                            as_if_root_version=as_if_root_version,
+                                                                            spr_target_version=spr_target_version,
+                                                                            do_local_search=do_local_search,
+                                                                            search_tol=search_tol,
+                                                                            search_count=search_count)
+
+        return opt_node, opt_dlogl, opt_t, search_count
 
     def detach_subtree(self, candidate):
         cand_node_ind = candidate.nodeInd
@@ -3898,7 +3929,7 @@ class Tree:
 
         total_dlogl_increase = 0
 
-        n_print = int(min(100, max_moves/10))
+        n_print = int(min(100, max_moves / 10))
 
         while n_moves < max_moves - 1:
             # TODO: Remove this
@@ -4163,7 +4194,7 @@ class Tree:
 
     def add_cells(self, ltqs_to_add, ltqsvars_to_add, cell_ids, growth_before_cleanup=.1,
                   select_target='cluster_centers', resolve_polytomies_immediately=True, scdata=None, tmp_folder=None,
-                  tmp_tree_ind=0, search_tol=2, n_centers=None):
+                  tmp_tree_ind=0, search_tol=2, n_centers=None, only_count_search_moves=False):
         """
 
         :param ltqs_to_add: Numpy array (genes x cells) with coordinates of cells that should be added to the tree
@@ -4213,6 +4244,7 @@ class Tree:
 
         n_print = 100
         n_added = 0
+        counts_search_moves = []
         for n_added in range(n_to_add_total):
             # TODO Remove this
             # if n_added == 1000:
@@ -4246,14 +4278,22 @@ class Tree:
             opt_t = None
             for target in targets:
                 """Check the change in loglikelihood when adding to target"""
-                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs, ltqsvars, prev_dlogl=-np.inf,
-                                                                  prev_node_ind=None, opt_node=opt_node, opt_t=opt_t,
-                                                                  opt_dlogl=opt_dlogl,
-                                                                  as_if_root_version=as_if_root_version,
-                                                                  spr_target_version=spr_target_version,
-                                                                  do_local_search=True, search_tol=search_tol)
+                opt_node, opt_dlogl, opt_t, search_count = target.do_spr_search(ltqs, ltqsvars, prev_dlogl=-np.inf,
+                                                                                prev_node_ind=None, opt_node=opt_node,
+                                                                                opt_t=opt_t,
+                                                                                opt_dlogl=opt_dlogl,
+                                                                                as_if_root_version=as_if_root_version,
+                                                                                spr_target_version=spr_target_version,
+                                                                                do_local_search=True,
+                                                                                search_tol=search_tol,
+                                                                                search_count=0)
+                counts_search_moves.append(search_count)
 
             # Add the node to the tree structure
+            if only_count_search_moves:
+                as_if_root_version += 1
+                spr_target_version += 1
+                continue
             """Perform move"""
             # Keep track of loglikelihood decrease for a sanity check
             total_dlogl_decrease += opt_dlogl
@@ -4327,6 +4367,9 @@ class Tree:
                     remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
                     tmp_tree_ind += 1
 
+        if only_count_search_moves:
+            np.savetxt(scdata.result_path('counts_search_moves.txt'), np.array(counts_search_moves), fmt='%d')
+            exit()
         self.nNodes = bs_glob.nNodes
         if tmp_folder is not None:
             remove_tree_folders(tmp_folder, removeDir=True, base='added')
