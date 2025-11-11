@@ -68,9 +68,11 @@ n_initial_cells = args.n_initial_cells
 return_commands = args.return_commands
 config_filepath = args.config_filepath
 seed = args.seed
+search_tol = args.search_tol
 
 args = Run_Configs(args.config_filepath)
 
+args.search_tol = search_tol
 args.select_target = select_target
 args.iterative_cell_lists = iterative_cell_lists
 args.growth_before_cleanup = growth_before_cleanup
