@@ -3743,12 +3743,13 @@ class Tree:
                                                               moves_id='C_long_branches_T_cluster_centers',
                                                               tracking=tracking, info_dict=info_dict)
 
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='random',
-                                                              select_target='random',
-                                                              max_moves=None,
-                                                              moves_id='C_random_T_random',
-                                                              tracking=tracking, info_dict=info_dict)
+            # TODO: REVERT THIS?
+            # info_dict = self.do_spr_moves_with_postprocessing(args=args,
+            #                                                   select_cand='random',
+            #                                                   select_target='random',
+            #                                                   max_moves=None,
+            #                                                   moves_id='C_random_T_random',
+            #                                                   tracking=tracking, info_dict=info_dict)
 
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
                                                               select_cand='long_branches_first',
@@ -3931,6 +3932,9 @@ class Tree:
 
         n_print = int(min(100, max_moves / 10))
 
+        # TODO: Remove this useless initialization
+        orig_t = None
+
         while n_moves < max_moves - 1:
             # TODO: Remove this
             # nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
@@ -3945,7 +3949,9 @@ class Tree:
             n_moves += 1
             spr_target_version += 1
 
-            if n_moves == n_print:
+            # TODO: REVERT THIS!
+            # if n_moves == n_print:
+            if n_moves > 0:
                 mp_print("Performing SPR move {} out of {}. "
                          "Results so far: {} successes, {} loglikelihood-change, "
                          "current original branch length: {}".format(n_moves, max_moves,
@@ -4255,8 +4261,12 @@ class Tree:
             # # TODO Remove this
             # if n_added == 7500:
             #     exit()
-            if n_added == n_print:
-                mp_print("Adding cell {} out of {}: {:.2f}%.".format(n_added + 1, n_to_add_total,
+
+            # TODO: Revert this
+            # if n_added == n_print:
+            if True:
+                mp_print("Seconds since start: {}. Adding cell {} out of {}: {:.2f}%.".format(time.time()-start_adding,
+                                                                                              n_added + 1, n_to_add_total,
                                                                      100 * (n_added + 1) / n_to_add_total))
                 mp_print("Total number of searches done: {}".format(total_search_moves))
                 n_print *= 2
