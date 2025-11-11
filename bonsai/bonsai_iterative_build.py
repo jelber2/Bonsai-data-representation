@@ -26,6 +26,10 @@ parser.add_argument('--select_target', type=str, default='cluster_centers',
                     help="This will determine what strategy we follow for the "
                          "spr-moves. Current options are 'root', 'cluster_centers', 'exhaustive'")
 
+parser.add_argument('--search_tol', type=float, default=2,
+                    help="Gives the loglikelihood-margin by which a new SPR-search has to be worse than a previous one"
+                         "before we discard this search direction")
+
 parser.add_argument('--iterative_cell_lists', type=str, default=None,
                     help="[NOT YET IMPLEMENTED]"
                          "One can give a filename here for a file where we have all cell-IDs (one per line) in the "
@@ -259,7 +263,8 @@ add_cells_cmd = ['bonsai/bonsai_add_cells.py',
                  '--guide_tree_folder', results_dir_subset0,
                  '--preprocessed_data_folder', scdata.metadata.processedDatafolder,
                  '--growth_before_cleanup', str(args.growth_before_cleanup),
-                 '--select_target', 'cluster_centers',
+                 '--select_target', args.select_target,
+                 '--search_tol', str(args.search_tol),
                  '--seed', str(add_cells_seed)]
 # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 
