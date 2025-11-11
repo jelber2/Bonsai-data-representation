@@ -3982,12 +3982,15 @@ class Tree:
             opt_t = None
             for target in targets:
                 """Check the change in loglikelihood when adding to target"""
-                opt_node, opt_dlogl, opt_t = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g, prev_dlogl=-np.inf,
-                                                                  prev_node_ind=None, opt_node=opt_node, opt_t=opt_t,
-                                                                  opt_dlogl=opt_dlogl,
-                                                                  as_if_root_version=as_if_root_version,
-                                                                  spr_target_version=spr_target_version,
-                                                                  do_local_search=do_local_search)
+                opt_node, opt_dlogl, opt_t, search_count = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g,
+                                                                                prev_dlogl=-np.inf,
+                                                                                prev_node_ind=None, opt_node=opt_node,
+                                                                                opt_t=opt_t,
+                                                                                opt_dlogl=opt_dlogl,
+                                                                                as_if_root_version=as_if_root_version,
+                                                                                spr_target_version=spr_target_version,
+                                                                                do_local_search=do_local_search,
+                                                                                search_count=0)
 
             # Check if dlogl-improvement is gained. Otherwise, just place it back at its original position
             found_new_parent = None
