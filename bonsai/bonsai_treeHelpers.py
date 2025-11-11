@@ -3947,9 +3947,10 @@ class Tree:
 
             if n_moves == n_print:
                 mp_print("Performing SPR move {} out of {}. "
-                         "Results so far: {} successes, {} loglikelihood-change".format(n_moves, max_moves,
-                                                                                        successful_moves,
-                                                                                        total_dlogl_increase))
+                         "Results so far: {} successes, {} loglikelihood-change, "
+                         "current original branch length: {}".format(n_moves, max_moves,
+                                                                     successful_moves, total_dlogl_increase,
+                                                                     orig_t))
                 n_print *= 2
 
             """Select child to be moved"""
@@ -4247,7 +4248,9 @@ class Tree:
 
         n_print = 100
         n_added = 0
-        counts_search_moves = []
+        # counts_search_moves = []
+        total_search_moves = 0
+        start_adding = time.time()
         for n_added in range(n_to_add_total):
             # # TODO Remove this
             # if n_added == 7500:
@@ -4255,6 +4258,7 @@ class Tree:
             if n_added == n_print:
                 mp_print("Adding cell {} out of {}: {:.2f}%.".format(n_added + 1, n_to_add_total,
                                                                      100 * (n_added + 1) / n_to_add_total))
+                mp_print("Total number of searches done: {}".format(total_search_moves))
                 n_print *= 2
 
             # Create TreeNode that can be added
@@ -4290,13 +4294,14 @@ class Tree:
                                                                                 do_local_search=True,
                                                                                 search_tol=search_tol,
                                                                                 search_count=0)
-                counts_search_moves.append(search_count)
+                total_search_moves += search_count
+                # counts_search_moves.append(search_count)
 
             # Add the node to the tree structure
-            if only_count_search_moves:
-                as_if_root_version += 1
-                spr_target_version += 1
-                continue
+            # if only_count_search_moves:
+            #     as_if_root_version += 1
+            #     spr_target_version += 1
+            #     continue
             """Perform move"""
             # Keep track of loglikelihood decrease for a sanity check
             total_dlogl_decrease += opt_dlogl
@@ -4345,6 +4350,9 @@ class Tree:
             # Increase metadata (nNodes, ...?)
 
             if n_added == n_before_cleanup:
+                mp_print("Round of adding cells took {} seconds.".format(time.time() - start_adding))
+                start_postprocessing = time.time()
+
                 tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
                 mp_print("Performing intermediate time-optimization and calculating new cluster-centers. "
                          "Current number of cells: {}".format(tree_size))
@@ -4354,6 +4362,8 @@ class Tree:
 
                 self.do_spr_postprocessing(change_node_inds=False, verbose=False,
                                            only_time_opt=resolve_polytomies_immediately)
+                mp_print("Round of re-optimizing times took {} seconds.".format(time.time() - start_postprocessing))
+                start_cluster_centers = time.time()
 
                 if select_target == 'cluster_centers':
                     if n_centers is None:
@@ -4363,6 +4373,7 @@ class Tree:
                     cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_cntrs + 1)
                     nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
                     cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
+                mp_print("Round of getting new cluster centers took {} seconds.".format(time.time() - start_cluster_centers))
 
                 if (scdata is not None) and (tmp_folder is not None):
                     scdata.storeTreeInFolder(os.path.join(tmp_folder, 'added_%d' % tmp_tree_ind),
@@ -4370,9 +4381,11 @@ class Tree:
                     remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
                     tmp_tree_ind += 1
 
-        if only_count_search_moves:
-            np.savetxt(scdata.result_path('counts_search_moves.txt'), np.array(counts_search_moves), fmt='%d')
-            exit()
+                start_adding = time.time()
+
+        # if only_count_search_moves:
+        #     np.savetxt(scdata.result_path('counts_search_moves.txt'), np.array(counts_search_moves), fmt='%d')
+        #     exit()
         self.nNodes = bs_glob.nNodes
         if tmp_folder is not None:
             remove_tree_folders(tmp_folder, removeDir=True, base='added')
