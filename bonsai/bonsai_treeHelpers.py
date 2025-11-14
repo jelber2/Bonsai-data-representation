@@ -15,6 +15,9 @@ import pandas as pd
 from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str
 import json
 
+# TODO: Remove this
+import psutil
+
 
 class TreeNode:
     nodeInd = None  # identifier index for the node
@@ -3957,6 +3960,10 @@ class Tree:
                          "current original branch length: {}".format(n_moves, max_moves,
                                                                      successful_moves, total_dlogl_increase,
                                                                      orig_t))
+                # TODO: Remove this memory measurement maybe
+                mp_print("Current memory usage is ",
+                         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+
                 n_print *= 2
 
             """Select child to be moved"""
@@ -4269,6 +4276,9 @@ class Tree:
                                                                                               n_added + 1, n_to_add_total,
                                                                      100 * (n_added + 1) / n_to_add_total))
                 mp_print("Total number of searches done: {}".format(total_search_moves))
+                # TODO: Remove this memory statement (maybe)
+                mp_print("Current memory usage is ",
+                         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
                 n_print *= 2
 
             # Create TreeNode that can be added
