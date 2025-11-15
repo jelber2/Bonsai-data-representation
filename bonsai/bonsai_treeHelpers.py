@@ -3744,7 +3744,8 @@ class Tree:
                                                               select_target='cluster_centers',
                                                               max_moves=None,
                                                               moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict)
+                                                              tracking=tracking, info_dict=info_dict,
+                                                              min_branch_length=1e-2)
 
             # TODO: REVERT THIS?
             # info_dict = self.do_spr_moves_with_postprocessing(args=args,
@@ -3759,7 +3760,8 @@ class Tree:
                                                               select_target='cluster_centers',
                                                               max_moves=None,
                                                               moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict)
+                                                              tracking=tracking, info_dict=info_dict,
+                                                              min_branch_length=1e-2)
 
         elif strategy == 'super_sure':
             info_dict = self.do_spr_moves_with_postprocessing(args=args,
@@ -3824,7 +3826,7 @@ class Tree:
             json.dump(info_dict, f, indent=4)
 
     def do_spr_moves_with_postprocessing(self, args, select_cand, select_target, max_moves=None,
-                                         moves_id=None, tracking=False, info_dict=None):
+                                         moves_id=None, tracking=False, info_dict=None, min_branch_length=-1):
         if max_moves is None:
             max_moves = bs_glob.nNodes
 
@@ -3837,7 +3839,8 @@ class Tree:
 
         # The actual moves!
         successful_moves, total_dlogl = self.do_spr_moves(max_moves=max_moves, select_cand=select_cand,
-                                                          select_target=select_target)
+                                                          select_target=select_target,
+                                                          min_branch_length=min_branch_length)
 
         # Just some tracking
         if tracking:
@@ -3866,7 +3869,7 @@ class Tree:
         return info_dict
 
     def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random', do_local_search=True,
-                     do_postprocessing=False, verbose=False):
+                     do_postprocessing=False, min_branch_length=-1, verbose=False):
         """
 
         :param max_moves: When we do random moves, this sets the number of SPR-moves
@@ -3917,8 +3920,10 @@ class Tree:
         if select_cand == 'long_branches_first':
             nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
             # Sort them such that tParent (connecting branch length) is descending
-            sorted_time_node_tuples = [(node.tParent, node) for node in nodesList if not node.isRoot]
+            sorted_time_node_tuples = [(node.tParent, node) for node in
+                                       nodesList if (not node.isRoot) and (node.tParent > min_branch_length)]
             sorted_time_node_tuples.sort(key=lambda x: x[0], reverse=True)
+
             max_moves = min(len(sorted_time_node_tuples), max_moves)
         else:
             sorted_time_node_tuples = None
