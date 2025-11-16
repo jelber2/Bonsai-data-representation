@@ -2533,8 +2533,8 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
             gene_vars_list = []
             ltqs_list = []
             ltqs_vars_list = []
-            for rank in range(mpiInfo.size):
-                fname = os.path.join(tmp_folder, 'tmp_data_proc_{}.npz'.format(mpiInfo.rank))
+            for proc in range(mpiInfo.size):
+                fname = os.path.join(tmp_folder, 'tmp_data_proc_{}.npz'.format(proc))
                 data = np.load(fname)
 
                 genes_to_keep_list.append(data["genes_to_keep"])
