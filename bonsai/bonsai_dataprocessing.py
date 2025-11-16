@@ -1066,7 +1066,7 @@ class SCData:
     def read_in_data(self, filenamesData=None, getOrigData=False, verbose=False, noDataNeeded=False, sanityOutput=False,
                      zscoreCutoff=-1, mpiInfo=None, all_genes=False):
         if mpiInfo is None:
-            mpi_wrapper.get_mpi_info()
+            mpiInfo = mpi_wrapper.get_mpi_info()
         originalData = OriginalData()
         # Determine correct filenames
         if filenamesData is None:
@@ -1081,11 +1081,15 @@ class SCData:
                 filenameStds = None
 
         try:
+            tmp_folder = self.result_path('processed_data_communication')
+            if (mpiInfo.size > 1) and (mpiInfo.rank == 0):
+                Path(tmp_folder).mkdir(parents=True, exist_ok=True)
             originalData.ltqs, originalData.ltqsVars, originalData.geneVariances, \
-            self.metadata.nCells, \
-            self.metadata.nGenes, genes_to_keep, ltqStdsFound, \
-            n_genes_orig = read_and_filter(self.data_path(), filenameMeans, filenameStds, sanityOutput,
-                                           zscoreCutoff, mpiInfo, verbose=verbose, all_genes=all_genes)
+                self.metadata.nCells, \
+                self.metadata.nGenes, genes_to_keep, ltqStdsFound, \
+                n_genes_orig = read_and_filter(self.data_path(), filenameMeans, filenameStds, sanityOutput,
+                                               zscoreCutoff, mpiInfo, tmp_folder=tmp_folder, verbose=verbose,
+                                               all_genes=all_genes)
 
         except FileNotFoundError:
             if noDataNeeded:
@@ -2258,8 +2262,8 @@ def loglik_given_true_var_log(true_var_log, inferred_vals, inferred_vars):
         np.sum(alpha))  # the middle term was missing in the other implementation
 
 
-def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff, mpiInfo, verbose=False,
-                    all_genes=False):
+def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff, mpiInfo, tmp_folder=None,
+                    verbose=False, all_genes=False):
     """
     Reads in means and standard deviations line by line (i.e per gene/feature), possibly parallelized over multiple
     processes. For each gene, we determine if it makes the zscore-cutoff before adding it to the data to save memory.
@@ -2278,6 +2282,9 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
     tmp_vars = []
     tmp_gene_vars = []
     print_ind = 1000
+    if tmp_folder is None:
+        tmp_folder = os.path.dirname(meansfile)
+        Path(tmp_folder).mkdir(parents=True, exist_ok=True)
 
     # Define cutoff for how close the variances on LTQs can be to the true variances before throwing out a gene.
     # In error-less data, variances on the LTQ-posterior should always be smaller than the true variance
@@ -2511,45 +2518,104 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
             gene_vars = np.array(tmp_gene_vars)
 
     if mpiInfo.size > 1:
-        # Make all processes communicate the read-in data with process 0.
-        ltqsInfo = np.concatenate((genes_to_keep[:, None], gene_vars[:, None], ltqs, ltqsVars), axis=1)
-        mp_print("Size of ltqsInfo that is communicated with other processes: ", ltqsInfo.shape, ONLY_RANK=0)
-        ltqsInfo = mpi_wrapper.GatherNpUnknownSize(ltqsInfo, root=0)
+        # Write the data gathered on each process to a numpy file
+        if not os.path.exists(tmp_folder):
+            Path(tmp_folder).mkdir(parents=True, exist_ok=True)
+        fname = os.path.join(tmp_folder, 'tmp_data_proc_{}.npz'.format(mpiInfo.rank))
+        np.savez(fname, genes_to_keep=genes_to_keep, gene_vars=gene_vars, ltqs=ltqs, ltqsVars=ltqsVars)
+
+        # Wait until all processes are done
+        mpi_wrapper.barrier()
+
+        # Gather data only on process 0
         if mpiInfo.rank == 0:
-            if ltqsInfo.shape[0] <= 1:
-                # Check if there are genes to continue, otherwise communicate with other processes to exit
+            genes_to_keep_list = []
+            gene_vars_list = []
+            ltqs_list = []
+            ltqs_vars_list = []
+            for rank in range(mpiInfo.size):
+                fname = os.path.join(tmp_folder, 'tmp_data_proc_{}.npz'.format(mpiInfo.rank))
+                data = np.load(fname)
+
+                genes_to_keep_list.append(data["genes_to_keep"])
+                gene_vars_list.append(data["gene_vars"])
+                ltqs_list.append(data["ltqs"])
+                ltqs_vars_list.append(data["ltqsVars"])
+
+            # Concatenate vertically
+            genes_to_keep = np.concatenate(genes_to_keep_list, axis=0)
+            gene_vars = np.concatenate(gene_vars_list, axis=0)
+            ltqs = np.vstack(ltqs_list)
+            ltqsVars = np.vstack(ltqs_vars_list)
+
+            # Check if there are genes to continue, otherwise communicate with other processes to exit
+            if len(genes_to_keep) <= 1:
                 continueYN = False
                 mpi_wrapper.bcast(continueYN, root=0)
-                if ltqsInfo.shape[0] == 0:
+                if len(genes_to_keep) == 0:
                     exit("No gene made the zscore-cutoff. Considering lowering the cutoff.")
                 else:
                     exit("Only one gene made the zscore-cutoff. Considering lowering the zscore-cutoff.")
-            # Gather all information from all processes, this is now a matrix with a gene on each row, and then blocks
-            # with, respectively, gene_inds, means, variances
-            ltqsInfo = np.vstack(ltqsInfo)
-            genes_to_keep, gene_vars, ltqs, ltqsVars = np.array_split(ltqsInfo, indices_or_sections=[1, 2, nCells + 2],
-                                                                      axis=1)
             continueYN = True
             mpi_wrapper.bcast(continueYN, root=0)
+
+            # Remove the communicated data
+            if (mpiInfo.rank == 0) and (tmp_folder is not None):
+                remove_folder(tmp_folder)
         else:
             continueOrBreak = None
             continueYN = mpi_wrapper.bcast(continueOrBreak, root=0)
             if not continueYN:
                 exit()
+
     else:
         if ltqs.shape[0] == 0:
             exit("Exiting: No gene made the zscore-cutoff. Consider lowering the cutoff.")
         elif ltqs.shape[0] == 1:
             exit("Exiting: Only one gene made the zscore-cutoff. Consider lowering the cutoff.")
+
+    """REPLACE FROM HERE!"""
+    # if mpiInfo.size > 1:
+    #     # Make all processes communicate the read-in data with process 0.
+    #     ltqsInfo = np.concatenate((genes_to_keep[:, None], gene_vars[:, None], ltqs, ltqsVars), axis=1)
+    #     mp_print("Size of ltqsInfo that is communicated with other processes: ", ltqsInfo.shape, ONLY_RANK=0)
+    #     ltqsInfo = mpi_wrapper.GatherNpUnknownSize(ltqsInfo, root=0)
+    #     if mpiInfo.rank == 0:
+    #         if ltqsInfo.shape[0] <= 1:
+    #             # Check if there are genes to continue, otherwise communicate with other processes to exit
+    #             continueYN = False
+    #             mpi_wrapper.bcast(continueYN, root=0)
+    #             if ltqsInfo.shape[0] == 0:
+    #                 exit("No gene made the zscore-cutoff. Considering lowering the cutoff.")
+    #             else:
+    #                 exit("Only one gene made the zscore-cutoff. Considering lowering the zscore-cutoff.")
+    #         # Gather all information from all processes, this is now a matrix with a gene on each row, and then blocks
+    #         # with, respectively, gene_inds, means, variances
+    #         ltqsInfo = np.vstack(ltqsInfo)
+    #         genes_to_keep, gene_vars, ltqs, ltqsVars = np.array_split(ltqsInfo, indices_or_sections=[1, 2, nCells + 2],
+    #                                                                   axis=1)
+    #         continueYN = True
+    #         mpi_wrapper.bcast(continueYN, root=0)
+    #     else:
+    #         continueOrBreak = None
+    #         continueYN = mpi_wrapper.bcast(continueOrBreak, root=0)
+    #         if not continueYN:
+    #             exit()
+    # else:
+    #     if ltqs.shape[0] == 0:
+    #         exit("Exiting: No gene made the zscore-cutoff. Consider lowering the cutoff.")
+    #     elif ltqs.shape[0] == 1:
+    #         exit("Exiting: Only one gene made the zscore-cutoff. Consider lowering the cutoff.")
+    """REPLACE UNTIL HERE!"""
+
     if mpiInfo.rank != 0:
         # Save memory by removing all data-variables from processes other than 0
-        del ltqsInfo
         del ltqs
         del ltqsVars
         gc.collect()
         return None, None, None, None, None, None, None, None
-    genes_to_keep = genes_to_keep.flatten().astype(dtype=int)
-    gene_vars = gene_vars.flatten()
+    # genes_to_keep = genes_to_keep.flatten().astype(dtype=int)
+    # gene_vars = gene_vars.flatten()
     nGenes = ltqs.shape[0]
     if verbose:
         mp_print("Processed %d genes in %.2f seconds, found %d cells. At zscore-cutoff of %f, %d genes were kept." % (
