@@ -2547,7 +2547,10 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
             gene_vars = np.concatenate(gene_vars_list, axis=0)
             ltqs = np.vstack(ltqs_list)
             ltqsVars = np.vstack(ltqs_vars_list)
-
+            del ltqs_list
+            del ltqs_vars_list
+            gc.collect()
+            
             # Check if there are genes to continue, otherwise communicate with other processes to exit
             if len(genes_to_keep) <= 1:
                 continueYN = False
