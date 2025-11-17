@@ -1909,13 +1909,11 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
     get_all_data = get_data and ((mpi_info.rank == 0) or (all_ranks and (not otherRanksMinimalInfo)))
     tree_tuple = reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=args.verbose)
     vertIndToNode, vertIndToNodeInd, vertIndToNodeId, edgeList, distList = tree_tuple
-    mp_print("STARTING TO GATHER DATA FOR TREE!")
     data_found = load_data_for_tree(scData, tree_folder, vertIndToNode, get_all_data=get_all_data,
                                     load_data=(not reprocess_data),
                                     verbose=False, keep_original_data=keep_original_data,
                                     get_posterior_ltqs=get_posterior_ltqs,
                                     no_data_needed=no_data_needed)
-    mp_print("FINALIZED GETTING DATA FOR TREE, NOW CALCULATING LIKELIHOOD!")
     if data_found and get_all_data and calc_loglik and (mpi_info.rank == 0):
         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
@@ -2015,13 +2013,11 @@ def reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=False):
 def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, load_data=True, verbose=False,
                        keep_original_data=False, get_posterior_ltqs=False, no_data_needed=False):
     if not load_data:  # In this case, data was already loaded, we only add it to the tree and do some checks
-        mp_print("APPARENTLY I'M ENTERING HERE, AT THE NOT LOAD_DATA CLAUSE")
         if scData.metadata.nCells is None:
             scData.metadata.nCells = scData.tree.root.countDSLeafs(0)
             bs_glob.nCells = scData.metadata.nCells
             scData.metadata.cellIds = ["Cell_%d" % ind for ind in range(scData.metadata.nCells)]
         if get_all_data and (scData.originalData.ltqs is not None):
-            mp_print("STARTING TO ADD DATA TO TREE")
             addDataToTree(scData, vertind_to_node)
             # scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True)
         if not keep_original_data:
@@ -2030,7 +2026,6 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
             mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik))
         return True
 
-    mp_print("I'M IN THE LOAD_DATA CLAUSE")
     # Read all metadata
     scData.metadata = Metadata(json_filepath=os.path.join(tree_folder, 'metadata.json'), curr_metadata=scData.metadata)
     bs_glob.nGenes = scData.metadata.nGenes
@@ -2054,7 +2049,6 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
     if (not get_posterior_ltqs) or (not posteriors_found):
         meanspath = os.path.join(tree_folder, 'ltqs_vertByGene.npy')
         if os.path.exists(meanspath):
-            mp_print("I'M GOING TO LOAD DATA FROM {}".format(meanspath))
             ltqs_found = True
             varspath = os.path.join(tree_folder, 'ltqsVars_vertByGene.npy')
             readFolder = tree_folder
@@ -2071,43 +2065,25 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
             start = time.time()
             if ltqs_found or posteriors_found:
                 print_ind = 1000
-                mp_print("LOADING DATA FROM NPY FILES")
                 ltqs_cg = np.load(meanspath, allow_pickle=False, mmap_mode='r')
                 ltqsVars_cg = np.load(varspath, allow_pickle=False, mmap_mode='r')
-                mp_print("DONE LOADING DATA FROM NPY FILES")
                 if ltqs_cg.shape[0] != bs_glob.nNodes:
                     raise Exception("Trying to load data for {} nodes, "
                                     "while tree has {} nodes.".format(ltqs_cg.shape[0], bs_glob.nNodes))
-                verbose = True
-                timing_ltqs = 0
-                timing_ltqsVars = 0
-                timing_cellid = 0
-                timing_lookup = 0
                 for vert_ind in range(bs_glob.nNodes):
                     if (vert_ind == print_ind) and verbose:
                         print_ind *= 2
                         mp_print("Loaded coordinates for %d vertices out of %d in %.2f seconds." % (
                             vert_ind, bs_glob.nNodes, time.time() - start))
-                        mp_print(
-                            "Timings. Lookup: {}, Ltqs: {}, LtqsVars: {}, CellID: {}".format(timing_lookup, timing_ltqs,
-                                                                                             timing_ltqsVars,
-                                                                                             timing_cellid))
-                    start = time.time()
                     node = vertind_to_node[vert_ind]
-                    timing_lookup += time.time() - start
                     if posteriors_found:
                         node.ltqsAIRoot = ltqs_cg[vert_ind, :]
                         node.setLtqsVarsOrW(ltqsVars=ltqsVars_cg[vert_ind, :], AIRoot=True)
                     else:
-                        start = time.time()
                         node.ltqs = ltqs_cg[vert_ind, :]
-                        timing_ltqs += time.time() - start
-                        start = time.time()
                         node.setLtqsVarsOrW(ltqsVars=ltqsVars_cg[vert_ind, :])
-                        timing_ltqsVars += time.time() - start
                     start = time.time()
                     node.isCell = node.nodeId in cell_id_set
-                    timing_cellid += time.time() - start
                 del ltqs_cg
                 del ltqsVars_cg
                 gc.collect()

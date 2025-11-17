@@ -196,7 +196,6 @@ if args.step in ['preprocess', 'all']:
             scData = initializeSCData(args, createStarTree=True, getOrigData=False, otherRanksMinimalInfo=True)
 
         # Store run configurations in YAML-file in output-folder
-        mp_print("DONE WITH INITIALIZING SC DATA!")
         args.store_yaml(scData.result_path('used_run_configs.yaml'))
 
         if mpiRank == 0:
