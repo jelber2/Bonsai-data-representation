@@ -4099,7 +4099,7 @@ class Tree:
 
         return successful_moves, total_dlogl_increase
 
-    def do_spr_postprocessing(self, change_node_inds=False, only_time_opt=False, verbose=False):
+    def do_spr_postprocessing(self, change_node_inds=False, only_time_opt=False, verbose=False, only_cleanup=False):
         """
         IMPORTANT: This function should be run without parallelization. Otherwise, one has to guarantee that the tree
         topologies match on all processes, which we cannot at the moment.
@@ -4118,6 +4118,9 @@ class Tree:
         self.root.renumberNodes(change_node_inds=change_node_inds)
         self.nNodes = bs_glob.nNodes
         self.root.storeParent()
+
+        if only_cleanup:
+            return
 
         # Do first re-optimization of times
         self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-3)
@@ -4229,6 +4232,9 @@ class Tree:
         # TODO: Turn this off
         very_verbose = False
         # We initialize some variables, and do a first clean-up of the tree
+        if select_target == 'cluster_centers':
+            growth_bf_clst_cntrs = .1
+
         as_if_root_version = 0
         spr_target_version = 0
         self.root.reset_version_numbers('_AIRoot_version')
@@ -4250,6 +4256,10 @@ class Tree:
         n_to_add_total = ltqs_to_add.shape[1]
         tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
         n_before_cleanup = int(np.ceil(growth_before_cleanup * tree_size))
+        if select_target == 'cluster_centers':
+            n_bf_clst_cntrs = int(np.ceil(growth_bf_clst_cntrs * tree_size))
+        else:
+            n_bf_clst_cntrs = n_before_cleanup
 
         # If select_target is cluster_centers, we get cluster-centers here, which will be used as start-points for the
         # tree-based search of where to put the new cells
@@ -4374,21 +4384,35 @@ class Tree:
 
             # Increase metadata (nNodes, ...?)
 
-            if n_added == n_before_cleanup:
-                mp_print("Round of adding cells took {} seconds.".format(time.time() - start_adding))
-                start_postprocessing = time.time()
-
+            if n_added in [n_before_cleanup, n_bf_clst_cntrs]:
                 tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
-                mp_print("Performing intermediate time-optimization and calculating new cluster-centers. "
-                         "Current number of cells: {}".format(tree_size))
 
-                n_before_cleanup += int(np.ceil(growth_before_cleanup * tree_size))
-                n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
+                if n_added != n_before_cleanup:
+                    only_cleanup = True
+                    mp_print("Performing small cleanup and calculating new cluster-centers. "
+                             "Current number of cells: {}".format(tree_size))
+                else:
+                    only_cleanup = False
+                    mp_print("Round of adding cells took {} seconds.".format(time.time() - start_adding))
+                    start_postprocessing = time.time()
+                    mp_print("Performing intermediate time-optimization and calculating new cluster-centers. "
+                             "Current number of cells: {}".format(tree_size))
 
-                self.do_spr_postprocessing(change_node_inds=False, verbose=False,
+                if not only_cleanup:
+                    n_before_cleanup += int(np.ceil(growth_before_cleanup * tree_size))
+                    n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
+
+                if select_target == 'cluster_centers':
+                    n_bf_clst_cntrs += int(np.ceil(growth_bf_clst_cntrs * tree_size))
+                    n_bf_clst_cntrs = min(n_bf_clst_cntrs, n_to_add_total - 1)
+                else:
+                    n_bf_clst_cntrs = n_before_cleanup
+
+                self.do_spr_postprocessing(change_node_inds=False, verbose=False, only_cleanup=only_cleanup,
                                            only_time_opt=resolve_polytomies_immediately)
-                mp_print("Round of re-optimizing times took {} seconds.".format(time.time() - start_postprocessing))
-                start_cluster_centers = time.time()
+                if not only_cleanup:
+                    mp_print("Round of re-optimizing times took {} seconds.".format(time.time() - start_postprocessing))
+                    start_cluster_centers = time.time()
 
                 if select_target == 'cluster_centers':
                     if n_centers is None:
@@ -4398,13 +4422,15 @@ class Tree:
                     cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_cntrs + 1)
                     nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
                     cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
-                mp_print("Round of getting new cluster centers took {} seconds.".format(time.time() - start_cluster_centers))
 
-                if (scdata is not None) and (tmp_folder is not None):
-                    scdata.storeTreeInFolder(os.path.join(tmp_folder, 'added_%d' % tmp_tree_ind),
-                                             with_coords=False, verbose=True, cleanup_tree=False)
-                    remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
-                    tmp_tree_ind += 1
+                if not only_cleanup:
+                    mp_print("Round of getting new cluster centers took {} seconds.".format(time.time() - start_cluster_centers))
+
+                    if (scdata is not None) and (tmp_folder is not None):
+                        scdata.storeTreeInFolder(os.path.join(tmp_folder, 'added_%d' % tmp_tree_ind),
+                                                 with_coords=False, verbose=True, cleanup_tree=False)
+                        remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
+                        tmp_tree_ind += 1
 
                 start_adding = time.time()
 
