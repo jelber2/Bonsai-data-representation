@@ -189,8 +189,9 @@ class SCData:
                 originalData.ltqs /= np.sqrt(originalData.geneVariances[:, None])
                 if originalData.ltqsVars is not None:
                     originalData.ltqsVars /= (originalData.geneVariances[:, None])
-                self.metadata.loglikVarCorr = - (self.metadata.nCells-1) * np.sum(
-                    np.log(originalData.geneVariances))  # - self.metadata.nCells * self.metadata.nGenes * np.log(2* np.pi)
+                self.metadata.loglikVarCorr = - (self.metadata.nCells - 1) * np.sum(
+                    np.log(
+                        originalData.geneVariances))  # - self.metadata.nCells * self.metadata.nGenes * np.log(2* np.pi)
                 originalData.geneDiffusionScaling = 'geneVariances'
                 self.metadata.geneDiffusionScaling = 'geneVariances'
             # elif originalData.ltqs is not None:
@@ -931,7 +932,8 @@ class SCData:
                 delim = ','
             else:
                 continue
-            annot_input = pd.read_csv(filepath, header=0, index_col=0, delimiter=delim, dtype={0: str})  # .astype(dtype=str)
+            annot_input = pd.read_csv(filepath, header=0, index_col=0, delimiter=delim,
+                                      dtype={0: str})  # .astype(dtype=str)
             if hasattr(self.metadata, 'nCss') and (
                     annot_input.shape[0] in [self.metadata.nCss - 1, self.metadata.nCss]):
                 if annot_input.shape[0] == (self.metadata.nCss - 1):
@@ -1085,11 +1087,11 @@ class SCData:
             if (mpiInfo.size > 1) and (mpiInfo.rank == 0):
                 Path(tmp_folder).mkdir(parents=True, exist_ok=True)
             originalData.ltqs, originalData.ltqsVars, originalData.geneVariances, \
-                self.metadata.nCells, \
-                self.metadata.nGenes, genes_to_keep, ltqStdsFound, \
-                n_genes_orig = read_and_filter(self.data_path(), filenameMeans, filenameStds, sanityOutput,
-                                               zscoreCutoff, mpiInfo, tmp_folder=tmp_folder, verbose=verbose,
-                                               all_genes=all_genes)
+            self.metadata.nCells, \
+            self.metadata.nGenes, genes_to_keep, ltqStdsFound, \
+            n_genes_orig = read_and_filter(self.data_path(), filenameMeans, filenameStds, sanityOutput,
+                                           zscoreCutoff, mpiInfo, tmp_folder=tmp_folder, verbose=verbose,
+                                           all_genes=all_genes)
 
         except FileNotFoundError:
             if noDataNeeded:
@@ -1266,7 +1268,6 @@ class SCData:
         self.metadata.nCells = n_cells
         bs_glob.nCells = self.metadata.nCells
         self.tree.root.renumberNodes(change_node_inds=True)
-
 
     # Used
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
@@ -2024,6 +2025,7 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
         if verbose and (scData.metadata.loglik is not None):
             mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik))
         return True
+
     # Read all metadata
     scData.metadata = Metadata(json_filepath=os.path.join(tree_folder, 'metadata.json'), curr_metadata=scData.metadata)
     bs_glob.nGenes = scData.metadata.nGenes
@@ -2058,6 +2060,7 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
         scData.metadata.processedDatafolder = readFolder
 
     if get_all_data:
+        cell_id_set = set(scData.metadata.cellIds)
         try:
             start = time.time()
             if ltqs_found or posteriors_found:
@@ -2079,7 +2082,7 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
                     else:
                         node.ltqs = ltqs_cg[vert_ind, :]
                         node.setLtqsVarsOrW(ltqsVars=ltqsVars_cg[vert_ind, :])
-                    node.isCell = node.nodeId in scData.metadata.cellIds
+                    node.isCell = node.nodeId in cell_id_set
                 del ltqs_cg
                 del ltqsVars_cg
                 gc.collect()
@@ -2131,9 +2134,10 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
 
 
 def addDataToTree(scData, vertIndToNode):
+    cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scData.metadata.cellIds)}
     for vert, node in vertIndToNode.items():
-        if node.nodeId in scData.metadata.cellIds:
-            cellInd = scData.metadata.cellIds.index(node.nodeId)
+        if node.nodeId in cell_id_to_ind:
+            cellInd = cell_id_to_ind[node.nodeId]
             if (scData.originalData is not None) and (scData.originalData.ltqs is not None):
                 node.ltqs = scData.originalData.ltqs[:, cellInd]
                 node.setLtqsVarsOrW(ltqsVars=scData.originalData.ltqsVars[:, cellInd])
@@ -2550,7 +2554,7 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
             del ltqs_list
             del ltqs_vars_list
             gc.collect()
-            
+
             # Check if there are genes to continue, otherwise communicate with other processes to exit
             if len(genes_to_keep) <= 1:
                 continueYN = False

@@ -1685,15 +1685,18 @@ class TreeNode:
                     # Then we test which UBs were already in the UB-pairs and which ones are new
                     existingUBPairs = []
                     existingUBs = []
+                    new_pairs_to_ind = {new_pair: ind for ind, new_pair in enumerate(new_pairs)}
+                    inds_to_be_del = []
                     for ind, pair in enumerate(map(tuple, np.array(UBInfo['pairs']))):
-                        try:
-                            newInd = new_pairs.index(pair)
+                        if pair in new_pairs:
+                            new_ind = new_pairs_to_ind[pair]
+                            # newInd = new_pairs.index(pair)
                             existingUBPairs.append(pair)
                             existingUBs.append(UBInfo['UBs'][ind])
-                            del new_pairs[newInd]
-                        except ValueError:
-                            # This pair is no longer in the NN-list
-                            pass
+                            inds_to_be_del.append(new_ind)
+
+                    new_pairs = [pair for ind, pair in enumerate(new_pairs) if ind != inds_to_be_del]
+
                     if len(existingUBPairs) == 0:
                         UBInfo['pairs'] = np.zeros((0, 2))
                     else:
@@ -1736,15 +1739,34 @@ class TreeNode:
                     # Then we test which UBs were already in the UB-pairs and which ones are new
                     existingUBPairs = []
                     existingUBs = []
+
+                    # start = time.time()
+                    new_pairs_to_ind = {new_pair: ind for ind, new_pair in enumerate(new_pairs)}
+                    inds_to_be_del = []
                     for ind, pair in enumerate(map(tuple, np.array(UBInfo['pairs']))):
-                        try:
-                            newInd = new_pairs.index(pair)
+                        if pair in new_pairs:
+                            new_ind = new_pairs_to_ind[pair]
+                            # newInd = new_pairs.index(pair)
                             existingUBPairs.append(pair)
                             existingUBs.append(UBInfo['UBs'][ind])
-                            del new_pairs[newInd]
-                        except ValueError:
-                            # This pair is no longer in the NN-list
-                            pass
+                            inds_to_be_del.append(new_ind)
+
+                    new_pairs = [pair for ind, pair in enumerate(new_pairs) if ind != inds_to_be_del]
+                    # for ind, pair in enumerate(map(tuple, np.array(UBInfo['pairs']))):
+                    #     try:
+                    #         newInd = new_pairs.index(pair)
+                    #         existingUBPairs.append(pair)
+                    #         existingUBs.append(UBInfo['UBs'][ind])
+                    #         del new_pairs[newInd]
+                    #     except ValueError:
+                    #         # This pair is no longer in the NN-list
+                    #         pass
+
+                    # print("This took {} seconds.".format(time.time() - start))
+                    # print(existingUBPairs[-5:])
+                    # print(existingUBs[-5:])
+                    # print(inds_to_be_del)
+
                     if len(existingUBPairs) == 0:
                         UBInfo['pairs'] = np.zeros((0, 2))
                     else:
