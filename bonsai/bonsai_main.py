@@ -155,6 +155,7 @@ origEllipsoidSize = ellipsoidSize
 # The SEQUENTIAL-variables determines whether we first optimise diff. times between merged nodes, and then to ancestor
 # from root, or all three at the same time. SEQUENTIAL=True is faster and leads to better tree likelihoods in tests
 SEQUENTIAL = True
+STORED_GREEDY_RESULT = False
 
 start_all = time.time()
 
@@ -292,6 +293,7 @@ if args.step in ['core_calc', 'all']:
             # in by multiple cores such that the next part of the program can be run in parallel
             # storeCurrentState(outputFolder, scData, dataOrResults='results', filename='tmp_tree.dat', args=args)
             scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose)
+            STORED_GREEDY_RESULT = True
 
     # We can go over the tree once more to see whether some nodes have more than 2 children and are therefore candidates
     # for adding an additional ancestor
@@ -307,8 +309,9 @@ if args.step in ['core_calc', 'all']:
         # Before doing the nnn_reordering, all processes must have the latest tree topology, but not the data. Before,
         # the tree topology was only necessary on process 0. Therefore, we will load the results from the just stored
         # file on process 0, and send only the tree topology to other processes.
-        scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
-                                              get_cell_info=False, all_ranks=False, rel_to_results=True)
+        if (mpiRank != 0) or (not STORED_GREEDY_RESULT):
+            scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
+                                                  get_cell_info=False, all_ranks=False, rel_to_results=True)
 
         startRedoingStarry = time.time()
         scData.tree.root.mergeZeroTimeChilds()
