@@ -155,7 +155,8 @@ def mp_print(*args, **kwargs):
     if ('WARNING' in kwargs) and kwargs['WARNING']:
         warning = True
     mpi_rank = mpi_wrapper.get_process_rank()
-    if 'ALL_RANKS' in kwargs and kwargs['ALL_RANKS']:
+    # if 'ALL_RANKS' in kwargs and kwargs['ALL_RANKS']:
+    if True:
         print_message = "Process %d: " % (mpi_rank) + ' '.join(map(str, args))
     elif 'ONLY_RANK' in kwargs:
         if kwargs['ONLY_RANK'] == mpi_rank:
