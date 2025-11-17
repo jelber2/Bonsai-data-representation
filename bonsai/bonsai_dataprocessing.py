@@ -2066,6 +2066,7 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
         scData.metadata.processedDatafolder = readFolder
 
     if get_all_data:
+        cell_id_set = set(scData.metadata.cellIds)
         try:
             start = time.time()
             if ltqs_found or posteriors_found:
@@ -2105,7 +2106,7 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
                         node.setLtqsVarsOrW(ltqsVars=ltqsVars_cg[vert_ind, :])
                         timing_ltqsVars += time.time() - start
                     start = time.time()
-                    node.isCell = node.nodeId in scData.metadata.cellIds
+                    node.isCell = node.nodeId in cell_id_set
                     timing_cellid += time.time() - start
                 del ltqs_cg
                 del ltqsVars_cg
@@ -2158,9 +2159,10 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
 
 
 def addDataToTree(scData, vertIndToNode):
+    cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scData.metadata.cellIds)}
     for vert, node in vertIndToNode.items():
-        if node.nodeId in scData.metadata.cellIds:
-            cellInd = scData.metadata.cellIds.index(node.nodeId)
+        if node.nodeId in cell_id_to_ind:
+            cellInd = cell_id_to_ind[node.nodeId]
             if (scData.originalData is not None) and (scData.originalData.ltqs is not None):
                 node.ltqs = scData.originalData.ltqs[:, cellInd]
                 node.setLtqsVarsOrW(ltqsVars=scData.originalData.ltqsVars[:, cellInd])
