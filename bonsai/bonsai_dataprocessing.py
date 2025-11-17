@@ -2082,7 +2082,6 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
                     else:
                         node.ltqs = ltqs_cg[vert_ind, :]
                         node.setLtqsVarsOrW(ltqsVars=ltqsVars_cg[vert_ind, :])
-                    start = time.time()
                     node.isCell = node.nodeId in cell_id_set
                 del ltqs_cg
                 del ltqsVars_cg
