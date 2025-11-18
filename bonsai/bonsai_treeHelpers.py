@@ -14,6 +14,7 @@ from bonsai.bonsai_approxNN import getApproxNNs
 import pandas as pd
 from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str
 import json
+import heapq
 
 # TODO: Remove this
 import psutil
@@ -3748,169 +3749,35 @@ class Tree:
         self.root.renumberNodes(change_node_inds=change_node_inds)
         self.nNodes = bs_glob.nNodes
 
-    def do_spr_moveset(self, args, strategy='determ_random_determ', tracking=False, output_folder=''):
-        """
-
-        :param strategy: Current options are 'determ_random_determ', 'deterministic', 'deterministic_exhaustive'.
-        This relates to what kind of SPR-moves we propose in what order.
-        :return:
-        """
-        if tracking:
-            info_dict = {'steps': [], 'runtimes': [], 'd_loglik': [], 'successes': []}
-            orig_loglik = self.calcLogLComplete(mem_friendly=True)
-            orig_time = time.time()
-
-        if strategy == 'determ_random_determ':
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='cluster_centers',
-                                                              max_moves=None,
-                                                              moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict,
-                                                              min_branch_length=1e-2)
-
-            # TODO: REVERT THIS?
-            # info_dict = self.do_spr_moves_with_postprocessing(args=args,
-            #                                                   select_cand='random',
-            #                                                   select_target='random',
-            #                                                   max_moves=None,
-            #                                                   moves_id='C_random_T_random',
-            #                                                   tracking=tracking, info_dict=info_dict)
-
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='cluster_centers',
-                                                              max_moves=None,
-                                                              moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict,
-                                                              min_branch_length=1e-2)
-
-        elif strategy == 'super_sure':
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='cluster_centers',
-                                                              max_moves=100000,
-                                                              moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict)
-
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='all',
-                                                              max_moves=1000,
-                                                              moves_id='C_random_T_random',
-                                                              tracking=tracking, info_dict=info_dict)
-
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='cluster_centers',
-                                                              max_moves=100000,
-                                                              moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict)
-
-            # info_dict = self.do_spr_moves_with_postprocessing(args=args,
-            #                                                   select_cand='long_branches_first',
-            #                                                   select_target='all',
-            #                                                   max_moves=2000,
-            #                                                   moves_id='C_random_T_random',
-            #                                                   tracking=tracking, info_dict=info_dict)
-
-
-        elif strategy == 'deterministic_exhaustive':
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='all',
-                                                              max_moves=10000,
-                                                              moves_id='C_long_branches_T_all',
-                                                              tracking=tracking, info_dict=info_dict)
-
-        elif strategy == 'deterministic':
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='cluster_centers',
-                                                              max_moves=10000,
-                                                              moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict)
-
-            info_dict = self.do_spr_moves_with_postprocessing(args=args,
-                                                              select_cand='long_branches_first',
-                                                              select_target='cluster_centers',
-                                                              max_moves=10000,
-                                                              moves_id='C_long_branches_T_cluster_centers',
-                                                              tracking=tracking, info_dict=info_dict)
-
-        if tracking:
-            info_dict['total_time'] = time.time() - orig_time
-            final_logl = self.calcLogLComplete(mem_friendly=True)
-            info_dict['total_loglik_change'] = final_logl - orig_loglik
-            mp_print("Loglikelihood of final tree is {}".format(final_logl))
-
-        with open(os.path.join(output_folder, "spr_info_strategy_{}.json".format(strategy)), "w") as f:
-            json.dump(info_dict, f, indent=4)
-
-    def do_spr_moves_with_postprocessing(self, args, select_cand, select_target, max_moves=None,
-                                         moves_id=None, tracking=False, info_dict=None, min_branch_length=-1):
-        if max_moves is None:
-            max_moves = bs_glob.nNodes
-
-        # Just some tracking
-        if tracking:
-            start_logl = self.calcLogLComplete(mem_friendly=True)
-            mp_print("Loglikelihood of inferred tree before "
-                     "{}: {}".format(moves_id, start_logl))
-            start = time.time()
-
-        # The actual moves!
-        successful_moves, total_dlogl = self.do_spr_moves(max_moves=max_moves, select_cand=select_cand,
-                                                          select_target=select_target,
-                                                          min_branch_length=min_branch_length)
-
-        # Just some tracking
-        if tracking:
-            info_dict['steps'].append(moves_id)
-            info_dict['runtimes'].append(time.time() - start)
-            new_logl = self.calcLogLComplete(mem_friendly=True)
-            info_dict['d_loglik'].append(new_logl - start_logl)
-            info_dict['successes'].append(successful_moves)
-            mp_print("Loglikelihood of inferred tree after "
-                     "{} successful SPR-moves: {}".format(successful_moves, new_logl))
-
-            start = time.time()
-            start_logl = new_logl
-
-        self.do_spr_postprocessing()
-
-        # Just some tracking
-        if tracking:
-            info_dict['steps'].append(moves_id + "_postproc")
-            info_dict['runtimes'].append(time.time() - start)
-            new_logl = self.calcLogLComplete(mem_friendly=True)
-            info_dict['d_loglik'].append(new_logl - start_logl)
-            info_dict['successes'].append(0)
-            mp_print("Loglikelihood of inferred tree after postprocessing: {}".format(new_logl))
-
-        return info_dict
-
-    def do_spr_moves(self, max_moves=1000, seed=42, select_cand='random', select_target='random', do_local_search=True,
-                     do_postprocessing=False, min_branch_length=-1, verbose=False):
+    def do_spr_moves(self, max_moves=None, seed=42, select_cand='random', select_target='random', do_local_search=True,
+                     do_postprocessing=False, min_branch_length=-1, verbose=False, freq_cutoff=None, cand_list=None,
+                     only_scan=False):
         """
 
         :param max_moves: When we do random moves, this sets the number of SPR-moves
         :param seed: Random seed
         :param select_cand: Sets the strategy with which we pick candidate-nodes to move. For now, options are
-        "random" or "long_branches_first"
+        "random", "long_branches_first", or "list"
         :param select_target: Sets the strategy with which we pick the first target-place to attach the pruned subtree.
         For now, options are "random", "root", "cluster_centers", "all".
         :param do_local_search: Determines whether we do a greedy search around the target to find the best target.
         :param do_postprocessing: Experimental for now. Resolves created polytomies immediately, but doesn't seem to
         help much, and can be replaced by re-doing starry nodes after the whole SPR-procedure.
+        :param freq_cutoff: If not None, we keep track of how many successes we have per 1000 tries, and we only keep
+        going until we have more than 1000 * freq_cutoff successes
+        :param cand_list: If select_cand=='list', then this list should give node-indices that should be tested
+        :param only_scan: If True, this function should not change the tree, only detect successful candidates
         :return:
         """
 
         """Initialize some values"""
         if select_target == 'all':
             do_local_search = False
+        if max_moves is None:
+            max_moves = bs_glob.nNodes
         successful_moves = 0
         unsuccessful_moves = 0
+        remain_cands = []
         returned_moves = 0
         np.random.seed(seed)
         as_if_root_version = 0
@@ -3939,16 +3806,23 @@ class Tree:
         self.root.get_ds_node_counts()
 
         # If we don't select random candidates, list them here by sorting by branch length
+        cands_list = None
         if select_cand == 'long_branches_first':
             nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
             # Sort them such that tParent (connecting branch length) is descending
             sorted_time_node_tuples = [(node.tParent, node) for node in
                                        nodesList if (not node.isRoot) and (node.tParent > min_branch_length)]
             sorted_time_node_tuples.sort(key=lambda x: x[0], reverse=True)
+            cands_list = [time_node_tuple[1] for time_node_tuple in sorted_time_node_tuples]
+            max_moves = min(len(cands_list), max_moves)
 
-            max_moves = min(len(sorted_time_node_tuples), max_moves)
-        else:
-            sorted_time_node_tuples = None
+        if select_cand == 'list':
+            nodes_list = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            node_ind_to_node = {node.nodeInd: node for node in nodes_list}
+            # TODO: Check this, cands_list is smaller than cand_list. Somehow, some candidates were still on the list,
+            #  but no longer in the tree
+            cands_list = [node_ind_to_node[node_ind] for node_ind in cand_list if node_ind in node_ind_to_node]
+            max_moves = min(len(cands_list), max_moves)
 
         if select_target == 'cluster_centers':
             n_clusters = int(np.log(bs_glob.nCells)) if bs_glob.nCells is not None else np.log(bs_glob.nCells)
@@ -3962,6 +3836,11 @@ class Tree:
 
         n_print = int(min(100, max_moves / 10))
 
+        negdlogl_nodeind_tuples = None
+        if only_scan:
+            negdlogl_nodeind_tuples = []
+
+        last_n_successes = None
         # TODO: Remove this useless initialization
         orig_t = None
 
@@ -3995,7 +3874,7 @@ class Tree:
 
             """Select child to be moved"""
             candidate, old_parent = self.select_spr_candidate(select_cand=select_cand,
-                                                              sorted_time_node_tuples=sorted_time_node_tuples,
+                                                              cands_list=cands_list,
                                                               n_moves=n_moves)
 
             if candidate is None:
@@ -4033,12 +3912,20 @@ class Tree:
                                                                                 do_local_search=do_local_search,
                                                                                 search_count=0)
 
+            # If we only scan for successful moves, then just place the candidate at orig position,
+            # store the information for successful moves, and move to next round
+            if only_scan:
+                if ((dlogl_orig_pos + dlogl_threshold) < opt_dlogl) and (opt_node.nodeInd != old_parent.nodeInd):
+                    # If move is successful (increase logl + not adding cell at same parent node as before)
+                    successful_moves += 1
+                    negdlogl_nodeind_tuples.append((-(opt_dlogl - dlogl_orig_pos), candidate.nodeInd))
+
             # Check if dlogl-improvement is gained. Otherwise, just place it back at its original position
-            found_new_parent = None
-            if (dlogl_orig_pos + dlogl_threshold) > opt_dlogl:
+            found_new_parent = False
+            if ((dlogl_orig_pos + dlogl_threshold) > opt_dlogl) or only_scan:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
-                else:
+                elif not only_scan:
                     unsuccessful_moves += 1
                 opt_node = old_parent
                 opt_t = orig_t
@@ -4077,7 +3964,7 @@ class Tree:
             as_if_root_version += 1
 
             # TODO: Eventually check if I want to remove this
-            if do_postprocessing:
+            if do_postprocessing and found_new_parent:
                 # if found_new_parent and len(new_parent.childNodes) > 2:
                 # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
                 # likelihood increases when we add an ancestor for the candidate with some other child
@@ -4107,19 +3994,45 @@ class Tree:
                         #     if ch.nodeId is None:
                         #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
 
-        self.nNodes = bs_glob.nNodes
-        logging.info("The {} SPR-moves led to an increase of {} "
-                     "of the tree loglikelihood.".format(n_moves + 1, total_dlogl_increase))
-        logging.info("Total loglikelihood should now thus be {}, "
-                     "and is {} according to the normal loglik "
-                     "calculation.".format(origLoglik + total_dlogl_increase,
-                                           self.calcLogLComplete(mem_friendly=True, recalc=True)))
-        logging.info("Move statistics:\n"
-                     "Successful: {}\n"
-                     "Failed: {}\n"
-                     "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
+            # If we run with a frequency cutoff and we did N_CHECK moves. Check whether we need to exit
+            N_CHECK = 1000
+            # TODO: Revert this to 1000
+            N_CHECK = 100
+            if (freq_cutoff is not None) and (n_moves % N_CHECK == 0):
+                if last_n_successes is not None:
+                    if (successful_moves - last_n_successes) < freq_cutoff * N_CHECK:
+                        max_moves = n_moves + 1
+                        if cands_list is None:
+                            mp_print("Frequency cutoff is for now only allowed with long_branches_first strategy.",
+                                     ERROR=True)
+                        else:
+                            mp_print("In the last {} tries, only {} successes were detected. "
+                                     "Therefore switching to mode in which we scan all SPR-candidates in parallel, "
+                                     "before processing them.".format(N_CHECK, successful_moves - last_n_successes))
+                            remain_cand_nodes = cands_list[n_moves + 1:]
+                            remain_cands = [cand.nodeInd for cand in remain_cand_nodes]
+                last_n_successes = successful_moves
 
-        return successful_moves, total_dlogl_increase
+        if only_scan:
+            mp_print("Tried {} SPR-candidates, and found {} successful candidates.".format(len(cands_list),
+                                                                                           successful_moves),
+                     ALL_RANKS=True)
+            return negdlogl_nodeind_tuples
+
+        # TODO: Remove this additional likelihood calculation
+        self.nNodes = bs_glob.nNodes
+        mp_print("The {} SPR-moves led to an increase of {} "
+                 "of the tree loglikelihood.".format(n_moves + 1, total_dlogl_increase))
+        mp_print("Total loglikelihood should now thus be {}, "
+                 "and is {} according to the normal loglik "
+                 "calculation.".format(origLoglik + total_dlogl_increase,
+                                       self.calcLogLComplete(mem_friendly=True, recalc=True)))
+        mp_print("Move statistics:\n"
+                 "Successful: {}\n"
+                 "Failed: {}\n"
+                 "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
+
+        return successful_moves, total_dlogl_increase, remain_cands
 
     def do_spr_postprocessing(self, change_node_inds=False, only_time_opt=False, verbose=False, only_cleanup=False):
         """
@@ -4165,7 +4078,8 @@ class Tree:
         self.root.storeParent()
         self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100)
 
-    def select_spr_candidate(self, select_cand='random', sorted_time_node_tuples=None, n_moves=None):
+    def select_spr_candidate(self, select_cand='random', cands_list=None, n_moves=None,
+                             get_remainder=False):
         if select_cand == 'random':
             no_cand = True
             n_candidates = self.root.n_ds_nodes
@@ -4175,8 +4089,8 @@ class Tree:
                 old_parent = candidate.parentNode
                 if len(old_parent.childNodes) >= 2:
                     no_cand = False
-        elif select_cand == 'long_branches_first':
-            candidate = sorted_time_node_tuples[n_moves][1]
+        elif select_cand in ['long_branches_first', 'list']:
+            candidate = cands_list[n_moves]
             if candidate.parentNode is None:
                 return None, None
             old_parent = candidate.parentNode
@@ -4309,9 +4223,11 @@ class Tree:
             # TODO: Revert this
             # if n_added == n_print:
             if True:
-                mp_print("Seconds since start: {}. Adding cell {} out of {}: {:.2f}%.".format(time.time()-start_adding,
-                                                                                              n_added + 1, n_to_add_total,
-                                                                     100 * (n_added + 1) / n_to_add_total))
+                mp_print(
+                    "Seconds since start: {}. Adding cell {} out of {}: {:.2f}%.".format(time.time() - start_adding,
+                                                                                         n_added + 1, n_to_add_total,
+                                                                                         100 * (
+                                                                                                 n_added + 1) / n_to_add_total))
                 mp_print("Total number of searches done: {}".format(total_search_moves))
                 # TODO: Remove this memory statement (maybe)
                 mp_print("Current memory usage is ",
@@ -4446,7 +4362,8 @@ class Tree:
                     cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
 
                 if not only_cleanup:
-                    mp_print("Round of getting new cluster centers took {} seconds.".format(time.time() - start_cluster_centers))
+                    mp_print("Round of getting new cluster centers took {} seconds.".format(
+                        time.time() - start_cluster_centers))
 
                     if (scdata is not None) and (tmp_folder is not None):
                         scdata.storeTreeInFolder(os.path.join(tmp_folder, 'added_%d' % tmp_tree_ind),

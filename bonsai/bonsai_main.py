@@ -131,7 +131,7 @@ if pickup_intermediate:
 
 import bonsai.mpi_wrapper as mpi_wrapper
 from bonsai.bonsai_dataprocessing import initializeSCData, getMetadata, loadReconstructedTreeAndData, SCData, \
-    nnnReorder, nnnReorderRandom
+    nnnReorder, nnnReorderRandom, do_spr_moveset
 from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder, get_latest_intermediate, \
     clean_up_redundant_data_files, str2bool
 import bonsai.bonsai_globals as bs_glob
@@ -392,24 +392,23 @@ if args.step in ['core_calc', 'all']:
         mp_print("Skipping the SPR moves, since --pickup_intermediate is True, and "
                  "the results of this step are already present in {}".format(results_folder))
     else:
-        # Time optimization is not parallelized. Only do this on process 0
+        mp_print("Starting SPR moves.")
+        if scData is None or args.skip_greedy_merging:
+            # Determine where to load results from
+            outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+                                           redo_starry=True, opt_times=True,
+                                           tmp_file=os.path.basename(args.tmp_folder))
+            scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
+                                                  get_cell_info=False, all_ranks=False, rel_to_results=True)
+
+        start_spr = time.time()
+        # Do the actual moves here:
+
+        # TODO: Turn on!
+        # rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
+        do_spr_moveset(scData, args, strategy=spr_strategy, tracking=True, output_folder=scData.result_path())
+
         if mpiRank == 0:
-            mp_print("Starting SPR moves.")
-            if scData is None or args.skip_greedy_merging:
-                # Determine where to load results from
-                outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
-                                               redo_starry=True, opt_times=True,
-                                               tmp_file=os.path.basename(args.tmp_folder))
-                scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
-                                                      get_cell_info=False, all_ranks=False, rel_to_results=True)
-
-            start_spr = time.time()
-            # Do the actual moves here:
-
-            # TODO: Turn on!
-            # rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
-            scData.tree.do_spr_moveset(args, strategy=spr_strategy, tracking=True,
-                                       output_folder=scData.result_path())
             scData.tree.remove_two_child_root()
 
             mp_print("SPR moves took " + str(time.time() - start_spr) + " seconds.")
@@ -426,14 +425,14 @@ if args.step in ['core_calc', 'all']:
             # by multiple cores such that the next part of the program can be run in parallel
             # storeCurrentState(outputFolder, scData, dataOrResults='results', args=args)
 
-            # TODO: Remove eventually, only uncomment this for making animations
-            # if (mpiRank == 0) and bs_glob.nwk_counter and (scData.tree is not None):
-            #     scData.tree.to_newick(use_ids=True,
-            #                           results_path=os.path.join(bs_glob.nwk_folder,
-            #                                                     'tree_{}.nwk'.format(bs_glob.nwk_counter)))
-            #     bs_glob.nwk_counter += 1
-            # if (mpi_wrapper.get_process_rank() == 0) and bs_glob.nwk_counter:
-            #     bs_glob.nwk_counter += 100
+        # TODO: Remove eventually, only uncomment this for making animations
+        # if (mpiRank == 0) and bs_glob.nwk_counter and (scData.tree is not None):
+        #     scData.tree.to_newick(use_ids=True,
+        #                           results_path=os.path.join(bs_glob.nwk_folder,
+        #                                                     'tree_{}.nwk'.format(bs_glob.nwk_counter)))
+        #     bs_glob.nwk_counter += 1
+        # if (mpi_wrapper.get_process_rank() == 0) and bs_glob.nwk_counter:
+        #     bs_glob.nwk_counter += 100
 
     """--------------------Do random re-ordering of next-nearest-neighbour-nodes """
     if args.skip_nnn_reordering:

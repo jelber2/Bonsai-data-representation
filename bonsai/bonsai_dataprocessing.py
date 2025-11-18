@@ -10,6 +10,7 @@ import copy
 import gc
 import json
 import logging
+import heapq
 
 
 class Metadata:
@@ -1268,6 +1269,273 @@ class SCData:
         self.metadata.nCells = n_cells
         bs_glob.nCells = self.metadata.nCells
         self.tree.root.renumberNodes(change_node_inds=True)
+
+
+def do_spr_moveset(scData, args, strategy='determ_random_determ', tracking=False, output_folder=''):
+    """
+
+    :param strategy: Current options are 'determ_random_determ', 'deterministic', 'deterministic_exhaustive'.
+    This relates to what kind of SPR-moves we propose in what order.
+    :return:
+    """
+    if tracking:
+        info_dict = {'steps': [], 'runtimes': [], 'd_loglik': [], 'successes': []}
+        orig_loglik = scData.tree.calcLogLComplete(mem_friendly=True)
+        orig_time = time.time()
+
+    if strategy == 'large_tree':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=None,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict,
+                                                          min_branch_length=1e-2,
+                                                          large_tree=True)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=None,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict,
+                                                          min_branch_length=1e-2,
+                                                          large_tree=True)
+    else:
+        if mpi_wrapper.get_process_rank() != 0:
+            mp_print("Can't contribute to doing SPR moves in this mode. Choose --spr_strategy='large_tree' to benefit"
+                     "from parallelization (at the cost of memory usage) for the SPR-moves.")
+            return
+
+    if strategy == 'determ_random_determ':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=None,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict,
+                                                          min_branch_length=1e-2)
+
+        # TODO: REVERT THIS?
+        # info_dict = self.do_spr_moves_with_postprocessing(args=args,
+        #                                                   select_cand='random',
+        #                                                   select_target='random',
+        #                                                   max_moves=None,
+        #                                                   moves_id='C_random_T_random',
+        #                                                   tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=None,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict,
+                                                          min_branch_length=1e-2)
+
+    elif strategy == 'super_sure':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=100000,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='all',
+                                                          max_moves=1000,
+                                                          moves_id='C_random_T_random',
+                                                          tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=100000,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict)
+
+        # info_dict = self.do_spr_moves_with_postprocessing(args=args,
+        #                                                   select_cand='long_branches_first',
+        #                                                   select_target='all',
+        #                                                   max_moves=2000,
+        #                                                   moves_id='C_random_T_random',
+        #                                                   tracking=tracking, info_dict=info_dict)
+
+    elif strategy == 'deterministic_exhaustive':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='all',
+                                                          max_moves=10000,
+                                                          moves_id='C_long_branches_T_all',
+                                                          tracking=tracking, info_dict=info_dict)
+
+    elif strategy == 'deterministic':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=10000,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                          select_cand='long_branches_first',
+                                                          select_target='cluster_centers',
+                                                          max_moves=10000,
+                                                          moves_id='C_long_branches_T_cluster_centers',
+                                                          tracking=tracking, info_dict=info_dict)
+
+    if tracking:
+        info_dict['total_time'] = time.time() - orig_time
+        final_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        info_dict['total_loglik_change'] = final_logl - orig_loglik
+        mp_print("Loglikelihood of final tree is {}".format(final_logl))
+
+    with open(os.path.join(output_folder, "spr_info_strategy_{}.json".format(strategy)), "w") as f:
+        json.dump(info_dict, f, indent=4)
+
+def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, max_moves=None,
+                                     moves_id=None, tracking=False, info_dict=None, min_branch_length=-1,
+                                     large_tree=False):
+    """
+
+    :param args:
+    :param select_cand:
+    :param select_target:
+    :param max_moves:
+    :param moves_id:
+    :param tracking:
+    :param info_dict:
+    :param min_branch_length:
+    :param large_tree: If True, SPR moves in a sequence are done normally until we drop below 10 successes in 1000
+    attempts. After that, we start scanning all moves without executing successes, because this can be parallelized.
+    Finally, we take only the successes and execute them in order of predicted dLogL
+    :return:
+    """
+    mpi_info = mpi_wrapper.get_mpi_info()
+    if max_moves is None:
+        max_moves = bs_glob.nNodes
+
+    # Just some tracking
+    if tracking:
+        start_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        mp_print("Loglikelihood of inferred tree before "
+                 "{}: {}".format(moves_id, start_logl))
+        start = time.time()
+
+    # The actual moves!
+    if not large_tree:
+        successful_moves, total_dlogl, _ = scData.tree.do_spr_moves(max_moves=max_moves,
+                                                             select_cand=select_cand,
+                                                             select_target=select_target,
+                                                             min_branch_length=min_branch_length)
+    else:
+        # In this case, do three phases:
+        # Phase 1: only moves are performed until they occur at low frequency only,
+        # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
+        # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
+
+        # Phase 1: only moves are performed until they occur at low frequency only,
+        intermediate_folder = scData.result_path('spr_intermediate')
+        if mpi_info.rank == 0:
+            # Do the first SPR moves (coming at high freq) only at first process
+            successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(max_moves=max_moves,
+                                                                            select_cand=select_cand,
+                                                                            select_target=select_target,
+                                                                            min_branch_length=min_branch_length,
+                                                                            freq_cutoff=.5)
+            # Store the resulting tree with coordinates, such that it can be read in by other processes
+            # mp_print("Before storing tree, memory usage is ",
+            #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+            scData.storeTreeInFolder(os.path.join(intermediate_folder), with_coords=True,
+                                     verbose=False, nwk=False)
+
+            # Communicate the node indices of the remaining candidates. This also serves as a barrier between
+            # storing the tree and loading it on other processes
+            df_nodes_list = scData.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            remain_cands_set = remain_cands
+            remain_cands_df_sorted = [node.nodeInd for node in df_nodes_list if node.nodeInd in remain_cands_set]
+
+            remain_cands = np.array(remain_cands_df_sorted)
+            mpi_wrapper.bcast(remain_cands, root=0)
+        else:
+            remain_cands = None
+            # Other processes receive the node-indices that need to be checked
+            remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
+            # Then they read the tree that was stored from process 0
+            scData = loadReconstructedTreeAndData(args, intermediate_folder,
+                                                  reprocess_data=False, all_genes=False, get_cell_info=False,
+                                                  all_ranks=True, rel_to_results=False)
+            scData.tree.root.storeParent()
+        # Now, every process should have the full tree-result of the first SPR moves. Ready to start Phase 2
+        # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
+
+        # First, distribute node-inds to check over the cores. We'll do this by cutting a depth-first list up in
+        # blocks. Eventually, this may help keep memory-usage friendly
+        my_tasks = getMyTaskNumbers(len(remain_cands), mpi_info.size, mpi_info.rank, skippingSteps=False)
+        my_tasks = remain_cands[my_tasks]  # This now contains the node-inds for candidates to be treated per proc.
+
+        # Scan over these candidates
+        negdlogl_nodeind_tuples = scData.tree.do_spr_moves(select_cand='list', select_target=select_target,
+                                                 cand_list=my_tasks, only_scan=True)
+        # The variable negdlogl_nodeind_tuples should contain the successful-candidates that were found on this core,
+        # as a list of tuples (-d_log_l, cand_node_ind)
+
+        # Sorting the candidates calculated on this process
+        if len(negdlogl_nodeind_tuples):
+            negdlogl_nodeind_tuples.sort(key=lambda x: x[0], reverse=False)
+        else:
+            negdlogl_nodeind_tuples = []
+
+        # Gather the succesful candidates from all processes
+        if mpi_info.size > 1:
+            all_negdlogl_nodeind_tuples = mpi_wrapper.gather(negdlogl_nodeind_tuples, root=0)
+            if mpi_info.rank != 0:
+                # The memory on these processes can be freed, as they will be idle for a while
+                try:
+                    del negdlogl_nodeind_tuples
+                    gc.collect()
+                except UnboundLocalError:
+                    pass
+                mp_print("My job in the SPR-moves is done.", ALL_RANKS=True)
+                return
+
+            # So only process zero goes here. It merges all the sorted lists using the heapq.merge algorithm
+            negdlogl_nodeind_tuples = list(heapq.merge(*all_negdlogl_nodeind_tuples))
+
+        # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
+        my_tasks = [node_ind_dlogl[1] for node_ind_dlogl in negdlogl_nodeind_tuples]
+        successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(select_cand='list',
+                                                                        select_target=select_target,
+                                                                        cand_list=my_tasks, only_scan=False)
+
+        if mpi_info.rank == 0:
+            remove_tree_folders(intermediate_folder, removeDir=True)
+
+    # Just some tracking
+    if tracking:
+        info_dict['steps'].append(moves_id)
+        info_dict['runtimes'].append(time.time() - start)
+        new_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        info_dict['d_loglik'].append(new_logl - start_logl)
+        info_dict['successes'].append(successful_moves)
+        mp_print("Loglikelihood of inferred tree after "
+                 "{} successful SPR-moves: {}".format(successful_moves, new_logl))
+
+        start = time.time()
+        start_logl = new_logl
+
+    scData.tree.do_spr_postprocessing()
+
+    # Just some tracking
+    if tracking:
+        info_dict['steps'].append(moves_id + "_postproc")
+        info_dict['runtimes'].append(time.time() - start)
+        new_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        info_dict['d_loglik'].append(new_logl - start_logl)
+        info_dict['successes'].append(0)
+        mp_print("Loglikelihood of inferred tree after postprocessing: {}".format(new_logl))
+
+    return info_dict
 
     # Used
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
