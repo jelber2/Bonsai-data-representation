@@ -228,6 +228,7 @@ mp_print(output1.stderr)
 bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
                       '--config_filepath', config_filepath,
                       '--step', 'all',
+                      '--spr_strategy', 'large_tree',
                       '--pickup_intermediate', 'True']
 
 if not args.return_commands:
@@ -296,6 +297,7 @@ mp_print(output1.stderr)
 bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
                       '--config_filepath', config_filepath,
                       '--step', 'all',
+                      '--spr_strategy', 'large_tree',
                       '--pickup_intermediate', 'True']
 
 if not args.return_commands:
