@@ -3997,8 +3997,6 @@ class Tree:
 
             # If we run with a frequency cutoff and we did N_CHECK moves. Check whether we need to exit
             N_CHECK = 1000
-            # TODO: Revert this to 1000
-            N_CHECK = 100
             if (freq_cutoff is not None) and (n_moves % N_CHECK == 0):
                 if last_n_successes is not None:
                     if (successful_moves - last_n_successes) < freq_cutoff * N_CHECK:

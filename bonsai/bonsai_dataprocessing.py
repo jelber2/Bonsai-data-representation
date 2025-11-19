@@ -1446,7 +1446,7 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
                                                                                    select_cand=select_cand,
                                                                                    select_target=select_target,
                                                                                    min_branch_length=min_branch_length,
-                                                                                   freq_cutoff=.5)
+                                                                                   freq_cutoff=.01)
             # Store the resulting tree with coordinates, such that it can be read in by other processes
             # mp_print("Before storing tree, memory usage is ",
             #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
