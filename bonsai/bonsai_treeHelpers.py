@@ -1199,6 +1199,7 @@ class TreeNode:
             pairs, nPairs, nNewPairs = pairInfoTuple
             myTasks = getMyTaskNumbers(nPairs, mpiInfoTmp.size, mpiInfoTmp.rank, skippingSteps=runConfigs['useUBNow'])
             nTasks = len(myTasks)
+
             # mp_print("Memory 1 ", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ONLY_RANK=1)
 
             # if (manualMerges is not None) and (manualMergeCounter < (len(manualMerges) - 1)):
@@ -4059,7 +4060,6 @@ class Tree:
 
         # Do first re-optimization of times
         self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-3)
-
         # Clean up the tree before resolving polytomies
         self.root.mergeZeroTimeChilds()
         self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes

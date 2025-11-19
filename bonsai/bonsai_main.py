@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import numpy as np
 import time
 from pathlib import Path
-import os, sys
+import os, sys, psutil
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
@@ -407,6 +407,8 @@ if args.step in ['core_calc', 'all']:
         # TODO: Turn on!
         # rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
         do_spr_moveset(scData, args, strategy=spr_strategy, tracking=True, output_folder=scData.result_path())
+        mp_print("Done with SPR moves, current memory usage is ",
+                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
 
         if mpiRank == 0:
             scData.tree.remove_two_child_root()
