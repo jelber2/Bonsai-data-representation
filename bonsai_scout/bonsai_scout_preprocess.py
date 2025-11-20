@@ -457,7 +457,7 @@ bonvis_data_hdf.close()
 
 mp_print("DB: I'm here 16.")
 
-edge_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='tree_info/edge_df', mode='a', format='table',
+edge_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='tree_info/edge_df', mode='a', format='fixed',
                data_columns=True)
 mp_print("DB: I'm here 17.")
 
