@@ -1452,22 +1452,28 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
             #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
             scData.storeTreeInFolder(os.path.join(intermediate_folder), with_coords=True,
                                      verbose=False, nwk=False)
+            mp_print("Printed my tree. Now getting nodelist")
 
             # Communicate the node indices of the remaining candidates. This also serves as a barrier between
             # storing the tree and loading it on other processes
             df_nodes_list = scData.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            mp_print("Getting my sorted remain_cands.")
             remain_cands_set = remain_cands
             remain_cands_df_sorted = [node.nodeInd for node in df_nodes_list if node.nodeInd in remain_cands_set]
 
             remain_cands = np.array(remain_cands_df_sorted)
+            mp_print("Trying to communicate remain_cands.")
             remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
+            mp_print("Trying to communicate intermediate folder.")
             intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
         else:
             remain_cands = None
             # Other processes receive the node-indices that need to be checked
             mp_print("Waiting for communication!", ALL_RANKS=True)
             remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
+            mp_print("Waiting for communication of intermediate folder!", ALL_RANKS=True)
             intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
+            mp_print("Starting to reconstruct tree!", ALL_RANKS=True)
             # Then they read the tree that was stored from process 0
             scData = loadReconstructedTreeAndData(args, intermediate_folder,
                                                   reprocess_data=False, all_genes=False, get_cell_info=False,
