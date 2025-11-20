@@ -1458,7 +1458,7 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
             # storing the tree and loading it on other processes
             df_nodes_list = scData.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
             mp_print("Getting my sorted remain_cands.")
-            remain_cands_set = remain_cands
+            remain_cands_set = set(remain_cands)
             remain_cands_df_sorted = [node.nodeInd for node in df_nodes_list if node.nodeInd in remain_cands_set]
 
             remain_cands = np.array(remain_cands_df_sorted)
