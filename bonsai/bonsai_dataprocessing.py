@@ -1460,11 +1460,12 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
             remain_cands_df_sorted = [node.nodeInd for node in df_nodes_list if node.nodeInd in remain_cands_set]
 
             remain_cands = np.array(remain_cands_df_sorted)
+            remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
             intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
         else:
             remain_cands = None
             # Other processes receive the node-indices that need to be checked
-
+            mp_print("Waiting for communication!", ALL_RANKS=True)
             remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
             intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
             # Then they read the tree that was stored from process 0
