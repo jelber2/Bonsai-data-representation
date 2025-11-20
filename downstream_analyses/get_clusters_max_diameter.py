@@ -292,6 +292,8 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
                                   footfall=False):
     # if get_cell_ids_all_splits:
     #     cell_ids_splits = {}
+    if cell_ids is not None:
+        cell_ids_set = set(cell_ids)
     if cluster_tree.vert_ind_to_node is None:
         cluster_tree.vert_ind_to_node, cluster_tree.nNodes = cluster_tree.root.renumber_verts(vertIndToNode={},
                                                                                               vert_count=0)
@@ -324,7 +326,7 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
             max_footfall_node = None
             max_footfall_score = -1e9
             for vert_ind, node in tree.vert_ind_to_node.items():
-                if vert_ind % 1000:
+                if vert_ind % 10000 == 0:
                     mp_print("DB: Looking for clusters at vert ind {}".format(vert_ind))
                 if node.parentNode is not None:
                     footfall_score = node.ds_leafs * (tree.n_leafs - node.ds_leafs) * node.tParent
@@ -389,7 +391,7 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
                     if node.isLeaf:
                         leaf_ids_tree.append(node.nodeId)
                 else:
-                    if node.nodeId in cell_ids:
+                    if node.nodeId in cell_ids_set:
                         leaf_ids_tree.append(node.nodeId)
             clusters[ind_tree] = leaf_ids_tree
         # Store current clustering in dictionary of clusterings
