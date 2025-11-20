@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import sys
 from downstream_analyses.get_cluster_helpers import Cluster_Tree
+from bonsai.bonsai_helpers import mp_print
 from itertools import combinations
 import csv
 import time
@@ -71,12 +72,14 @@ def get_footfall_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None
 def get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
                                              node_id_to_n_cells=None, verbose=True, footfall=False):
     if verbose:
-        print("\nInit min-dist clustering-tree")
+        mp_print("\nInit min-dist clustering-tree")
     cluster_tree = Cluster_Tree()
     cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
     if node_id_to_n_cells is not None:
+        mp_print("DB: Starting to add info to nodes.")
         cluster_tree.root.add_info_to_nodes(node_id_to_info=node_id_to_n_cells, info_key='n_cells')
 
+    mp_print("DB: Finalized adding info to nodes. Starting clustering")
     all_clusterings, footfall_edges = get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=cell_ids,
                                                            verbose=verbose, footfall=footfall)
     return all_clusterings, footfall_edges
@@ -321,6 +324,8 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
             max_footfall_node = None
             max_footfall_score = -1e9
             for vert_ind, node in tree.vert_ind_to_node.items():
+                if vert_ind % 1000:
+                    mp_print("DB: Looking for clusters at vert ind {}".format(vert_ind))
                 if node.parentNode is not None:
                     footfall_score = node.ds_leafs * (tree.n_leafs - node.ds_leafs) * node.tParent
                     if not footfall:
@@ -374,6 +379,7 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
         clusters.append(None)
 
         # Should produce a list of lists with the node-IDs of the various clusters
+        mp_print("DB: Storing created clusters")
         for ind_tree, tree in enumerate(tree_ensmbl):
             if clusters[ind_tree] is not None:
                 continue
