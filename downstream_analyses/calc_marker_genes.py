@@ -79,7 +79,7 @@ if __name__ == '__main__':
         marker_genes = calc_marker_genes_error_bars_approx2(indices1=ds_cell_inds_1, indices2=ds_cell_inds_2,
                                                             means=means,
                                                             vars=vars, gene_ids=gene_ids, n_points_total=n_points,
-                                                            min_marker_genes=None, marker_cutoff=.5)
+                                                            min_marker_genes=10, marker_cutoff=.5)
 
     else:
         # Note that we only get ranks for cells that have no nan-value for any gene
