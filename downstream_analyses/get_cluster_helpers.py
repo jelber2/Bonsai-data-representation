@@ -142,8 +142,6 @@ class Cluster_Tree:
                 new_node = False
 
             if new_node:
-                if self.nNodes % 1000 == 0:
-                    mp_print("DB: Reading in newick, now {} nodes.".format(self.nNodes))
                 if curr_node is not None:
                     if nodeIdY_tParentF:
                         curr_node.nodeId = curr_str

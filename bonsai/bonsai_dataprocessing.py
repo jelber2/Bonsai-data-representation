@@ -2311,8 +2311,7 @@ def reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=False):
 
 def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, load_data=True, verbose=False,
                        keep_original_data=False, get_posterior_ltqs=False, no_data_needed=False):
-    mp_print("DB: Loading data for tree. Setting verbose to True.")
-    verbose=True
+    verbose = True
 
     if not load_data:  # In this case, data was already loaded, we only add it to the tree and do some checks
         if scData.metadata.nCells is None:
@@ -2360,8 +2359,6 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
 
     if scData.metadata.processedDatafolder is None:
         scData.metadata.processedDatafolder = readFolder
-
-    mp_print("DB: Loading data from {} and {}.".format(meanspath, varspath))
 
     if get_all_data:
         cell_id_set = set(scData.metadata.cellIds)
