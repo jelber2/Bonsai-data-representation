@@ -93,7 +93,6 @@ from bonsai_scout.bonsai_scout_helpers import get_edge_coords, Bonvis_figure, Bo
     Bonvis_metadata
 from bonsai_scout.my_tree_layout import my_tree_layout
 from bonsai_scout.change_gene_ids import change_json_file
-from bonsai.bonsai_helpers import mp_print
 
 if len(args.new_gene_ids_file):
     change_json_file(new_gene_ids_file=args.new_gene_ids_file, path_to_json=os.path.join(tree_folder, 'metadata.json'))
@@ -147,12 +146,10 @@ scData.csIndToVertInd = scData.cellIndToVertInd.copy()
 scData.cellIndToVertInd = {cell_ind: scData.csIndToVertInd[cs_ind] for cell_ind, cs_ind in
                            scData.metadata.cell_ind_to_cs_ind.items()}
 scData.metadata.cs_ind_to_cell_inds = {cs_ind: [] for cs_ind in range(scData.metadata.nCss)}
-
 for cell_ind, cs_ind in scData.metadata.cell_ind_to_cs_ind.items():
     scData.metadata.cs_ind_to_cell_inds[cs_ind].append(cell_ind)
 scData.metadata.nCellsPerCs = np.array([len(cells) for cs, cells in scData.metadata.cs_ind_to_cell_inds.items()])
 # scData.cellsToVerts = {cell_id: scData.cssToVerts[cs_id] for cell_id, cs_id in scData.metadata.cell_id_to_cs_id.items()}
-
 
 """This script produces 2 data-files. One with data that doesn't change with different plotting options, which we will
 create first. One with precalculated settings to be able to make a first plot. These settings can change when different
@@ -244,9 +241,7 @@ if ltqs is not None:
 
 bonvis_data_hdf.close()
 
-
 cell_info_df, cs_info_df, data_matrices = scData.get_annotations_with_cs(args.annotation_path)
-
 
 if cell_info_df is None:
     cell_info_df = pd.DataFrame(index=scData.metadata.cellIds)
@@ -399,7 +394,6 @@ for vert_ind, node in scData.tree.vert_ind_to_node.items():
         cs_inds.append(vert_ind)
         if n_css_at_vert > 1:
             multi_cs_inds.append(vert_ind)
-
 tree_info['cell_inds'] = np.array(cell_inds)
 tree_info['int_inds'] = np.array(int_inds)
 tree_info['cs_inds'] = np.array(cs_inds)
