@@ -1456,7 +1456,7 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
             # Communicate the node indices of the remaining candidates. This also serves as a barrier between
             # storing the tree and loading it on other processes
             df_nodes_list = scData.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
-            remain_cands_set = remain_cands
+            remain_cands_set = set(remain_cands)
             remain_cands_df_sorted = [node.nodeInd for node in df_nodes_list if node.nodeInd in remain_cands_set]
 
             remain_cands = np.array(remain_cands_df_sorted)
@@ -1465,7 +1465,6 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
         else:
             remain_cands = None
             # Other processes receive the node-indices that need to be checked
-            mp_print("Waiting for communication!", ALL_RANKS=True)
             remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
             intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
             # Then they read the tree that was stored from process 0
