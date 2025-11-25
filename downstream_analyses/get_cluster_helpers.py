@@ -56,7 +56,6 @@ class Cluster_Tree:
 
     def from_newick_string(self, nwk_str, node_id_to_vert_ind=None):
         self.from_newick(nwk_str=nwk_str, node_id_to_vert_ind=node_id_to_vert_ind)
-        mp_print("DB: Loaded tree from newick file.")
         # Renumber vert_inds on tree such that they are in line with a depth-first search
         vertIndToNode, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0)
         self.vert_ind_to_node = vertIndToNode

@@ -3567,11 +3567,9 @@ class Tree:
         # Find parent-node "the_parent" and index of "the_child" that are on both ends of the branch that would be cut
         # to minimize the sum of pairwise distances
         nwk_str = self.to_newick(use_ids=True)
-        mp_print("I'm here! 1")
         _, mindist_edge = get_min_pdists_clustering_from_nwk_str(tree_nwk_str=nwk_str, n_clusters=2, cell_ids=cell_ids,
                                                                  get_cell_ids_all_splits=False, node_id_to_n_cells=None,
                                                                  verbose=False)
-        mp_print("I'm here! 100")
         child_node_id, parent_node_id = mindist_edge[0]
         vertIndToNode, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
         for vert_ind, node in vertIndToNode.items():

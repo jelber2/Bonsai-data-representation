@@ -2197,18 +2197,14 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
     if rel_to_results:
         tree_folder = scData.result_path(tree_folder)
 
-    mp_print("DB: I got the scData-object.")
     get_all_data = get_data and ((mpi_info.rank == 0) or (all_ranks and (not otherRanksMinimalInfo)))
     tree_tuple = reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=args.verbose)
-    mp_print("DB: Loaded the tree.")
     vertIndToNode, vertIndToNodeInd, vertIndToNodeId, edgeList, distList = tree_tuple
-    mp_print("DB: Starting to load the data.")
     data_found = load_data_for_tree(scData, tree_folder, vertIndToNode, get_all_data=get_all_data,
                                     load_data=(not reprocess_data),
                                     verbose=False, keep_original_data=keep_original_data,
                                     get_posterior_ltqs=get_posterior_ltqs,
                                     no_data_needed=no_data_needed)
-    mp_print("DB: Done loading data. data_found: {}".format(data_found))
     if data_found and get_all_data and calc_loglik and (mpi_info.rank == 0):
         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
@@ -2224,18 +2220,14 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
     #     scData.tree.root.getLtqsComplete(mem_friendly=True)
 
     if data_found and get_posterior_ltqs and get_all_data and (scData.tree.root.ltqsAIRoot is None):
-        mp_print("DB: Getting LTQs.")
         if scData.tree.root.ltqs is None:
             scData.tree.root.getLtqsComplete(mem_friendly=True)
-        mp_print("DB: Getting posterior LTQs.")
         scData.tree.root.getAIRootInfo(None, None)
 
     if not get_cell_info:
         return scData
 
-    mp_print("DB: Getting cell info.")
     get_cell_info_tree(scData, vertIndToNode)
-    mp_print("DB: Done getting cell info.")
     return scData, vertIndToNodeId
 
 

@@ -140,7 +140,6 @@ if len(args.cell_id_to_cs_id_file) == 0:
     scData.metadata.cell_id_to_cs_id = {cell_id: cell_id for cell_id in scData.metadata.cellIds}
     scData.metadata.cell_ind_to_cs_ind = {ind: ind for ind in range(scData.metadata.nCells)}
 
-mp_print("DB: I'm here 1.")
 scData.metadata.nCells = len(scData.metadata.cellIds)
 scData.metadata.nCss = len(scData.metadata.csIds)
 scData.csIndToVertInd = scData.cellIndToVertInd.copy()
@@ -148,22 +147,18 @@ scData.csIndToVertInd = scData.cellIndToVertInd.copy()
 scData.cellIndToVertInd = {cell_ind: scData.csIndToVertInd[cs_ind] for cell_ind, cs_ind in
                            scData.metadata.cell_ind_to_cs_ind.items()}
 scData.metadata.cs_ind_to_cell_inds = {cs_ind: [] for cs_ind in range(scData.metadata.nCss)}
-mp_print("DB: I'm here 2.")
 
 for cell_ind, cs_ind in scData.metadata.cell_ind_to_cs_ind.items():
     scData.metadata.cs_ind_to_cell_inds[cs_ind].append(cell_ind)
 scData.metadata.nCellsPerCs = np.array([len(cells) for cs, cells in scData.metadata.cs_ind_to_cell_inds.items()])
 # scData.cellsToVerts = {cell_id: scData.cssToVerts[cs_id] for cell_id, cs_id in scData.metadata.cell_id_to_cs_id.items()}
 
-mp_print("DB: I'm here 3.")
 
 """This script produces 2 data-files. One with data that doesn't change with different plotting options, which we will
 create first. One with precalculated settings to be able to make a first plot. These settings can change when different
 options are picked."""
 # Merge cells with parent if tParent = 0 but keep track of this info
 merge_cells_at_zero_dist(scData)
-
-mp_print("DB: I'm here 4.")
 
 # if args.use_log1p_dists:
 #     tParents = []
@@ -176,7 +171,6 @@ mp_print("DB: I'm here 4.")
 # nwk_str = scData.tree.to_newick(results_path=os.path.join(tree_folder, 'tree.nwk'))
 # nwk_str = scData.tree.to_newick(results_path=scData.result_path('tree.nwk'))
 nwk_str = scData.tree.to_newick()
-mp_print("DB: I'm here 5.")
 
 # If we get posterior_ltqs and rescale_by_var was True, then we have to undo that rescaling
 if reprocess_data and run_configs.rescale_by_var:
@@ -184,7 +178,6 @@ if reprocess_data and run_configs.rescale_by_var:
 else:
     undo_rescaling_by_var = False
 
-mp_print("DB: Getting data in arrays.")
 if scData.tree.root.ltqsAIRoot is not None:
     ltqs = np.zeros((scData.metadata.nGenes, scData.nVerts))
     ltqs_vars = np.zeros((scData.metadata.nGenes, scData.nVerts))
@@ -200,7 +193,6 @@ else:
     ltqs = None
     ltqs_vars = None
 
-mp_print("DB: I'm here 10.")
 node_ids = ['na'] * scData.nVerts
 for vert_ind, node in scData.tree.vert_ind_to_node.items():
     node_ids[vert_ind] = node.nodeId
@@ -213,7 +205,6 @@ except BlockingIOError:
     os.remove(scData.result_path('bonsai_vis_data.hdf'))
     bonvis_data_hdf = h5py.File(scData.result_path('bonsai_vis_data.hdf'), 'w')
 
-mp_print("DB: Storing data in normalized_hdf.")
 feature_paths = []
 # TODO: Transpose everything again later
 data_hdf = bonvis_data_hdf.create_group('data')
@@ -253,11 +244,9 @@ if ltqs is not None:
 
 bonvis_data_hdf.close()
 
-mp_print("DB: Getting annotations.")
 
 cell_info_df, cs_info_df, data_matrices = scData.get_annotations_with_cs(args.annotation_path)
 
-mp_print("DB: Getting cell info.")
 
 if cell_info_df is None:
     cell_info_df = pd.DataFrame(index=scData.metadata.cellIds)
@@ -265,8 +254,6 @@ cell_ind_to_vert_ind = [-1] * scData.metadata.nCells
 for cell_ind, vert_ind in scData.cellIndToVertInd.items():
     cell_ind_to_vert_ind[cell_ind] = vert_ind
 cell_info_df['cell_ind_to_vert_ind'] = cell_ind_to_vert_ind
-
-mp_print("DB: Getting cs info.")
 
 if cs_info_df is None:
     cs_info_df = pd.DataFrame(index=scData.metadata.csIds)
@@ -281,7 +268,6 @@ cell_info_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cell_info/ce
 cs_info_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cs_info_dict', mode='a', format='table',
                   data_columns=True)
 
-mp_print("DB: Storing more features.")
 bonvis_data_hdf = h5py.File(scData.result_path('bonsai_vis_data.hdf'), 'a')
 data_hdf = bonvis_data_hdf['data']
 for data_label, data_matrix in data_matrices.items():
@@ -297,7 +283,6 @@ for data_label, data_matrix in data_matrices.items():
     new_data_hdf.create_dataset('variances', data=np.nanvar(data_mat, axis=1))
 
 # test = pd.read_hdf(scData.result_path('bonsai_vis_data.dat'), key='cell_info')
-mp_print("DB: Storing more features 2.")
 
 for feature_path in feature_paths:
     feature_hdf = bonvis_data_hdf[feature_path]
@@ -345,7 +330,6 @@ for feature_path in feature_paths:
 #     ranks_per_gene_hdf.attrs['based_on'] = 'normalized'
 
 # Store list of inds of cells that are alone at a vertex
-mp_print("DB: I'm here 11.")
 single_cell_inds = np.array([cells[0] for vert, cells in scData.vertIndToCellInds.items() if (len(cells) == 1)])
 multi_at_vert = np.setxor1d(single_cell_inds, np.arange(scData.metadata.nCells), assume_unique=True)
 
@@ -368,8 +352,6 @@ vi_to_csi = {vert_ind: cs_ind for vert_ind, cs_ind in scData.vertIndToCsInds.ite
 vert_info_hdf.attrs['vert_ind_to_cell_inds_json'] = json.dumps(vi_to_ci)
 vert_info_hdf.attrs['vert_ind_to_cs_inds_json'] = json.dumps(vi_to_csi)
 
-mp_print("DB: I'm here 12.")
-
 # Get tree layout
 coords_dict, ly_type_picked = my_tree_layout(scData, True,
                                              filepath=os.path.join(tree_folder, 'layout.csv'),
@@ -379,9 +361,6 @@ coords_dict, ly_type_picked = my_tree_layout(scData, True,
 node_coords_hdf = bonvis_data_hdf.create_group('layout_coords/node_coords')
 for ly_type_ind in coords_dict:
     node_coords_hdf.create_dataset(ly_type_ind, data=coords_dict[ly_type_ind])
-
-mp_print("DB: I'm here 13.")
-
 
 # Store metadata as unstructured data
 # keys = ['dataset', 'cellIds', 'geneIds', 'geneVariances', 'loglik', 'nCells', 'nGenes', 'pathToOrigData']
@@ -421,8 +400,6 @@ for vert_ind, node in scData.tree.vert_ind_to_node.items():
         if n_css_at_vert > 1:
             multi_cs_inds.append(vert_ind)
 
-mp_print("DB: I'm here 14.")
-
 tree_info['cell_inds'] = np.array(cell_inds)
 tree_info['int_inds'] = np.array(int_inds)
 tree_info['cs_inds'] = np.array(cs_inds)
@@ -440,8 +417,6 @@ tree_info_hdf.create_dataset('multi_cell_inds', data=np.array(multi_cell_inds))
 tree_info_hdf.create_dataset('multi_cs_inds', data=np.array(multi_cs_inds))
 tree_info_hdf.create_dataset('n_cells_per_vert', data=vert_n_cells)
 
-mp_print("DB: I'm here 15.")
-
 # Get edge info
 node_id_to_vert_ind = {node.nodeId: vert_ind for vert_ind, node in scData.tree.vert_ind_to_node.items()}
 edge_df = scData.tree.get_edge_dataframe(nodeIdToVertInd=node_id_to_vert_ind)
@@ -455,11 +430,8 @@ for ly_type_ind in edge_coords_dict:
 
 bonvis_data_hdf.close()
 
-mp_print("DB: I'm here 16.")
-
 edge_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='tree_info/edge_df', mode='a', format='fixed',
                data_columns=True)
-mp_print("DB: I'm here 17.")
 
 # Get the first 100 clusters on the tree
 node_id_to_n_cells = {}
@@ -470,14 +442,11 @@ for ind, node_id in enumerate(node_ids):
     vert_ind_to_node_id[ind] = node_id
     if vert_n_cells[ind] > 0:
         node_ids_with_cells.append(node_id)
-mp_print("DB: I'm here 18.")
 # node_id_to_n_cells = {node_id: vert_n_cells[ind] for ind, node_id in enumerate(node_ids)}
 all_clusterings, cut_edges = get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str=nwk_str, n_clusters=100,
                                                                         cell_ids=node_ids_with_cells,
                                                                         node_id_to_n_cells=node_id_to_n_cells,
                                                                         footfall=False)
-mp_print("DB: I'm here 19.")
-
 # all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
 # We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
 node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
@@ -491,15 +460,12 @@ cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_inf
 bonvis_data_hdf.close()
 # test = pd.read_hdf(scData.result_path('bonsai_vis_data.dat'), key='cell_info')
 
-mp_print("DB: I'm here 20.")
-
 """After this we will create an object that contains all necessary information to make a first tree-visualization.
 This will be stored and used to make the initial visualization. After that the information can change."""
 bonvis_metadata = Bonvis_metadata(scData.result_path('bonsai_vis_data.hdf'))
 
 bonvis_settings = Bonvis_settings(bonvis_metadata=bonvis_metadata, geometry='hyperbolic', origin_style='root',
                                   ly_type=ly_type_picked)
-mp_print("DB: I'm here 21.")
 
 # start = time.time()
 bonvis_settings.to_json(settings_path=scData.result_path('bonsai_vis_settings.json'))

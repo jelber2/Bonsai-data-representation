@@ -76,10 +76,8 @@ def get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str, n_clusters, cell_id
     cluster_tree = Cluster_Tree()
     cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
     if node_id_to_n_cells is not None:
-        mp_print("DB: Starting to add info to nodes.")
         cluster_tree.root.add_info_to_nodes(node_id_to_info=node_id_to_n_cells, info_key='n_cells')
 
-    mp_print("DB: Finalized adding info to nodes. Starting clustering")
     all_clusterings, footfall_edges = get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=cell_ids,
                                                            verbose=verbose, footfall=footfall)
     return all_clusterings, footfall_edges
@@ -91,12 +89,9 @@ def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=No
         print("\nInit min-dist clustering-tree")
     cluster_tree = Cluster_Tree()
     cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
-    mp_print("I'm here! 10")
     if node_id_to_n_cells is not None:
-        mp_print("I'm here! 11")
         cluster_tree.root.add_info_to_nodes(node_id_to_info=node_id_to_n_cells, info_key='n_cells')
     if get_cell_ids_all_splits:
-        mp_print("I'm here! 12")
         clusters, footfall_edges, ids_splits = get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=cell_ids,
                                                                          get_cell_ids_all_splits=get_cell_ids_all_splits)
         return clusters, footfall_edges, ids_splits
@@ -207,7 +202,6 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
     if get_cell_ids_all_splits:
         cell_ids_splits = {}
 
-    mp_print("I'm here! 15")
     tree_ensmbl = [cluster_tree]
     # Make sure each node knows how many ds leafs it has
     cluster_tree.n_leafs = cluster_tree.get_min_pdists_info()
@@ -217,7 +211,6 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
     footfall_edges = []
 
     while len(tree_ensmbl) < n_clusters:
-        mp_print("I'm here! Trees: {}".format(len(tree_ensmbl)))
         # Loop over all edges to find max footfall one
         max_footfall_tree_ind = None
         max_footfall_node = None
@@ -233,22 +226,17 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                         max_footfall_node = node
                         max_footfall_score = footfall_score
 
-        mp_print("I'm here! 18")
         # Cut the tree into two pieces at the max footfall edge
         ds_node = max_footfall_node
         us_node = max_footfall_node.parentNode
         footfall_edges.append((ds_node.nodeId, us_node.nodeId))
-        mp_print("I'm here! 19")
 
         # Make one new tree:
         max_tree = tree_ensmbl[max_footfall_tree_ind]
         new_tree = Cluster_Tree()
 
-        mp_print("I'm here! 20")
-
         # Remove ds node from original tree
         us_node.childNodes = [child for child in us_node.childNodes if child.vert_ind != ds_node.vert_ind]
-        mp_print("I'm here! 21")
 
         # Make ds-node the root of the new tree
         new_tree.root = ds_node
@@ -263,16 +251,12 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
         # tree_1.root.childNodes = [child for child in tree_1.root.childNodes if child.vert_ind != us_node_vert_ind]
         # tree_2.root.childNodes = [child for child in tree_2.root.childNodes if child.vert_ind != ds_node_vert_ind]
         # Update vert_ind_to_node
-        mp_print("I'm here! 22")
 
         max_tree.vert_ind_to_node, max_tree.nNodes = max_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
         new_tree.vert_ind_to_node, new_tree.nNodes = new_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
-        mp_print("I'm here! 23")
         max_tree.n_leafs = max_tree.get_min_pdists_info()
         new_tree.n_leafs = new_tree.get_min_pdists_info()
-        mp_print("I'm here! 24")
 
-        mp_print("I'm here! 25")
         tree_ensmbl.append(new_tree)
         if get_cell_ids_all_splits:
             cell_ids_splits[(ds_node.nodeId, us_node.nodeId)] = []
@@ -286,9 +270,7 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                         if node.nodeId in cell_id_set:
                             leaf_ids_tree.append(node.nodeId)
                 cell_ids_splits[(ds_node.nodeId, us_node.nodeId)].append(leaf_ids_tree)
-        mp_print("I'm here! 26")
     # Should produce a list of lists with the node-IDs of the various clusterings
-    mp_print("I'm here! 27")
     clusters = []
     for ind_tree, tree in enumerate(tree_ensmbl):
         leaf_ids_tree = []
@@ -302,7 +284,6 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
         clusters.append(leaf_ids_tree)
     if verbose:
         print("clustering done")
-    mp_print("I'm here! 28")
 
     if get_cell_ids_all_splits:
         return clusters, footfall_edges, cell_ids_splits
@@ -347,8 +328,6 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
             max_footfall_node = None
             max_footfall_score = -1e9
             for vert_ind, node in tree.vert_ind_to_node.items():
-                if vert_ind % 10000 == 0:
-                    mp_print("DB: Looking for clusters at vert ind {}".format(vert_ind))
                 if node.parentNode is not None:
                     footfall_score = node.ds_leafs * (tree.n_leafs - node.ds_leafs) * node.tParent
                     if not footfall:
@@ -402,7 +381,6 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
         clusters.append(None)
 
         # Should produce a list of lists with the node-IDs of the various clusters
-        mp_print("DB: Storing created clusters")
         for ind_tree, tree in enumerate(tree_ensmbl):
             if clusters[ind_tree] is not None:
                 continue
