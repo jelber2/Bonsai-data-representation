@@ -112,7 +112,8 @@ def get_max_diam_clustering_from_nwk_str(tree_nwk_str, max_diam_threshold, cell_
 
 
 def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False):
-    cell_id_set = set(cell_ids)
+    if cell_ids is not None:
+        cell_id_set = set(cell_ids)
     if get_cell_ids_all_splits:
         cell_ids_splits = {}
 
@@ -198,7 +199,8 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
 
 
 def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True):
-    cell_id_set = set(cell_ids)
+    if cell_ids is not None:
+        cell_id_set = set(cell_ids)
     if get_cell_ids_all_splits:
         cell_ids_splits = {}
 
