@@ -251,7 +251,6 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
         # tree_1.root.childNodes = [child for child in tree_1.root.childNodes if child.vert_ind != us_node_vert_ind]
         # tree_2.root.childNodes = [child for child in tree_2.root.childNodes if child.vert_ind != ds_node_vert_ind]
         # Update vert_ind_to_node
-
         max_tree.vert_ind_to_node, max_tree.nNodes = max_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
         new_tree.vert_ind_to_node, new_tree.nNodes = new_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
         max_tree.n_leafs = max_tree.get_min_pdists_info()
