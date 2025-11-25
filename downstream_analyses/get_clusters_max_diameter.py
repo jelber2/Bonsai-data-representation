@@ -117,6 +117,7 @@ def get_max_diam_clustering_from_nwk_str(tree_nwk_str, max_diam_threshold, cell_
 
 
 def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False):
+    cell_id_set = set(cell_ids)
     if get_cell_ids_all_splits:
         cell_ids_splits = {}
 
@@ -179,7 +180,7 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
                         if node.isLeaf:
                             leaf_ids_tree.append(node.nodeId)
                     else:
-                        if node.nodeId in cell_ids:
+                        if node.nodeId in cell_id_set:
                             leaf_ids_tree.append(node.nodeId)
                 cell_ids_splits[(ds_node.nodeId, us_node.nodeId)].append(leaf_ids_tree)
 
@@ -191,7 +192,7 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
                 if node.isLeaf:
                     leaf_ids_tree.append(node.nodeId)
             else:
-                if node.nodeId in cell_ids:
+                if node.nodeId in cell_id_set:
                     leaf_ids_tree.append(node.nodeId)
         clusters.append(leaf_ids_tree)
     # Should produce a list of lists with the node-IDs of the various clusterings
@@ -237,13 +238,17 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
         ds_node = max_footfall_node
         us_node = max_footfall_node.parentNode
         footfall_edges.append((ds_node.nodeId, us_node.nodeId))
+        mp_print("I'm here! 19")
 
         # Make one new tree:
         max_tree = tree_ensmbl[max_footfall_tree_ind]
         new_tree = Cluster_Tree()
 
+        mp_print("I'm here! 20")
+
         # Remove ds node from original tree
         us_node.childNodes = [child for child in us_node.childNodes if child.vert_ind != ds_node.vert_ind]
+        mp_print("I'm here! 21")
 
         # Make ds-node the root of the new tree
         new_tree.root = ds_node
@@ -258,11 +263,16 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
         # tree_1.root.childNodes = [child for child in tree_1.root.childNodes if child.vert_ind != us_node_vert_ind]
         # tree_2.root.childNodes = [child for child in tree_2.root.childNodes if child.vert_ind != ds_node_vert_ind]
         # Update vert_ind_to_node
+        mp_print("I'm here! 22")
+
         max_tree.vert_ind_to_node, max_tree.nNodes = max_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
         new_tree.vert_ind_to_node, new_tree.nNodes = new_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
+        mp_print("I'm here! 23")
         max_tree.n_leafs = max_tree.get_min_pdists_info()
         new_tree.n_leafs = new_tree.get_min_pdists_info()
+        mp_print("I'm here! 24")
 
+        mp_print("I'm here! 25")
         tree_ensmbl.append(new_tree)
         if get_cell_ids_all_splits:
             cell_ids_splits[(ds_node.nodeId, us_node.nodeId)] = []
@@ -276,7 +286,9 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                         if node.nodeId in cell_id_set:
                             leaf_ids_tree.append(node.nodeId)
                 cell_ids_splits[(ds_node.nodeId, us_node.nodeId)].append(leaf_ids_tree)
+        mp_print("I'm here! 26")
     # Should produce a list of lists with the node-IDs of the various clusterings
+    mp_print("I'm here! 27")
     clusters = []
     for ind_tree, tree in enumerate(tree_ensmbl):
         leaf_ids_tree = []
@@ -285,11 +297,13 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                 if node.isLeaf:
                     leaf_ids_tree.append(node.nodeId)
             else:
-                if node.nodeId in cell_ids:
+                if node.nodeId in cell_id_set:
                     leaf_ids_tree.append(node.nodeId)
         clusters.append(leaf_ids_tree)
     if verbose:
         print("clustering done")
+    mp_print("I'm here! 28")
+
     if get_cell_ids_all_splits:
         return clusters, footfall_edges, cell_ids_splits
     return clusters, footfall_edges
