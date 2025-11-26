@@ -3859,9 +3859,7 @@ class Tree:
             n_moves += 1
             spr_target_version += 1
 
-            # TODO: REVERT THIS!
-            # if n_moves == n_print:
-            if n_moves > 0:
+            if n_moves == n_print:
                 mp_print("Performing SPR move {} out of {}. "
                          "Results so far: {} successes, {} loglikelihood-change, "
                          "current original branch length: {}".format(n_moves, max_moves,
@@ -4214,20 +4212,13 @@ class Tree:
         total_search_moves = 0
         start_adding = time.time()
         for n_added in range(n_to_add_total):
-            # # TODO Remove this
-            # if n_added == 7500:
-            #     exit()
-
-            # TODO: Revert this
-            # if n_added == n_print:
-            if True:
-                mp_print(
-                    "Seconds since start: {}. Adding cell {} out of {}: {:.2f}%.".format(time.time() - start_adding,
-                                                                                         n_added + 1, n_to_add_total,
-                                                                                         100 * (
-                                                                                                 n_added + 1) / n_to_add_total))
+            if n_added == n_print:
+            # if True:
+                mp_print("Seconds since start: {}. "
+                         "Adding cell {} out of {}: {:.2f}%.".format(time.time() - start_adding,
+                                                                     n_added + 1, n_to_add_total,
+                                                                     100 * (n_added + 1) / n_to_add_total))
                 mp_print("Total number of searches done: {}".format(total_search_moves))
-                # TODO: Remove this memory statement (maybe)
                 mp_print("Current memory usage is ",
                          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
                 n_print *= 2
