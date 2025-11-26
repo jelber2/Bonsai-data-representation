@@ -1510,8 +1510,6 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
             # So only process zero goes here. It merges all the sorted lists using the heapq.merge algorithm
             negdlogl_nodeind_tuples = list(heapq.merge(*all_negdlogl_nodeind_tuples))
 
-        mp_print("NEGDLOGL_ALL: {}".format(negdlogl_nodeind_tuples[:10]))
-
         # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
         # OPTIONAL: Re-load tree that was stored as intermediate, because then we the scanning behavior didn't change
         # the ordering of children, which makes it perfectly comparable when running on different numbers of cores
