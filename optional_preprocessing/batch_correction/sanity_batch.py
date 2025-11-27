@@ -41,7 +41,7 @@ parser.add_argument('--verbose', type=str2bool, default=False,
 args = parser.parse_args()
 mp_print(args)
 
-SKIP_READING = True
+SKIP_READING = False
 SKIP_SANITY = False
 
 FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
@@ -163,7 +163,8 @@ if not SKIP_SANITY:
         matrix_file = os.path.join(batch_folder, 'prom_expr_matrix.mtx')
         genes_file = os.path.join(batch_folder, 'prom_expr_promoters.tsv')
         cells_file = os.path.join(batch_folder, 'accepted_barcodes.tsv')
-        sanity_output_folder = os.path.join(batch_folder, 'Sanity')
+
+        sanity_output_folder = os.path.join(args.results_folder, batch_id)
         logfile = os.path.join(sanity_output_folder, 'sanity_log.txt')
         Path(sanity_output_folder).mkdir(parents=True, exist_ok=True)
         cmd += [args.sanity_binary_path,
@@ -176,9 +177,8 @@ if not SKIP_SANITY:
                '-max_v', 'only_max_output']
 
         logging.info("Starting Sanity on batch {}.".format(batch_id))
-        if not args.verbose:
-            logging.info("Logging Sanity-output in {}".format(logfile))
-        logging.debug(" ".join(cmd) + '\n')
+        logging.debug(" ".join(cmd))
+        logging.info("Logging Sanity-output in {}\n".format(logfile))
 
         with open(logfile, "w") as logf:
             # Start the process
