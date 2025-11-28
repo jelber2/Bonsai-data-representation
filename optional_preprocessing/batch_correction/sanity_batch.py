@@ -51,7 +51,6 @@ FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
 log_level = logging.DEBUG if args.verbose else logging.INFO
 logging.getLogger().setLevel(log_level)
 
-
 """---------------------------Read in the raw counts.---------------------------"""
 logging.info("Reading in data")
 input_folder = os.path.dirname(os.path.abspath(args.count_file))
@@ -153,9 +152,9 @@ if not SKIP_SANITY:
     logging.info("Running Sanity on batches")
 
     if args.conda_env is not None:
-        cmd = ['conda', 'run', '-n', args.conda_env, "--no-capture-output"]
+        cmd_root = ['conda', 'run', '-n', args.conda_env, "--no-capture-output"]
     else:
-        cmd = []
+        cmd_root = []
 
     # Use SLURM allocation if available; otherwise get physical cores
     total_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", psutil.cpu_count(logical=False)))
@@ -169,14 +168,14 @@ if not SKIP_SANITY:
         sanity_output_folder = os.path.join(args.results_folder, batch_id)
         logfile = os.path.join(sanity_output_folder, 'sanity_log.txt')
         Path(sanity_output_folder).mkdir(parents=True, exist_ok=True)
-        cmd += [args.sanity_binary_path,
-               "-f", matrix_file,
-               '-mtx_genes', genes_file,
-               '-mtx_cells', cells_file,
-               '-d', sanity_output_folder,
-               '-n', str(total_cpus),
-               '-e', '1',
-               '-max_v', 'only_max_output']
+        cmd = cmd_root + [args.sanity_binary_path,
+                          "-f", matrix_file,
+                          '-mtx_genes', genes_file,
+                          '-mtx_cells', cells_file,
+                          '-d', sanity_output_folder,
+                          '-n', str(total_cpus),
+                          '-e', '1',
+                          '-max_v', 'only_max_output']
 
         logging.info("Starting Sanity on batch {}.".format(batch_id))
         logging.debug(" ".join(cmd))
@@ -201,5 +200,3 @@ if not SKIP_SANITY:
             if ret != 0:
                 raise subprocess.CalledProcessError(ret, cmd)
         # subprocess.run(cmd, check=True)
-
-
