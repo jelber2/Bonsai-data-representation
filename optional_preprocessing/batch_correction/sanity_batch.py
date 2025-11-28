@@ -44,6 +44,9 @@ mp_print(args)
 SKIP_READING = False
 SKIP_SANITY = False
 
+from optional_preprocessing.batch_correction.batch_helpers import get_batch_annotation
+from bonsai.bonsai_helpers import read_ids, write_ids
+
 FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
 log_level = logging.DEBUG if args.verbose else logging.INFO
 logging.getLogger().setLevel(log_level)
@@ -53,32 +56,22 @@ logging.getLogger().setLevel(log_level)
 logging.info("Reading in data")
 input_folder = os.path.dirname(os.path.abspath(args.count_file))
 
-# Read in the batch-information
-batch_annotation = pd.read_csv(args.batch_annotation_file, sep='\t', index_col=0, header=None)
-# batches = list(batch_annotation.loc[:, 0])
-batches = list(batch_annotation.iloc[:, 0])
-batch_ids, cell_ind_to_batch_ind, counts = np.unique(batches, return_inverse=True, return_counts=True)
+batch_ids, cell_ind_to_batch_ind, cell_id_to_batch_id, batch_counts = get_batch_annotation(args.batch_annotation_file)
 n_batches = len(batch_ids)
 
-if not SKIP_READING:
+if SKIP_READING:
+    batch_ids.append('total_counts_per_batch')
+else:
     if args.count_file.split('.')[1] == 'mtx':
         logging.debug("Reading in raw data from .mtx-file")
         M = mmread(args.count_file)
         logging.debug("Done reading in raw data from .mtx-file")
         umi_counts = M.toarray()
         # Read in promoter names
-        gene_ids = []
-        with open(os.path.join(args.gene_names_file), 'r') as file:
-            reader = csv.reader(file, delimiter="\t")
-            for row in reader:
-                gene_ids.append(row[0])
-
+        gene_ids = read_ids(args.gene_names_file)
         # Read in cell barcodes as in mtx-file
-        cell_ids = []
-        with open(args.cell_names_file, 'r') as file:
-            reader = csv.reader(file, delimiter="\t")
-            for row in reader:
-                cell_ids.append(row[0])
+        cell_ids = read_ids(args.cell_names_file)
+
     else:
         logging.debug("Reading in raw data from .txt-file")
         tmp = pd.read_csv(args.count_file, sep='\t', index_col=0)
@@ -103,13 +96,12 @@ if not SKIP_READING:
     n_genes, n_cells = umi_counts.shape
 
     """---------------------------Split up the counts according to batch-annotation.---------------------------"""
-    logging.info("Splitting data in batches")
-    cell_id_to_batch_id = {cell_ids[ind]: batch_ids[cell_ind_to_batch_ind[ind]] for ind in range(n_cells)}
 
+    logging.info("Splitting data in batches")
     batch_cell_inds = {}
     batch_cell_ids = {}
     for ind_batch, batch_id in enumerate(batch_ids):
-        n_cells_batch = counts[ind_batch]
+        n_cells_batch = batch_counts[ind_batch]
         batch_cell_inds[batch_id] = []
         batch_cell_ids[batch_id] = []
 
@@ -128,9 +120,9 @@ if not SKIP_READING:
     logging.debug("Done splitting the counts into batches.")
 
     # Also create a subfolder in which we have all counts per batch added up
-    batch_ids = batch_ids.append('total_counts_per_batch')
+    batch_ids.append('total_counts_per_batch')
     batch_counts['total_counts_per_batch'] = total_counts_per_batch
-    batch_cell_ids['total_counts_per_batch'] = batch_ids
+    batch_cell_ids['total_counts_per_batch'] = batch_ids[:-1]
 
     # Store the data per batch in subfolders
     logging.debug("Storing the batch-counts.")
@@ -139,12 +131,10 @@ if not SKIP_READING:
         sparse_umis = csr_matrix(batch_counts[batch_id])
         mmwrite(os.path.join(input_folder, 'batch_counts', batch_id, 'prom_expr_matrix.mtx'), sparse_umis)
 
-            for ID in batch_cell_ids[batch_id]:
-                f.write("%s\n" % ID)
+        write_ids(os.path.join(input_folder, 'batch_counts', batch_id, 'accepted_barcodes.tsv'),
+                  batch_cell_ids[batch_id])
+        write_ids(os.path.join(input_folder, 'batch_counts', batch_id, 'prom_expr_promoters.tsv'), gene_ids)
 
-        with open(os.path.join(input_folder, 'batch_counts', batch_id, 'prom_expr_promoters.tsv'), 'w') as f:
-            for ID in gene_ids:
-                f.write("%s\n" % ID)
     logging.debug("Done storing the batch-counts.")
 
     # Path(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch')).mkdir(parents=True, exist_ok=True)
