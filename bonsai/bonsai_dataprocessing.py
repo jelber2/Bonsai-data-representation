@@ -2569,7 +2569,7 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
     tmp_gene_vars = []
     print_ind = 1000
     if tmp_folder is None:
-        tmp_folder = os.path.dirname(meansfile)
+        tmp_folder = data_folder
         Path(tmp_folder).mkdir(parents=True, exist_ok=True)
 
     # Define cutoff for how close the variances on LTQs can be to the true variances before throwing out a gene.
