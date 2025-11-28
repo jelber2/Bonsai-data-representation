@@ -1339,7 +1339,7 @@ def do_spr_moveset(scData, args, strategy='determ_random_determ', tracking=False
         info_dict = do_spr_moves_with_postprocessing(scData, args=args,
                                                      select_cand='long_branches_first',
                                                      select_target='cluster_centers',
-                                                     max_moves=100000,
+                                                     max_moves=None,
                                                      moves_id='C_long_branches_T_cluster_centers',
                                                      tracking=tracking, info_dict=info_dict)
 
@@ -1353,7 +1353,7 @@ def do_spr_moveset(scData, args, strategy='determ_random_determ', tracking=False
         info_dict = do_spr_moves_with_postprocessing(scData, args=args,
                                                      select_cand='long_branches_first',
                                                      select_target='cluster_centers',
-                                                     max_moves=100000,
+                                                     max_moves=None,
                                                      moves_id='C_long_branches_T_cluster_centers',
                                                      tracking=tracking, info_dict=info_dict)
 
