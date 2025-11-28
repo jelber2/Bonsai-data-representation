@@ -15,7 +15,7 @@ import subprocess
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 # Add the parent directory to sys.path
 sys.path.append(parent_dir)
-from bonsai.bonsai_helpers import mp_print, str2bool, Run_Configs
+from bonsai.bonsai_helpers import mp_print, str2bool
 
 parser = ArgumentParser(description='Splits a dataset into batches, and starts Sanity runs separately per batch.')
 
@@ -108,27 +108,29 @@ if not SKIP_READING:
 
     batch_cell_inds = {}
     batch_cell_ids = {}
-    batch_n_cells = {}
     for ind_batch, batch_id in enumerate(batch_ids):
         n_cells_batch = counts[ind_batch]
         batch_cell_inds[batch_id] = []
         batch_cell_ids[batch_id] = []
-        batch_n_cells[batch_id] = 0
 
-    logging.debug("Splitting the counts into batches.")
-    # TODO: Speed this up
     for cell_ind, cell_id in enumerate(cell_ids):
         batch_id = cell_id_to_batch_id[cell_id]
-        # nth_cell = batch_n_cells[batch_id]
         batch_cell_inds[batch_id].append(cell_ind)
         batch_cell_ids[batch_id].append(cell_id)
-        # batch_n_cells[batch_id] += 1
 
+    logging.debug("Splitting the counts into batches.")
     batch_counts = {}
-    for batch_id in batch_ids:
+    total_counts_per_batch = np.zeros((n_genes, n_batches))
+    for batch_ind, batch_id in enumerate(batch_ids):
         batch_counts[batch_id] = umi_counts[:, np.array(batch_cell_inds[batch_id])]
+        total_counts_per_batch[:, batch_ind] = np.sum(batch_counts[batch_id], axis=1)
 
     logging.debug("Done splitting the counts into batches.")
+
+    # Also create a subfolder in which we have all counts per batch added up
+    batch_ids = batch_ids.append('total_counts_per_batch')
+    batch_counts['total_counts_per_batch'] = total_counts_per_batch
+    batch_cell_ids['total_counts_per_batch'] = batch_ids
 
     # Store the data per batch in subfolders
     logging.debug("Storing the batch-counts.")
@@ -145,6 +147,17 @@ if not SKIP_READING:
             for ID in gene_ids:
                 f.write("%s\n" % ID)
     logging.debug("Done storing the batch-counts.")
+
+    # Path(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch')).mkdir(parents=True, exist_ok=True)
+    # sparse_umis = csr_matrix(total_counts_per_batch)
+    # mmwrite(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch', 'prom_expr_matrix.mtx'), sparse_umis)
+    # with open(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch', 'accepted_barcodes.tsv'), 'w') as f:
+    #     for ID in batch_ids:
+    #         f.write("%s\n" % ID)
+    # with open(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch',
+    #                        'prom_expr_promoters.tsv'), 'w') as f:
+    #     for ID in gene_ids:
+    #         f.write("%s\n" % ID)
 
 """---------------------------Run Sanity on different batches separately.---------------------------"""
 if not SKIP_SANITY:
@@ -200,8 +213,4 @@ if not SKIP_SANITY:
                 raise subprocess.CalledProcessError(ret, cmd)
         # subprocess.run(cmd, check=True)
 
-"""---------------------------For each Sanity result, divide out prior independently.---------------------------"""
 
-"""---------------------------Compile the Sanity results into one feature-matrix.---------------------------"""
-
-"""---------------------------Create bonsai-YAML-config-file for the Bonsai run.---------------------------"""
