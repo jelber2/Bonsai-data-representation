@@ -2760,7 +2760,7 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
         if len(tmp_vars) == 0:
             ltqsVars = np.zeros((0, nCells))
             ltqs = np.zeros((0, nCells))
-            genes_to_keep = np.zeros(0)
+            genes_to_keep = np.zeros(0, dtype=int)
             gene_vars = np.zeros(0)
         else:
             ltqsVars = np.vstack(tmp_vars)
@@ -2794,7 +2794,7 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
         if len(tmp_means) == 0:
             ltqsVars = np.zeros((0, nCells))
             ltqs = np.zeros((0, nCells))
-            genes_to_keep = np.zeros(0)
+            genes_to_keep = np.zeros(0, dtype=int)
             gene_vars = np.zeros(0)
         else:
             ltqs = np.vstack(tmp_means)
