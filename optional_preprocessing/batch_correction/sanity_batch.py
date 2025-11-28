@@ -139,7 +139,6 @@ if not SKIP_READING:
         sparse_umis = csr_matrix(batch_counts[batch_id])
         mmwrite(os.path.join(input_folder, 'batch_counts', batch_id, 'prom_expr_matrix.mtx'), sparse_umis)
 
-        with open(os.path.join(input_folder, 'batch_counts', batch_id, 'accepted_barcodes.tsv'), 'w') as f:
             for ID in batch_cell_ids[batch_id]:
                 f.write("%s\n" % ID)
 

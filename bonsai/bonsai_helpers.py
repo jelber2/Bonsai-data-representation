@@ -1137,3 +1137,21 @@ def add_celltype_info_to_tree(treenode, cell_id_to_ct):
         treenode.celltype = 'unknown'
     for child in treenode.childNodes:
         add_celltype_info_to_tree(child, cell_id_to_ct)
+
+
+def read_ids(filepath):
+    if not os.path.exists(filepath):
+        logging.error("Can't find IDs stored at {}.".format(filepath))
+        return []
+    ids = []
+    with open(filepath, 'r') as file:
+        reader = csv.reader(file, delimiter="\t")
+        for row in reader:
+            ids.append(row[0])
+    return ids
+
+
+def write_ids(filepath, ids_list):
+    with open(filepath, 'w') as f:
+        for ID in ids_list:
+            f.write("%s\n" % ID)
