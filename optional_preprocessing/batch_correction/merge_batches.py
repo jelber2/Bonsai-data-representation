@@ -41,9 +41,6 @@ import bonsai.mpi_wrapper as mpi_wrapper
 mpi_rank, mpi_size = startMPI(args.verbose)
 mpi_info = mpi_wrapper.get_mpi_info()
 
-SKIP_READING = False
-SKIP_SANITY = False
-
 FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
 log_level = logging.DEBUG if args.verbose else logging.INFO
 logging.getLogger().setLevel(log_level)
