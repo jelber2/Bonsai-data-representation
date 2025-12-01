@@ -32,7 +32,6 @@ parser.add_argument('--verbose', type=str2bool, default=False,
                     help='--verbose False only shows essential print messages (default: True)')
 
 args = parser.parse_args()
-mp_print(args)
 
 from bonsai.bonsai_dataprocessing import read_and_filter
 from optional_preprocessing.batch_correction.batch_helpers import get_batch_annotation
@@ -41,6 +40,8 @@ import bonsai.mpi_wrapper as mpi_wrapper
 mpi_rank, mpi_size = startMPI(args.verbose)
 mpi_info = mpi_wrapper.get_mpi_info()
 
+mp_print(args)
+
 FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
 log_level = logging.DEBUG if args.verbose else logging.INFO
 logging.getLogger().setLevel(log_level)
@@ -48,10 +49,12 @@ logging.getLogger().setLevel(log_level)
 if args.sanity_output_folder is None:
     exit("Argument 'sanity_output_folder' is empty, so I don't know where to read the Sanity-results.")
 if args.bonsai_input_folder is None:
-    logging.warning("Argument 'bonsai_input_folder' is empty, results will be written in the 'sanity_output_folder'.")
+    mp_print("Argument 'bonsai_input_folder' is empty, results will be written in the 'sanity_output_folder'.",
+             WARNING=True)
     args.bonsai_input_folder = args.sanity_output_folder
 if args.bonsai_results_folder is None:
-    logging.warning("Argument 'bonsai_results_folder' is empty, results will be written in the 'bonsai_input_folder'.")
+    mp_print("Argument 'bonsai_results_folder' is empty, results will be written in the 'bonsai_input_folder'.",
+             WARNING=True)
     args.bonsai_results_folder = args.bonsai_input_folder
 
 """---------------------------For each Sanity result, divide out prior independently.---------------------------"""
@@ -83,7 +86,7 @@ for batch_id in batch_ids:
     tmp_folder = os.path.join(sanity_folder, 'processed_data_communication')
 
     # Read in the Sanity-output
-    logging.debug("Getting Sanity-output for {}".format(batch_id))
+    mp_print("Getting Sanity-output for {}".format(batch_id), DEBUG=True)
     ltqs, ltqs_vars, gene_vars, n_cells, n_genes, genes_to_keep, \
     ltq_stds_found, n_genes_orig = read_and_filter(sanity_folder, meansfile='delta_vmax.txt',
                                                    stdsfile='d_delta_vmax.txt', sanityOutput=True,
@@ -92,7 +95,8 @@ for batch_id in batch_ids:
 
     if mpi_rank != 0:
         mp_print("Done reading input, proceeding to next batch.", ALL_RANKS=True, DEBUG=True)
-        
+        continue
+
     # Center the data, such that each gene has mean zero
     ltqs -= np.mean(ltqs, axis=1, keepdims=True)
 
@@ -125,6 +129,7 @@ for batch_id in batch_ids:
 
 if mpi_rank != 0:
     mp_print("My job here is done.", ALL_RANKS=True, DEBUG=True)
+    exit()
 
 # Concatenate the ltq-matrices
 ltqs_all = np.hstack(deltas_all)
