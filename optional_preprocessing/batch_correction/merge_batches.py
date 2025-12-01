@@ -132,8 +132,10 @@ if mpi_rank != 0:
     exit()
 
 # Concatenate the ltq-matrices
+mp_print("Stacking batch-corrected data.", DEBUG=True)
 ltqs_all = np.hstack(deltas_all)
 d_ltqs_all = np.hstack(d_deltas_all)
+mp_print("Done stacking batch-corrected data.", DEBUG=True)
 
 # Add the mean-per-gene
 ltqs_all += gene_means[:, None]
@@ -143,13 +145,15 @@ ltqs_all += gene_means[:, None]
 write_ids(os.path.join(args.bonsai_input_folder, 'geneID.txt'), all_gene_ids)
 write_ids(os.path.join(args.bonsai_input_folder, 'cellID.txt'), cell_ids_all)
 # Write ltqs and corresponding stds describing the likelihood function
+mp_print("Saving batch-corrected data.", DEBUG=True)
 np.savetxt(os.path.join(args.bonsai_input_folder, 'features.txt'), ltqs_all, delimiter='\t')
 np.savetxt(os.path.join(args.bonsai_input_folder, 'standard_deviations.txt'), d_ltqs_all, delimiter='\t')
 
 """---------------------------Create bonsai-YAML-config-file for the Bonsai run.---------------------------"""
 
+mp_print("Done saving batch-corrected data, now creating config-file for the Bonsai-run.", DEBUG=True)
 create_config_command = [sys.executable,
-                         'bonsai/create_config_file.py',
+                         os.path.join(parent_dir, 'bonsai/create_config_file.py'),
                          '--new_yaml_path',
                          os.path.join(args.bonsai_input_folder, 'bonsai_configs.yaml'),
                          '--dataset',
