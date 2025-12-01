@@ -5,6 +5,7 @@ import logging
 import csv
 import numpy as np
 import subprocess
+from pathlib import Path
 
 # Get the parent directory
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -141,6 +142,7 @@ mp_print("Done stacking batch-corrected data.", DEBUG=True)
 ltqs_all += gene_means[:, None]
 
 # Store the results in a folder ready for being run by Sanity
+Path(args.bonsai_input_folder).mkdir(parents=True, exist_ok=True)
 # Write gene and cell names
 write_ids(os.path.join(args.bonsai_input_folder, 'geneID.txt'), all_gene_ids)
 write_ids(os.path.join(args.bonsai_input_folder, 'cellID.txt'), cell_ids_all)
@@ -151,11 +153,12 @@ np.savetxt(os.path.join(args.bonsai_input_folder, 'standard_deviations.txt'), d_
 
 """---------------------------Create bonsai-YAML-config-file for the Bonsai run.---------------------------"""
 
+Path(args.bonsai_results_folder).mkdir(parents=True, exist_ok=True)
 mp_print("Done saving batch-corrected data, now creating config-file for the Bonsai-run.", DEBUG=True)
 create_config_command = [sys.executable,
                          os.path.join(parent_dir, 'bonsai/create_config_file.py'),
                          '--new_yaml_path',
-                         os.path.join(args.bonsai_input_folder, 'bonsai_configs.yaml'),
+                         os.path.join(args.bonsai_results_folder, 'bonsai_config.yaml'),
                          '--dataset',
                          args.dataset,
                          '--data_folder',
