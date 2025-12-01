@@ -90,6 +90,9 @@ for batch_id in batch_ids:
                                                    zscoreCutoff=-1, mpiInfo=mpi_info, tmp_folder=tmp_folder,
                                                    verbose=args.verbose, all_genes=True)
 
+    if mpi_rank != 0:
+        mp_print("Done reading input, proceeding to next batch.", ALL_RANKS=True, DEBUG=True)
+        
     # Center the data, such that each gene has mean zero
     ltqs -= np.mean(ltqs, axis=1, keepdims=True)
 
@@ -119,6 +122,9 @@ for batch_id in batch_ids:
     d_deltas_all.append(d_deltas_batch)
 
 """---------------------------Compile the Sanity results into one feature-matrix.---------------------------"""
+
+if mpi_rank != 0:
+    mp_print("My job here is done.", ALL_RANKS=True, DEBUG=True)
 
 # Concatenate the ltq-matrices
 ltqs_all = np.hstack(deltas_all)
