@@ -42,7 +42,7 @@ parser.add_argument('--realcovariance', type=str2bool, default=False,
 args = parser.parse_args()
 print(args)
 
-seed = 2462
+seed = 1231
 np.random.seed(seed)
 
 # Set number of generations and diffusion times
@@ -227,11 +227,16 @@ n_genes_final = ltqs_gc.shape[0]
 """-----------Here starts the batch-effect bit.---------------"""
 # Now add a copy for each cell from a second "batch"
 ltqs_gc_batch2 = ltqs_gc.copy()
-# Subtract the mean again, and add them back in a random order
-ltqs_gc_batch2 = ltqs_gc_batch2 - mean_ltqs[:, None]
-shuffled = mean_ltqs.copy()
-np.random.shuffle(shuffled)
-ltqs_gc_batch2 = ltqs_gc_batch2 + shuffled[:, None]
+# Option 1: Subtract the mean again, and add them back in a random order
+# ltqs_gc_batch2 = ltqs_gc_batch2 - mean_ltqs[:, None]
+# shuffled = mean_ltqs.copy()
+# np.random.shuffle(shuffled)
+# ltqs_gc_batch2 = ltqs_gc_batch2 + shuffled[:, None]
+
+# Option 2: Shift the means by a random number pulled from a Gaussian
+shifts = np.random.normal(loc=0.0, scale=np.exp(1), size=ltqs_gc.shape[0])
+ltqs_gc_batch2 = ltqs_gc_batch2 + shifts[:, None]
+
 # Concatenate these ltqs
 ltqs_gc = np.hstack((ltqs_gc, ltqs_gc_batch2))
 # Also add cell_IDs for the 2nd batch
