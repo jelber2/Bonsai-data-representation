@@ -9,6 +9,7 @@ from scipy.sparse import csr_matrix
 from pathlib import Path
 import psutil
 import subprocess
+import shutil
 
 import logging
 FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
@@ -146,6 +147,10 @@ else:
         write_ids(os.path.join(input_folder, 'batch_corrected', batch_id, 'prom_expr_promoters.tsv'), gene_ids)
 
     logger.debug("Done storing the batch-counts.")
+
+    # Also copy the batch-annotation down to this downstream folder
+    dst = os.path.join(os.path.join(input_folder, 'batch_corrected'), os.path.basename(args.batch_annotation_file))
+    shutil.copy2(args.batch_annotation_file, dst)
 
     # Path(os.path.join(input_folder, 'batch_corrected', 'total_counts_per_batch')).mkdir(parents=True, exist_ok=True)
     # sparse_umis = csr_matrix(total_counts_per_batch)
