@@ -7,9 +7,20 @@ import numpy as np
 from scipy.io import mmread, mmwrite
 from scipy.sparse import csr_matrix
 from pathlib import Path
-import logging
 import psutil
 import subprocess
+
+import logging
+FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+log_level = logging.WARNING
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 # Get the parent directory
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -52,7 +63,7 @@ log_level = logging.DEBUG if args.verbose else logging.INFO
 logging.getLogger().setLevel(log_level)
 
 """---------------------------Read in the raw counts.---------------------------"""
-logging.info("Reading in data")
+logger.info("Reading in data")
 input_folder = os.path.dirname(os.path.abspath(args.count_file))
 
 batch_ids, cell_ind_to_batch_ind, cell_id_to_batch_id, batch_counts = get_batch_annotation(args.batch_annotation_file)
@@ -62,9 +73,9 @@ if SKIP_READING:
     batch_ids.append('total_counts_per_batch')
 else:
     if args.count_file.split('.')[1] == 'mtx':
-        logging.debug("Reading in raw data from .mtx-file")
+        logger.debug("Reading in raw data from .mtx-file")
         M = mmread(args.count_file)
-        logging.debug("Done reading in raw data from .mtx-file")
+        logger.debug("Done reading in raw data from .mtx-file")
         umi_counts = M.toarray()
         # Read in promoter names
         gene_ids = read_ids(args.gene_names_file)
@@ -72,9 +83,9 @@ else:
         cell_ids = read_ids(args.cell_names_file)
 
     else:
-        logging.debug("Reading in raw data from .txt-file")
+        logger.debug("Reading in raw data from .txt-file")
         tmp = pd.read_csv(args.count_file, sep='\t', index_col=0)
-        logging.debug("Done reading in raw data from .txt-file")
+        logger.debug("Done reading in raw data from .txt-file")
         cell_ids = list(tmp.columns)
         gene_ids = list(tmp.index)
         umi_counts = tmp.values
@@ -96,7 +107,7 @@ else:
 
     """---------------------------Split up the counts according to batch-annotation.---------------------------"""
 
-    logging.info("Splitting data in batches")
+    logger.info("Splitting data in batches")
     batch_cell_inds = {}
     batch_cell_ids = {}
     for ind_batch, batch_id in enumerate(batch_ids):
@@ -109,14 +120,14 @@ else:
         batch_cell_inds[batch_id].append(cell_ind)
         batch_cell_ids[batch_id].append(cell_id)
 
-    logging.debug("Splitting the counts into batches.")
+    logger.debug("Splitting the counts into batches.")
     batch_counts = {}
     total_counts_per_batch = np.zeros((n_genes, n_batches))
     for batch_ind, batch_id in enumerate(batch_ids):
         batch_counts[batch_id] = umi_counts[:, np.array(batch_cell_inds[batch_id])]
         total_counts_per_batch[:, batch_ind] = np.sum(batch_counts[batch_id], axis=1)
 
-    logging.debug("Done splitting the counts into batches.")
+    logger.debug("Done splitting the counts into batches.")
 
     # Also create a subfolder in which we have all counts per batch added up
     batch_ids.append('total_counts_per_batch')
@@ -124,32 +135,32 @@ else:
     batch_cell_ids['total_counts_per_batch'] = batch_ids[:-1]
 
     # Store the data per batch in subfolders
-    logging.debug("Storing the batch-counts.")
+    logger.debug("Storing the batch-counts.")
     for batch_id in batch_ids:
-        Path(os.path.join(input_folder, 'batch_counts', batch_id)).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(input_folder, 'batch_corrected', batch_id)).mkdir(parents=True, exist_ok=True)
         sparse_umis = csr_matrix(batch_counts[batch_id])
-        mmwrite(os.path.join(input_folder, 'batch_counts', batch_id, 'prom_expr_matrix.mtx'), sparse_umis)
+        mmwrite(os.path.join(input_folder, 'batch_corrected', batch_id, 'prom_expr_matrix.mtx'), sparse_umis)
 
-        write_ids(os.path.join(input_folder, 'batch_counts', batch_id, 'accepted_barcodes.tsv'),
+        write_ids(os.path.join(input_folder, 'batch_corrected', batch_id, 'accepted_barcodes.tsv'),
                   batch_cell_ids[batch_id])
-        write_ids(os.path.join(input_folder, 'batch_counts', batch_id, 'prom_expr_promoters.tsv'), gene_ids)
+        write_ids(os.path.join(input_folder, 'batch_corrected', batch_id, 'prom_expr_promoters.tsv'), gene_ids)
 
-    logging.debug("Done storing the batch-counts.")
+    logger.debug("Done storing the batch-counts.")
 
-    # Path(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch')).mkdir(parents=True, exist_ok=True)
+    # Path(os.path.join(input_folder, 'batch_corrected', 'total_counts_per_batch')).mkdir(parents=True, exist_ok=True)
     # sparse_umis = csr_matrix(total_counts_per_batch)
-    # mmwrite(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch', 'prom_expr_matrix.mtx'), sparse_umis)
-    # with open(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch', 'accepted_barcodes.tsv'), 'w') as f:
+    # mmwrite(os.path.join(input_folder, 'batch_corrected', 'total_counts_per_batch', 'prom_expr_matrix.mtx'), sparse_umis)
+    # with open(os.path.join(input_folder, 'batch_corrected', 'total_counts_per_batch', 'accepted_barcodes.tsv'), 'w') as f:
     #     for ID in batch_ids:
     #         f.write("%s\n" % ID)
-    # with open(os.path.join(input_folder, 'batch_counts', 'total_counts_per_batch',
+    # with open(os.path.join(input_folder, 'batch_corrected', 'total_counts_per_batch',
     #                        'prom_expr_promoters.tsv'), 'w') as f:
     #     for ID in gene_ids:
     #         f.write("%s\n" % ID)
 
 """---------------------------Run Sanity on different batches separately.---------------------------"""
 if not SKIP_SANITY:
-    logging.info("Running Sanity on batches")
+    logger.info("Running Sanity on batches")
 
     if args.conda_env is not None:
         cmd_root = ['conda', 'run', '-n', args.conda_env, "--no-capture-output"]
@@ -160,7 +171,7 @@ if not SKIP_SANITY:
     total_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", psutil.cpu_count(logical=False)))
 
     for batch_id in batch_ids:
-        batch_folder = os.path.join(input_folder, 'batch_counts', batch_id)
+        batch_folder = os.path.join(input_folder, 'batch_corrected', batch_id)
         matrix_file = os.path.join(batch_folder, 'prom_expr_matrix.mtx')
         genes_file = os.path.join(batch_folder, 'prom_expr_promoters.tsv')
         cells_file = os.path.join(batch_folder, 'accepted_barcodes.tsv')
@@ -177,9 +188,9 @@ if not SKIP_SANITY:
                           '-e', '1',
                           '-max_v', 'only_max_output']
 
-        logging.info("Starting Sanity on batch {}.".format(batch_id))
-        logging.debug(" ".join(cmd))
-        logging.info("Logging Sanity-output in {}\n".format(logfile))
+        logger.info("Starting Sanity on batch {}.".format(batch_id))
+        logger.debug(" ".join(cmd))
+        logger.info("Logging Sanity-output in {}\n".format(logfile))
 
         with open(logfile, "w") as logf:
             # Start the process
@@ -194,7 +205,7 @@ if not SKIP_SANITY:
             for line in proc.stdout:
                 logf.write(line)
                 logf.flush()
-                logging.debug(line.rstrip("\n"))
+                logger.debug(line.rstrip("\n"))
 
             ret = proc.wait()
             if ret != 0:
