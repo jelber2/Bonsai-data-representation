@@ -10,7 +10,7 @@ from natsort import natsorted
 from scipy.spatial.distance import squareform
 import seaborn as sns
 import logging
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
 logging.basicConfig(format=FORMAT,

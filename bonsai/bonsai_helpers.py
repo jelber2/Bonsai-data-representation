@@ -31,7 +31,7 @@ other_colors = cm.get_cmap('tab20')
 gradient_colors = cm.get_cmap('viridis')
 
 import logging
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
 logging.basicConfig(format=FORMAT,

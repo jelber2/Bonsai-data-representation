@@ -34,7 +34,7 @@ gray = cm.get_cmap('gray')(0.75)
 blackish = (0.08578431372549018, 0.08578428015768168, 0.11935208866155156, 1.0)
 
 import logging
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
 logging.basicConfig(format=FORMAT,

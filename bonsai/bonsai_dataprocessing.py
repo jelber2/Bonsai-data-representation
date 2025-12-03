@@ -12,7 +12,7 @@ import json
 import heapq
 
 import logging
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.DEBUG
 logging.basicConfig(format=FORMAT,
                     datefmt='%m-%d %H:%M:%S',
