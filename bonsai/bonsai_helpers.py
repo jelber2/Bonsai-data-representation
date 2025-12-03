@@ -31,13 +31,16 @@ other_colors = cm.get_cmap('tab20')
 gradient_colors = cm.get_cmap('viridis')
 
 import logging
-
-# FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
-FORMAT = '%(asctime)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
-logging.basicConfig(format=FORMAT, datefmt='%m-%d %H:%M:%S',
-                    level=log_level)
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 plt.set_loglevel(level='warning')
 
@@ -167,13 +170,13 @@ def mp_print(*args, **kwargs):
         return
 
     if error:
-        logging.error(print_message)
+        logger.error(print_message)
     elif debug:
-        logging.debug(print_message)
+        logger.debug(print_message)
     elif warning:
-        logging.warning(print_message)
+        logger.warning(print_message)
     else:
-        logging.info(print_message)
+        logger.info(print_message)
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -1141,7 +1144,7 @@ def add_celltype_info_to_tree(treenode, cell_id_to_ct):
 
 def read_ids(filepath):
     if not os.path.exists(filepath):
-        logging.error("Can't find IDs stored at {}.".format(filepath))
+        logger.error("Can't find IDs stored at {}.".format(filepath))
         return []
     ids = []
     with open(filepath, 'r') as file:

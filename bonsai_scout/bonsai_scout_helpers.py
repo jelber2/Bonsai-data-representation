@@ -34,12 +34,16 @@ gray = cm.get_cmap('gray')(0.75)
 blackish = (0.08578431372549018, 0.08578428015768168, 0.11935208866155156, 1.0)
 
 import logging
-
 FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
-logging.basicConfig(format=FORMAT, datefmt='%m-%d %H:%M:%S',
-                    level=log_level)
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 
 class Celltype_info:
@@ -395,7 +399,7 @@ class Bonvis_settings:
     def to_json(self, settings_path):
         self_dict = self.to_dict()
         with open(settings_path, "w") as json_file:
-            logging.info("Storing settings in {}.".format(settings_path))
+            logger.info("Storing settings in {}.".format(settings_path))
             json.dump(self_dict, json_file, indent=4)
 
     def from_json(self, settings_path):
@@ -466,7 +470,7 @@ class Bonvis_settings:
         elif annot_info is not None:
             self.node_style['annot_info'] = annot_info
         else:
-            logging.debug("{} is not a known annotation. Returning {} instead.".format(annot_label,
+            logger.debug("{} is not a known annotation. Returning {} instead.".format(annot_label,
                                                                                        self.celltype_info.annot_alts[
                                                                                            0]))
             annot = self.celltype_info.annot_alts[0]
@@ -485,7 +489,7 @@ class Bonvis_settings:
             if annot_info.color_type == 'sequential':
                 self.node_style['size_annot_info'] = annot_info
         else:
-            logging.debug("{} is not a known annotation. Returning {} instead.".format(annot_label, 'cell_number'))
+            logger.debug("{} is not a known annotation. Returning {} instead.".format(annot_label, 'cell_number'))
             annot_info = self.verttype_info.annot_infos['cell_number']
             self.node_style['size_annot_info'] = annot_info
 
@@ -992,7 +996,7 @@ class Bonvis_figure:
             feature_ind = int(annot[8:])
             cell_to_celltype = self.bonvis_data[annot_info.info_object]['means'][feature_ind, :]
         else:
-            logging.error("Could not find this cell-to-celltype mapping ({}) anywhere".format(annot))
+            logger.error("Could not find this cell-to-celltype mapping ({}) anywhere".format(annot))
             return None, None
         cell_to_celltype = np.array(cell_to_celltype)
 
@@ -1027,7 +1031,7 @@ class Bonvis_figure:
             cell_to_color[~nan_entries, :] = cell_to_color_notnan
             cell_to_color[nan_entries, :] = cm.get_cmap('gray')(0.95)
         else:
-            logging.debug("Don't know what color to give, choosing gray.")
+            logger.debug("Don't know what color to give, choosing gray.")
             cell_to_celltype = [np.nan] * self.bonvis_metadata.n_cells
             cell_to_color = np.array([cm.get_cmap('gray')] * self.bonvis_metadata.n_cells)
 
@@ -1038,7 +1042,7 @@ class Bonvis_figure:
             masked_color[-1] = alpha
             masked_color = tuple(masked_color)
             if annot_info.annot_type == 'cells':
-                # logging.debug("Annotation type is cells!")
+                # logger.debug("Annotation type is cells!")
                 if node_style['cells_masked'] is None:
                     vert_info_dict = self.bonvis_metadata.vert_info
                     node_style['cells_masked'] = []
@@ -1047,7 +1051,7 @@ class Bonvis_figure:
                 cell_to_celltype[node_style['cells_masked']] = np.nan
                 cell_to_color[node_style['cells_masked']] = masked_color
             elif annot_info.annot_type == 'cellstates':
-                # logging.debug("Annotation type is cellstates!")
+                # logger.debug("Annotation type is cellstates!")
                 css_masked = []
                 if node_style['verts_masked'] is not None:
                     vert_info_dict = self.bonvis_metadata.vert_info
@@ -1080,7 +1084,7 @@ class Bonvis_figure:
 
     def reset_figure(self, reset_path):
         # First check if settings should be reset
-        logging.debug("reset_path {}".format(reset_path))
+        logger.debug("reset_path {}".format(reset_path))
         # with open(reset_path, "rb") as f:
         #     bonvis_settings = pickle.load(f)
         bonvis_settings = Bonvis_settings(load_settings_path=reset_path)
@@ -1092,7 +1096,7 @@ class Bonvis_figure:
                       flipped_node_ids=[], new_flip_id=False):
         # TODO: Eventually remove this print-statement, nice for debugging
         if verbose:
-            logging.info(
+            logger.info(
                 'geometry={}, zoom={}, click={}, node_style={}, size_style={}, scale_nodes={}, scale_edges={}, '
                 'scale_node_edges={}, origin={}, ly_type={}, '
                 'tweak_inds={}, multip_angle={}, reset_layout={}, ax_lims={}, zoom_ax_lims={}, renew_mask={}, '
@@ -1138,7 +1142,7 @@ class Bonvis_figure:
 
         if reset_layout:
             if len(self.coords_info.ly_trees) == 0:
-                logging.debug("Tree layout hasn't changed since loading from stored settings. Can't reset it.")
+                logger.debug("Tree layout hasn't changed since loading from stored settings. Can't reset it.")
             elif self.bonvis_settings.ly_type == 'ly_eq_daylight':
                 self.reset_ed_layout()
             elif self.bonvis_settings.ly_type == 'ly_eq_angle':
@@ -1267,7 +1271,7 @@ class Bonvis_figure:
             if (annot_info is not None):
                 update_colors = True
             else:
-                logging.error("Did not find annot: {}.".format(node_style))
+                logger.error("Did not find annot: {}.".format(node_style))
 
         # if n_clusters:
         #     old_annot_type = self.bonvis_settings.node_style['annot_info'].annot_type
@@ -1284,7 +1288,7 @@ class Bonvis_figure:
             if size_annot_info is not None:
                 update_sizes = True
             else:
-                logging.debug("Did not find size annot: {}.".format(size_style))
+                logger.debug("Did not find size annot: {}.".format(size_style))
 
         if update_bg:
             curr_geom = self.bonvis_settings.transf_info.geometry
@@ -1340,28 +1344,28 @@ class Bonvis_figure:
 
         # get clustering
         if min_pdists:
-            logging.debug("Performing minimal distance clustering!")
-            # logging.debug(self.bonvis_metadata.tree_info['nwk_str'])
+            logger.debug("Performing minimal distance clustering!")
+            # logger.debug(self.bonvis_metadata.tree_info['nwk_str'])
             node_id_to_n_cells = self.bonvis_metadata.tree_info['node_id_to_n_cells']
             clusters_list, cut_edges = get_min_pdists_clustering_from_nwk_str(
                 tree_nwk_str=self.bonvis_metadata.tree_info['nwk_str'], n_clusters=cluster_param,
                 cell_ids=self.bonvis_metadata.cs_ids, node_id_to_n_cells=node_id_to_n_cells)
         elif footfall:
-            logging.debug("Performing maximal footfall clustering!")
+            logger.debug("Performing maximal footfall clustering!")
             clusters_list, cut_edges = get_footfall_clustering_from_nwk_str(
                 tree_nwk_str=self.bonvis_metadata.tree_info['nwk_str'],
                 n_clusters=cluster_param, cell_ids=self.bonvis_metadata.cell_ids)
         else:
-            logging.debug("Performing max-diameter clustering")
+            logger.debug("Performing max-diameter clustering")
             clusters_list = get_max_diam_clustering_from_nwk_str(tree_nwk_str=self.bonvis_metadata.tree_info['nwk_str'],
                                                                  max_diam_threshold=cluster_param,
                                                                  cell_ids=self.bonvis_metadata.cell_ids)
             cut_edges = None
 
-        logging.debug("number of clusters found: {}".format(len(clusters_list)))
+        logger.debug("number of clusters found: {}".format(len(clusters_list)))
         # num_clusters = len(clusters_list)
         # self.number_of_clusters_found = len(clusters_list)
-        # logging.debug(self.number_of_clusters_found)
+        # logger.debug(self.number_of_clusters_found)
         # get clusters to cluster-idx
         cl_dict = get_cluster_assignments(clusters_list=clusters_list)
 
@@ -1407,7 +1411,7 @@ class Bonvis_figure:
                                  "clustering_tmp": cl_dict.values()})
         annotation_df = annot_df.iloc[cs_inds, :]
         self.bonvis_metadata.cs_info['cs_info_dict'][info_key] = annotation_df['clustering_tmp'].tolist()
-        # logging.debug(annotation_df)
+        # logger.debug(annotation_df)
 
         self.bonvis_settings.set_annot(annot_info=cl_annot)
         self.bonvis_settings.cell_to_celltype, _ = self.get_color_info(
@@ -1491,7 +1495,7 @@ class Bonvis_figure:
 
     def create_figure(self, figsize=(12, 12), make_background=True, no_edges=False,
                       verbose=False, fig=None, ax=None):
-        logging.debug("Creating figure!")
+        logger.debug("Creating figure!")
         if (fig is not None) and (ax is not None):
             self.fig = fig
             self.ax = ax
@@ -1529,7 +1533,7 @@ class Bonvis_figure:
             self.ax.add_collection(self.edge_obj['coll'])
             self.is_present['edges'] = True
             if verbose:
-                logging.debug("Plotted all edges.")
+                logger.debug("Plotted all edges.")
 
         self.int_obj['coll'].set_offset_transform(self.ax.transData)
         self.single_obj['coll'].set_offset_transform(self.ax.transData)
@@ -1661,7 +1665,7 @@ class Bonvis_figure:
         # closest_inds = {sub_id: nn_index.query(coords, k=1, return_distance=True) for sub_id, nn_index in
         #                 self.coords_info.nn_index.items()}
         # closest_ind = self.coords_info.nn_index.query(coords, k=1, return_distance=False)[0][0]
-        logging.debug(self.coords_info.transf_node_coords_nx[closest_inds['int_inds'], :])
+        logger.debug(self.coords_info.transf_node_coords_nx[closest_inds['int_inds'], :])
         return closest_inds
 
     def tweak_ed_layout(self, ed_ind):
@@ -1687,7 +1691,7 @@ class Bonvis_figure:
 
     def tweak_ea_layout(self, ea_inds, multip_angle):
         if ea_inds[-1] == ea_inds[-2]:
-            logging.debug("Two picked nodes are the same. Cannot tweak tree like this.")
+            logger.debug("Two picked nodes are the same. Cannot tweak tree like this.")
             return
         ly_tree = self.coords_info.ly_trees['ly_eq_angle']
         if ly_tree.root.dsNodes is None:
@@ -1714,7 +1718,7 @@ class Bonvis_figure:
                                     self.bonvis_metadata, edge_dict=edge_dict)
 
     def preprocess_marker_genes(self, bonvis_data_path, curr_subset, curr_subset_2=None, curr_categorical_annot=None):
-        logging.debug("update_marker_genes_df(curr_subset={}, curr_subset_2={} curr_categorical_annot={})"
+        logger.debug("update_marker_genes_df(curr_subset={}, curr_subset_2={} curr_categorical_annot={})"
                       .format(curr_subset, curr_subset_2, curr_categorical_annot))
         feature_hdf = self.bonvis_data[self.bonvis_settings.node_style['feature_path']]
         feature_path = self.bonvis_settings.node_style['feature_path']
@@ -1756,15 +1760,15 @@ class Bonvis_figure:
                         5e-8 * (len(ds_cell_inds_1) + len(ds_cell_inds_2)) * self.bonvis_metadata.n_genes)
             n_points = min(max(n_points, 50), 300)
             time_estimate = 5e-8 * (len(ds_cell_inds_1) + len(ds_cell_inds_2)) * self.bonvis_metadata.n_genes * n_points
-            logging.info("Time estimate for full marker gene calculation is {} seconds.".format(time_estimate))
+            logger.info("Time estimate for full marker gene calculation is {} seconds.".format(time_estimate))
             if time_estimate > allowed_time:
                 run_with_vars = 'shortcut'
-                logging.warning("This is more than the maximally allowed {} seconds. "
+                logger.warning("This is more than the maximally allowed {} seconds. "
                                 "Switching to marker gene calculation without taking error-bars into account.\n One could "
                                 "run the marker gene calculation outside the app if desired.".format(allowed_time))
 
         if run_with_vars == 'yes':
-            logging.info("Calculating marker genes accounting for the error-bars "
+            logger.info("Calculating marker genes accounting for the error-bars "
                          "between groups of sizes {} and {}.".format(len(ds_cell_inds_1), len(ds_cell_inds_2)))
             # Determine if the feature matrix has vertex- or cell-information. In the first case, we have to cut the
             # cells out
@@ -1773,7 +1777,7 @@ class Bonvis_figure:
             elif feature_hdf['means'].shape[1] == self.bonvis_metadata.n_nodes:
                 get_cells_out = True
             else:
-                logging.error("This feature matrix doesn't have columns equal to number of cells or nodes.\n"
+                logger.error("This feature matrix doesn't have columns equal to number of cells or nodes.\n"
                               "Marker gene detection is therefore not supported (yet).")
                 self.marker_genes_df = pd.DataFrame(columns=['marker_genes', 'marker_scores'])
                 run_with_vars = 'stop'
@@ -1853,7 +1857,7 @@ class Bonvis_figure:
         elif curr_subset['type'] == 'subtree':
             return_vert_inds = False if (return_vert_inds == 'flexible') else return_vert_inds
             subtree_inds = curr_subset['info']
-            # logging.debug("subtree_inds {}".format(subtree_inds))
+            # logger.debug("subtree_inds {}".format(subtree_inds))
             # Get from tree information which cells are part of the selected subtree
             if not return_vert_inds:
                 ds_cell_inds = self.get_cell_inds_subtree(subtree_inds, return_vert_inds=False)
@@ -1863,7 +1867,7 @@ class Bonvis_figure:
             # cell_info_dict = self.bonvis_metadata.cell_info['cell_info_dict']
             annot_cat = curr_subset['info']
             annot_label = curr_categorical_annot
-            # logging.debug("annot_cat: {}, annot_type: {}".format(annot_cat, annot_type))
+            # logger.debug("annot_cat: {}, annot_type: {}".format(annot_cat, annot_type))
             curr_annot_label = self.bonvis_settings.node_style[
                 'annot_info'].label if annot_label is None else annot_label
             curr_annot = find_annot(curr_annot_label, self.bonvis_settings, self.bonvis_data, self.bonvis_metadata)
@@ -1907,11 +1911,11 @@ class Bonvis_figure:
                     ds_cell_inds = list(itertools.chain.from_iterable(
                         [info_dict['vert_ind_to_cell_inds'][cs_ind] for cs_ind in ds_vert_inds]))
             else:
-                logging.error("Annotation-style {} cannot be found in any info object!".format(curr_annot.label))
+                logger.error("Annotation-style {} cannot be found in any info object!".format(curr_annot.label))
                 ds_cell_inds = np.zeros(0)
                 ds_vert_inds = np.zeros(0)
         else:
-            logging.debug("Cannot find cells in selected subset.")
+            logger.debug("Cannot find cells in selected subset.")
             ds_cell_inds = np.zeros(0)
             ds_vert_inds = np.zeros(0)
         if return_vert_inds:
@@ -1940,7 +1944,7 @@ class Bonvis_figure:
                 break
         if ds_vert_inds is None:
             ds_vert_inds = np.setdiff1d(np.arange(ly_tree.nNodes), ancestor.dsNodes)
-        # logging.debug("ds_vert_inds {}".format(ds_vert_inds))
+        # logger.debug("ds_vert_inds {}".format(ds_vert_inds))
         if return_vert_inds:
             return ds_vert_inds
         ds_cell_inds = []
@@ -2139,7 +2143,7 @@ class Coords_info:
 
     def add_layout_details_to_tree(self, ly_type):
         if ly_type not in self.ly_trees:
-            logging.debug("Can't add layout-details, tree was not reconstructed yet.")
+            logger.debug("Can't add layout-details, tree was not reconstructed yet.")
         ly_tree = self.ly_trees[ly_type]
         ly_tree.coords = self.node_coords_nx[:]
         nNodes = self.node_coords_nx.shape[0]
@@ -2157,7 +2161,7 @@ class Coords_info:
 
     def change_ly_style(self, bonvis_settings, bonvis_data, bonvis_metadata, ly_type):
         if ly_type not in bonvis_settings.ly_types:
-            logging.debug("This layout-type is not stored. Check this.")
+            logger.debug("This layout-type is not stored. Check this.")
             return
         bonvis_settings.set_ly_type(ly_type)
 
@@ -2176,8 +2180,8 @@ class Coords_info:
             self.node_coords_nx = bonvis_data['layout_coords']['node_coords'][bonvis_settings.ly_type][:]
             self.edge_coords_eix = bonvis_data['layout_coords']['edge_coords'][bonvis_settings.ly_type][:]
         transf_info = bonvis_settings.transf_info
-        # logging.debug("get_zoom {}, zoom_per_origin {}".format(transf_info.get_zoom(), transf_info.zoom_per_geometry))
-        # logging.debug("origin {}".format(transf_info.origin))
+        # logger.debug("get_zoom {}, zoom_per_origin {}".format(transf_info.get_zoom(), transf_info.zoom_per_geometry))
+        # logger.debug("origin {}".format(transf_info.origin))
 
         if (not transf_info.no_transform) and( (transf_info.get_zoom() is None) or (transf_info.origin is None)):
             # Get zoom and origin for transformation, copying from transf_info if known or determining them anew
@@ -2333,15 +2337,15 @@ def get_opt_zoom_origin_poincare(coords, transf_info, frac_within=0.8, within_ra
                                          within_radius=within_radius)
         origin0 = get_centroid_poincare(coords, transf_info, zoom=new_zoom, verbose=verbose)
         if verbose:
-            logging.debug('Zoom is ' + str(new_zoom))
-            logging.debug('Origin is ' + str(origin0) + '\n')
+            logger.debug('Zoom is ' + str(new_zoom))
+            logger.debug('Origin is ' + str(origin0) + '\n')
         if np.abs(old_zoom - new_zoom) < tol:
             converged = True
         else:
             old_zoom = new_zoom
         if counter == max_iter:
-            logging.debug("Maximum number of iterations reached: just returning last found value.")
-            logging.debug("Zoom value converged to " + str(np.abs(old_zoom - new_zoom)))
+            logger.debug("Maximum number of iterations reached: just returning last found value.")
+            logger.debug("Zoom value converged to " + str(np.abs(old_zoom - new_zoom)))
             converged = True
     return new_zoom, origin0
 
@@ -2371,8 +2375,8 @@ def get_zoom_given_origin(coords, transf_info, frac_within=0.8, within_radius=.8
     if opt_result.converged:
         result = np.exp(opt_result.root)
     else:
-        logging.debug(opt_result.flag)
-        logging.debug("Finding optimal zoom failed. Using 0.001 instead.")
+        logger.debug(opt_result.flag)
+        logger.debug("Finding optimal zoom failed. Using 0.001 instead.")
         result = 0.001
 
     return result
@@ -2389,11 +2393,11 @@ def get_centroid_poincare(coords, transf_info, zoom=1, verbose=False):
     opt_result = optimize.minimize(dist_fun, origin0)
     if opt_result.success:
         if verbose:
-            logging.debug(opt_result.message)
+            logger.debug(opt_result.message)
         origin = opt_result.x
     else:
-        logging.debug(opt_result.message)
-        logging.debug("We take the centroid of the graph in Euclidean space instead.")
+        logger.debug(opt_result.message)
+        logger.debug("We take the centroid of the graph in Euclidean space instead.")
         origin = origin0
     return origin
 
@@ -2665,7 +2669,7 @@ class Bonvis_metadata:
             cluster_info_dict = pd.read_hdf(bonvis_data_hdf_path, key='cs_info/cluster_info_dict').to_dict(
                 orient='list')
         except KeyError:
-            logging.warning("No key {} in file {}\nThis is likely not a problem, it might merely indicate that you use "
+            logger.warning("No key {} in file {}\nThis is likely not a problem, it might merely indicate that you use "
                             "an old run of vis_bonsai_preprocess.py.".format('cs_info/cs_info_dict',
                                                                              bonvis_data_hdf_path))
             cs_info_dict = None

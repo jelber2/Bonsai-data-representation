@@ -8,11 +8,16 @@ import pandas as pd
 from argparse import ArgumentTypeError
 
 import logging
-
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
+FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+log_level = logging.WARNING
 log_level = logging.DEBUG
-logging.basicConfig(format=FORMAT, datefmt='%m-%d %H:%M:%S',
-                    level=log_level)
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
@@ -131,7 +136,7 @@ if len(args.cell_id_to_cs_id_file) > 0:
                                               for
                                               ind, cellId in enumerate(scData.metadata.cellIds)}
     except FileNotFoundError:
-        logging.debug("Could not find cell to cellstates mapping. Assuming Bonsai was reconstructed on cells directly.")
+        logger.debug("Could not find cell to cellstates mapping. Assuming Bonsai was reconstructed on cells directly.")
         args.cell_id_to_cs_id_file = ''
 
 if len(args.cell_id_to_cs_id_file) == 0:
@@ -301,7 +306,7 @@ for feature_path in feature_paths:
         # for cell_ind, cs_ind in scData.metadata.cell_ind_to_cs_ind.items():
         #     cell_data[:, cell_ind] = feature_data[:, cs_ind]
     else:
-        logging.error(
+        logger.error(
             "Number of columns in feature matrix {} does not match either number of cells, number of cellstates "
             "or number of vertices.".format(feature_path))
     # For determining marker genes, we only want to consider cells that have zero nan's for every gene
@@ -463,5 +468,5 @@ bonvis_settings = Bonvis_settings(bonvis_metadata=bonvis_metadata, geometry='hyp
 
 # start = time.time()
 bonvis_settings.to_json(settings_path=scData.result_path('bonsai_vis_settings.json'))
-logging.info("Stored preprocessed data in {}".format(scData.result_path('bonsai_vis_settings.json')))
+logger.info("Stored preprocessed data in {}".format(scData.result_path('bonsai_vis_settings.json')))
 # print("This took {:.2f} seconds.".format(time.time() - start))

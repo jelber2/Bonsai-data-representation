@@ -9,12 +9,16 @@ import csv
 from pathlib import Path
 
 import logging
-
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
+FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
-logging.basicConfig(format=FORMAT, datefmt='%m-%d %H:%M:%S',
-                    level=log_level)
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 
 def merge_clusters_acc_cellstates(clusters, umiCounts, cell_ids, verbose=True):
@@ -55,12 +59,12 @@ def merge_clusters_acc_cellstates(clusters, umiCounts, cell_ids, verbose=True):
     summed_counts_clst = np.zeros((umiCounts.shape[0], n_clst), dtype=int)
     for i, clstName in enumerate(clsts):
         if (i % 10) == 0:
-            logging.debug("Merging cellstate {}".format(i))
+            logger.debug("Merging cellstate {}".format(i))
         clusterMask = clusters == clstName
         if np.sum(clusterMask) > 0:
             summed_counts_clst[:, i] = np.sum(umiCounts[:, clusterMask], axis=1)
         else:
-            logging.warning("How can this mask be empty?")
+            logger.warning("How can this mask be empty?")
     return summed_counts_clst, counts, cs_annot, cell_annot, cs_ids, cell_id_to_cs_id
 
 
@@ -119,8 +123,8 @@ if __name__ == '__main__':
         gene_ids = list(tmp.index)
         umi_counts = tmp.values.astype(dtype='int')
 
-    logging.debug("First 10 cell ids, raw input: {}".format(cell_ids[:10]))
-    logging.debug("First 10 cell ids, cellstates input: {}".format(cell_ids_cellstates[:10]))
+    logger.debug("First 10 cell ids, raw input: {}".format(cell_ids[:10]))
+    logger.debug("First 10 cell ids, cellstates input: {}".format(cell_ids_cellstates[:10]))
 
     for ind, cell_ID in enumerate(cell_ids):
         if cell_ID != cell_ids_cellstates[ind]:

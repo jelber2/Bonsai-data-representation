@@ -9,8 +9,18 @@ import bonsai.bonsai_globals as bs_glob
 import copy
 import gc
 import json
-import logging
 import heapq
+
+import logging
+FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 
 class Metadata:
@@ -99,7 +109,7 @@ class Metadata:
     def take_subset_genes(self, genes_to_keep):
         new_nGenes = len(genes_to_keep)
         if self.nGenes < new_nGenes:
-            logging.error("Trying to take a subset of genes with more genes than original.")
+            logger.error("Trying to take a subset of genes with more genes than original.")
             exit()
         elif self.nGenes > new_nGenes:
             self.geneIds = [self.geneIds[ind] for ind in genes_to_keep]
@@ -917,7 +927,7 @@ class SCData:
             file_list = os.listdir(annotation_folder)
         else:
             file_list = []
-            logging.info("No celltype-annotation was found. Assigning same celltype to all cells")
+            logger.info("No celltype-annotation was found. Assigning same celltype to all cells")
 
         file_list = [file for file in file_list if (os.path.splitext(file)[1] in ['.csv', '.tsv'])]
         annotation_dfs_cell = []
@@ -2489,7 +2499,7 @@ def get_cell_info_tree(scData, vertIndToNode):
         scData.csToVerts = {}
         scData.csIndToVertInd = {}
         get_cs_info = True
-        logging.error("I didn't think getting cs-info here would ever be necessary. Check why this happens.")
+        logger.error("I didn't think getting cs-info here would ever be necessary. Check why this happens.")
         exit()
     else:
         get_cs_info = False

@@ -345,7 +345,7 @@ class TreeNode:
 
     def get_ds_info_for_ladderize(self, verbose=False):
         if verbose and (self.vert_ind % 100000 == 0) and (self.vert_ind != 0):
-            logging.debug("Getting downstream information at vertex number {c:d}.".format(c=self.vert_ind))
+            logger.debug("Getting downstream information at vertex number {c:d}.".format(c=self.vert_ind))
         if self.isLeaf:
             self.dsLeafs = 1
         else:
@@ -2861,7 +2861,7 @@ class TreeNode:
                                                ltqs2_g=ltqs_cand_g, ltqsVars2_g=ltqsVars_cand_g, tol=1e-4)
         # opt_t = orig_ti
         if not converged:
-            logging.warning("Somehow, the optimization of the branch length in an SPR move diverged, setting branch "
+            logger.warning("Somehow, the optimization of the branch length in an SPR move diverged, setting branch "
                             "length to 1.")
             opt_t = 1
 
@@ -3930,13 +3930,13 @@ class Tree:
                 opt_t = orig_t
                 found_new_parent = False
                 if verbose:
-                    logging.info("SPR-move {} unsuccessful:, "
+                    logger.info("SPR-move {} unsuccessful:, "
                                  "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
             else:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
                     found_new_parent = False
-                    # logging.info("SPR-move {} returned: leaving node {} as child of {}. "
+                    # logger.info("SPR-move {} returned: leaving node {} as child of {}. "
                     #              "Time-optimization led to loglikelihood increase "
                     #              "of: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
                     #                               opt_dlogl - dlogl_orig_pos))
@@ -3944,7 +3944,7 @@ class Tree:
                     successful_moves += 1
                     found_new_parent = True
                     if verbose:
-                        logging.info("SPR-move {} success: moving node {} as child of {}. "
+                        logger.info("SPR-move {} success: moving node {} as child of {}. "
                                      "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
                                                                           opt_dlogl - dlogl_orig_pos))
                 total_dlogl_increase += (opt_dlogl - dlogl_orig_pos)
@@ -4134,7 +4134,7 @@ class Tree:
                     no_cand = False
                 counter += 1
                 if counter > 1e9:
-                    logging.warning("Something went wrong. Can't find a random target for an SPR move!")
+                    logger.warning("Something went wrong. Can't find a random target for an SPR move!")
                     target = None
                     no_cand = False
         return [target]
@@ -4368,9 +4368,9 @@ class Tree:
         self.nNodes = bs_glob.nNodes
         if tmp_folder is not None:
             remove_tree_folders(tmp_folder, removeDir=True, base='added')
-        logging.info("The {} added cells led to a decrease of {} "
+        logger.info("The {} added cells led to a decrease of {} "
                      "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
-        logging.info("Not taking account intermediate resolving of polytomies: total loglikelihood should now be {}, "
+        logger.info("Not taking account intermediate resolving of polytomies: total loglikelihood should now be {}, "
                      "and it is {} according to the normal loglik "
                      "calculation.".format(orig_loglik + total_dlogl_decrease,
                                            self.calcLogLComplete(mem_friendly=True, recalc=True)))
@@ -4457,8 +4457,8 @@ def initializeTask(indTask, myTasks, pairs, nodeIndToChildInd, verbose, mpiInfo,
     # still appears in pairs-list. It seems faster to skip over it here than to update pairs-list
     if (not skip) and (ind1 == ind2):
         skip = True
-        logging.error("nodeInd1: {}, nodeInd2: {}".format(nodeInd1, nodeInd2))
-        logging.error(
+        logger.error("nodeInd1: {}, nodeInd2: {}".format(nodeInd1, nodeInd2))
+        logger.error(
             "There's a mistake somewhere. We are trying to calculate the merging likelihood of a node with itself. "
             "This is now skipped!")
     if skip:

@@ -1,11 +1,22 @@
 from argparse import ArgumentParser
 import os
 import sys
-import logging
 import csv
 import numpy as np
 import subprocess
 from pathlib import Path
+
+import logging
+FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+log_level = logging.WARNING
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 # Get the parent directory
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
