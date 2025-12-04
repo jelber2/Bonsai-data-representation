@@ -1,7 +1,6 @@
 from datetime import datetime
 import json
 import h5py
-import logging
 import numpy as np
 import os
 from pathlib import Path
@@ -9,6 +8,18 @@ import pandas as pd
 from ruamel.yaml import YAML
 from shiny import ui
 import sys
+
+import logging
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
+log_level = logging.WARNING
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 from downstream_analyses.get_cluster_helpers import Cluster_Tree
 
@@ -23,12 +34,12 @@ from bonsai_scout.bonsai_scout_helpers import Bonvis_figure, Bonvis_settings, Bo
 from bonsai.bonsai_helpers import set_recursion_limits
 
 def store_current_settings(bonvis_settings, settings_path):
-    logging.debug("settings_path %r", settings_path)
+    logger.debug("settings_path %r", settings_path)
     dir_path = os.path.dirname(settings_path)
-    logging.debug("dir_path %r", dir_path)
+    logger.debug("dir_path %r", dir_path)
     new_settings_path = os.path.join(dir_path,
                                      "bonsai_vis_settings_{}.json".format(datetime.now().strftime('%y%m%d_%H%M%S')))
-    logging.debug("new_settings_path %r", new_settings_path)
+    logger.debug("new_settings_path %r", new_settings_path)
     bonvis_settings.to_json(settings_path=new_settings_path)
 
 global bonvis_data_objects
@@ -100,7 +111,7 @@ class BonvisObject:
         try:
             data = key[1].strip().split("=")
         except:
-            logging.debug("Could not process key: %r" % key)
+            logger.debug("Could not process key: %r" % key)
             data = [None]
         if data[0] != "?dir":
             if 'BONSAI_DATA_PATH' in os.environ and 'BONSAI_SETTINGS_PATH' in os.environ:
@@ -115,7 +126,7 @@ class BonvisObject:
                 with open(os.path.join(JOBS_DIR, dataset_id, "shiny_configs.yaml"), 'r') as file_obj:
                     self.shiny_paths = yaml.load(file_obj)
             except:
-                logging.debug("Couldn't find bonvis config file for {}".format(dataset_id))
+                logger.debug("Couldn't find bonvis config file for {}".format(dataset_id))
         self.bonvis_metadata = Bonvis_metadata(self.shiny_paths['data_path'])
 
         set_recursion_limits(int(2 * self.bonvis_metadata.n_cells))

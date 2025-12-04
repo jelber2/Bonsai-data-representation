@@ -8,11 +8,16 @@ from numpy import ndarray
 from random import shuffle
 
 import logging
-
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
+log_level = logging.WARNING
 log_level = logging.DEBUG
-logging.basicConfig(format=FORMAT, datefmt='%m-%d %H:%M:%S',
-                    level=log_level)
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 class Layout_Tree:
     # This is just a slim version of the scdata_tree, to make getting the equal-angle layout independent of bonsai and
@@ -141,7 +146,7 @@ class Layout_Tree:
             # angle_diffs = np.zeros(len(degs))
             # angle_diffs[:-1] = np.diff(degs) % 360
             # angle_diffs[-1] = 360
-            # logging.debug(node.nodeId)
+            # logger.debug(node.nodeId)
             # shades = np.linalg.solve(coeff_s, angle_diffs)
             for ind, child in enumerate(node.childNodes):
                 child.angle = angles[ind]
@@ -150,7 +155,7 @@ class Layout_Tree:
         coords = np.zeros((self.nNodes, 2))
         _, _, _ = self.root.getDsLeafs(self.nNodes, verbose=verbose, get_nodelist=get_nodelist)
         if verbose:
-            logging.debug("Obtained all downstream information.")
+            logger.debug("Obtained all downstream information.")
         self.root.coords = np.array([0., 0.])
         self.root.thetaParent = 180
 
@@ -200,7 +205,7 @@ class Layout_Tree:
     #         if (ind > 0) and (counter > 0):
     #             return
     #         if verbose and (counter % 1000 == 0):
-    #             logging.debug("Setting equal-daylight angle for vertex %d" % counter)
+    #             logger.debug("Setting equal-daylight angle for vertex %d" % counter)
     #         if not node.isLeaf:
     #             node.setequalDaylightAngles(self.coords, allowNegDaylight=allowNegDaylight)
     #             self.coords = node.positionChildren(self.coords, set_eq_angle=False)
@@ -226,7 +231,7 @@ class Layout_Tree:
             node_counter = 0
             for vert_ind, node in nodeList.items():
                 if verbose and (node_counter % 1000 == 0):
-                    logging.debug("Calculating equal-daylight angle for vertex %d" % node_counter)
+                    logger.debug("Calculating equal-daylight angle for vertex %d" % node_counter)
                 if not node.isLeaf:
                     # In the following function new angles are calculated (but not yet implemented) for the whole tree
                     # These new angles are based on the current position of the nodes
@@ -247,12 +252,12 @@ class Layout_Tree:
                     dev_int = dev[int_inds]
                     max_dev = np.max(dev_int)
                     # If daylight left, previous change can be processed. Current new_angles are tested in next round
-                    logging.debug("Testing new angles equal daylight step {:d}. Stepsize {:.5f}, "
+                    logger.debug("Testing new angles equal daylight step {:d}. Stepsize {:.5f}, "
                           "total deviation {:.5f}, max deviation {:.5f}, "
                           "min deviation {:.5f}.".format(step_counter, stepsize, np.sum(dev_int),
                                                          max_dev, np.min(dev_int)))
                 else:
-                    logging.debug("Performed step {:d} of equal daylight. Still daylight left on all nodes.\n"
+                    logger.debug("Performed step {:d} of equal daylight. Still daylight left on all nodes.\n"
                           "Maximum deviation from equal-daylight across nodes is {:.2f}".format(step_counter, max_dev))
             # If min daylight < 0, go to last stored tree
             if not daylight_left:
@@ -262,7 +267,7 @@ class Layout_Tree:
                 stepsize_changed += 1
                 stepsize /= 2
                 nodeList = self.getNodeListBFVertInd()
-                logging.debug("Last equal-daylight step was too large. Trying again with stepsize {}.".format(stepsize))
+                logger.debug("Last equal-daylight step was too large. Trying again with stepsize {}.".format(stepsize))
             else:
                 step_counter += 1
                 reuse_calc = False
@@ -289,7 +294,7 @@ class Layout_Tree:
         # If min daylight < 0, go to last stored tree
         if not daylight_left:
             self = old_tree
-            logging.debug("Last equal-daylight step was too large. Trying again with stepsize {}.".format(stepsize))
+            logger.debug("Last equal-daylight step was too large. Trying again with stepsize {}.".format(stepsize))
 
         return self
 
@@ -446,7 +451,7 @@ class Layout_TreeNode:
             else:
                 if count != 0:
                     shuffle(sorted_ch_inds_ladder)
-            logging.info("The {} branches downstream of {} flipped {} times.".format(len(sorted_ch_inds_ladder),
+            logger.info("The {} branches downstream of {} flipped {} times.".format(len(sorted_ch_inds_ladder),
                                                                                      self.nodeId, count))
         else:
             sorted_ch_inds_ladder = np.argsort(ds_leafs_ch)
@@ -674,7 +679,7 @@ class Layout_TreeNode:
                 if count != 0:
                     shuffle(sorted_ch_inds_ladder)
             if not ladderize_all:
-                logging.info("The {} branches downstream of {} flipped {} times.".format(len(sorted_ch_inds_ladder),
+                logger.info("The {} branches downstream of {} flipped {} times.".format(len(sorted_ch_inds_ladder),
                                                                                          self.nodeId, count))
 
             # Then arrange the children in that order
@@ -686,7 +691,7 @@ class Layout_TreeNode:
 
     def getDsLeafs(self, nNodes=None, get_nodelist=True, verbose=False):
         if verbose and (self.vert_ind % 100000 == 0) and (self.vert_ind != 0):
-            logging.debug("Getting downstream information at vertex number {c:d}.".format(c=self.vert_ind))
+            logger.debug("Getting downstream information at vertex number {c:d}.".format(c=self.vert_ind))
         dsNodes = [self.vert_ind] if get_nodelist else None
         if self.isLeaf:
             self.dsLeafs = 1
@@ -730,7 +735,7 @@ class Layout_TreeNode:
             else:
                 shades[ind] = my_shade * child.dsLeafs_weighted / self.dsLeafs_weighted
             if verbose and (child.vert_ind % 100000 == 0):
-                logging.debug("Calculating equal-angles for vertex number %d." % child.vert_ind)
+                logger.debug("Calculating equal-angles for vertex number %d." % child.vert_ind)
         shades_sum = np.sum(shades)
         shade_parent = 360 - shades_sum
         theta_prev = 0
@@ -824,7 +829,7 @@ def reconstructTreeFromEdgeVertInfo(mergerFolder):
         vertIndToNode[childVert] = childNode
         tree.nNodes += 1
 
-    logging.debug("\n\nReconstructed tree loaded from: \n%s \n%s" % (edgeFile, vertFile))
+    logger.debug("\n\nReconstructed tree loaded from: \n%s \n%s" % (edgeFile, vertFile))
 
     return vertIndToNode, vertIndToNodeInd, edgeList, distList, tree
 
@@ -832,16 +837,16 @@ def reconstructTreeFromEdgeVertInfo(mergerFolder):
 def getLayout(scdata_tree, eq_daylight=True, dendrogram=True, verbose=True, all_coords_dict=None,
               eq_dl_max_stepsize_changes=20, eq_dl_max_steps=100, flipped_node_ids=[]):
     if verbose:
-        logging.debug("Starting reconstruction of tree.")
+        logger.debug("Starting reconstruction of tree.")
     ly_tree = get_ly_tree_from_scdata_tree(scdata_tree)
     if verbose:
-        logging.debug("Starting equal angle algorithm.")
+        logger.debug("Starting equal angle algorithm.")
     start = time.time()
     ly_tree.equalAngle(verbose=verbose, get_nodelist=eq_daylight)
     if all_coords_dict is not None:
         all_coords_dict['ly_eq_angle'] = ly_tree.coords.copy()
     if verbose:
-        logging.debug("Equal-angle algorithm took %f seconds." % (time.time() - start))
+        logger.debug("Equal-angle algorithm took %f seconds." % (time.time() - start))
     if eq_daylight:
         ly_tree = ly_tree.equalDaylightAll(verbose=verbose, max_stepsize_changes=eq_dl_max_stepsize_changes,
                                  max_steps=eq_dl_max_steps)
@@ -860,7 +865,7 @@ def getLayout(scdata_tree, eq_daylight=True, dendrogram=True, verbose=True, all_
     #     start = time.time()
     #     ly_tree.equalDaylight(ind, allowNegDaylight=False, verbose=verbose)
     #     if verbose:
-    #         logging.debug("Loop %d of equal-daylight took %f seconds." % (ind, time.time() - start))
+    #         logger.debug("Loop %d of equal-daylight took %f seconds." % (ind, time.time() - start))
     # with open(result_path, 'w') as f:
     #     f.write("label,x,y\n")
     #     for ind, vert_ind in enumerate(ly_tree.nodeIds):
@@ -924,7 +929,7 @@ def my_tree_layout(scData, calc=False, filepath='layout.csv', daylight_subset=No
                                           dendrogram=True, verbose=verbose, all_coords_dict=all_coords_dict,
                                           eq_dl_max_stepsize_changes=eq_dl_max_stepsize_changes,
                                           eq_dl_max_steps=eq_dl_max_steps)
-        logging.debug("The layout algorithms took {:.2f} seconds.".format(time.time() - start))
+        logger.debug("The layout algorithms took {:.2f} seconds.".format(time.time() - start))
 
         # Store calculated layouts in file
         coords = np.zeros((scData.nVerts, 2 * len(all_coords_dict)))
@@ -961,7 +966,7 @@ def my_tree_layout(scData, calc=False, filepath='layout.csv', daylight_subset=No
     #     # coords_df.values = coords_df.values[]
     #     # for ind, node_id in enumerate(nodeIds):
     #     #     if verbose and (ind % 100000 == 0):
-    #     #         logging.debug("Loading %d-th coordinates." % ind)
+    #     #         logger.debug("Loading %d-th coordinates." % ind)
     #     #     coords[ind, :] = tree_coords[nodeIdsToTreeInd[nodeId], :]
     #     # coords = np.array(list(coords))
     #     n_types = int(len(coords_df.columns) / 2)
@@ -985,7 +990,7 @@ def my_tree_layout(scData, calc=False, filepath='layout.csv', daylight_subset=No
 #         start = time.time()
 #         tree = getLayout(treeFolder, outputFolder=self.result_path(), layoutFilename=filename,
 #                          nEqualDaylight=n_equal_daylight, verbose=verbose)
-#         logging.debug("My equal-daylight algorithm took %f seconds." % (time.time() - start))
+#         logger.debug("My equal-daylight algorithm took %f seconds." % (time.time() - start))
 #         got_layout = True
 #         # else:
 #         #     start = time.time()
@@ -1003,13 +1008,13 @@ def my_tree_layout(scData, calc=False, filepath='layout.csv', daylight_subset=No
 #         #     command = ["Rscript", "--vanilla", Rscript_path, self.result_path(), filename, '0.05', '1']
 #         #     run_output = subprocess.run(command)
 #         #     run_output.check_returncode()
-#         #     logging.debug("Equal-daylight algorithm from ggtree took %f seconds." % (time.time() - start))
+#         #     logger.debug("Equal-daylight algorithm from ggtree took %f seconds." % (time.time() - start))
 #     if got_layout:
 #         coords = np.zeros((len(vertIndToNodeId), 2))
 #         nodeIdsToTreeInd = {nodeId: ind for ind, nodeId in tree.nodeIds.items()}
 #         for ind, vert in enumerate(vertIndToNodeId):
 #             if verbose and (ind % 100000 == 0):
-#                 logging.debug("Loading %d-th coordinates." % ind)
+#                 logger.debug("Loading %d-th coordinates." % ind)
 #             nodeId = vertIndToNodeId[vert]
 #             coords[ind, :] = tree.coords[nodeIdsToTreeInd[nodeId], :]
 #         coord_list = list(coords)
@@ -1021,7 +1026,7 @@ def my_tree_layout(scData, calc=False, filepath='layout.csv', daylight_subset=No
 #         tree_coords = imported_layout[['x', 'y']].values
 #         for ind, vert in enumerate(vertIndToNodeId):
 #             if verbose and (ind % 100000 == 0):
-#                 logging.debug("Loading %d-th coordinates." % ind)
+#                 logger.debug("Loading %d-th coordinates." % ind)
 #             nodeId = vertIndToNodeId[vert]
 #             coords[ind, :] = tree_coords[nodeIdsToTreeInd[nodeId], :]
 #         coord_list = list(coords)
@@ -1031,7 +1036,7 @@ def my_tree_layout(scData, calc=False, filepath='layout.csv', daylight_subset=No
 #         for vert in self.mst.vs:
 #             coords = list(imported_layout[imported_layout["label"] == vert["name"]][['x', 'y']].values.flatten())
 #             if len(coords) == 0:
-#                 logging.debug("No vertex in R-output found with name:" + vert['name'])
+#                 logger.debug("No vertex in R-output found with name:" + vert['name'])
 #             coord_list.append(coords)
 #     self.coords = np.array(coord_list)
 #     # mst_layout = igraph.Layout(coord_list)

@@ -20,11 +20,16 @@ import concurrent.futures
 
 
 import logging
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
-logging.basicConfig(format=FORMAT, datefmt='%m-%d %H:%M:%S',
-                    level=log_level)
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory to sys.path
@@ -524,13 +529,13 @@ def server(input, output, session: Session):
     def _():
         # If this is the first tree plot, put up a placeholder while we calculate the first figure
         if first_tree_plot.get():
-            logging.debug("RETURNING TO PLACEHODLER!")
+            logger.debug("RETURNING TO PLACEHODLER!")
             trigger_new_fig.set(trigger_new_fig.get() + 1)
             show_waiting_modal(message="<em>Bonsai-scout</em> is loading your first tree-representation.<br> "
                                        "For large datasets, this can take a while, please be patient.")
         else:
             ui.modal_remove()
-            logging.debug("MOVING ON!")
+            logger.debug("MOVING ON!")
 
     @render.ui
     def dataset_info():
@@ -940,7 +945,7 @@ def server(input, output, session: Session):
     async def core_get_marker_genes(run_with_vars, marker_genes_tuple):
         # This is the main calculation that takes very long
         loop = asyncio.get_event_loop()
-        logging.info("Starting the update_marker_genes_df-function in a new process")
+        logger.info("Starting the update_marker_genes_df-function in a new process")
         return await loop.run_in_executor(pool, update_marker_genes_df, run_with_vars, marker_genes_tuple)
 
     @render.data_frame
@@ -958,7 +963,7 @@ def server(input, output, session: Session):
     def make_tree():
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
         trigger_new_fig.get()
-        # logging.debug("trigger_new_fig.get(): {}".format(trigger_new_fig.get()))
+        # logger.debug("trigger_new_fig.get(): {}".format(trigger_new_fig.get()))
         if first_tree_plot.get():
             first_tree_plot.set(False)
         return bv_objct.bonvis_fig.fig
@@ -967,8 +972,8 @@ def server(input, output, session: Session):
     def preprocess_make_tree():
         req(input.ly_type(), input.feature_path_mrkr(), input.feature_path_expr(), feature_path)
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
-        logging.debug("user_id: %r url_search: %r", user_id, session.input[".clientdata_url_search"].get())
-        logging.debug("bv_objcts.keys(): %r", bv_objcts.keys())
+        logger.debug("user_id: %r url_search: %r", user_id, session.input[".clientdata_url_search"].get())
+        logger.debug("bv_objcts.keys(): %r", bv_objcts.keys())
         # Determine whether settings should be reset
         ax_lims = None
 
@@ -999,7 +1004,7 @@ def server(input, output, session: Session):
             new_ly_type = ly_type if (ly_type is not None) else bv_objct.bonvis_fig.bonvis_settings.ly_type
             if pattern.search(new_ly_type):
                 if input.geometry != 'flat':
-                    logging.warning("It doesn't make sense to use hyperbolic geometry with dendrogram layout.\n"
+                    logger.warning("It doesn't make sense to use hyperbolic geometry with dendrogram layout.\n"
                                     "Sticking to flat geometry")
                     ui.update_select('geometry', selected='flat')
                     geometry = None
@@ -1219,12 +1224,12 @@ def server(input, output, session: Session):
             create_legend = bv_objct.bonvis_fig.update_figure(**stored_kwargs)
             update_figure_kwargs.set(None)
         bv_objct.bonvis_fig.create_figure()
-        # logging.debug("Setting trigger_new_fig higher. Currently {}".format(trigger_new_fig.get()))
+        # logger.debug("Setting trigger_new_fig higher. Currently {}".format(trigger_new_fig.get()))
         trigger_new_fig.set(trigger_new_fig.get() + 1)
         if create_legend:
             renew_legend.set(renew_legend.get() + 1)
         ui.modal_remove()
-        # logging.debug("Now {}".format(trigger_new_fig.get()))
+        # logger.debug("Now {}".format(trigger_new_fig.get()))
 
     # @reactive.effect
     # @reactive.event(input.fig_format)
@@ -1252,7 +1257,7 @@ def server(input, output, session: Session):
     #     # download_cluster_diam = np.exp(input.cluster_diam())
     #     download_n_clsts = input.n_clusters()
     #     cluster_filename = "clustering_{}.tsv".format(download_n_clsts)
-    #     logging.debug("go clustering, change filename: {}".format(cluster_filename))
+    #     logger.debug("go clustering, change filename: {}".format(cluster_filename))
 
     def make_cluster_filename():
         download_n_clsts = input.n_clusters()
@@ -1270,7 +1275,7 @@ def server(input, output, session: Session):
         cluster_labels = bv_objct.bonvis_metadata.cs_info['cluster_info_dict'].keys()
         info_key = "annot_cluster_n{}".format(input.n_clusters())
         if info_key not in cluster_labels:
-            logging.error("Could not find the clustering you want to download. Did you perform the clustering already?")
+            logger.error("Could not find the clustering you want to download. Did you perform the clustering already?")
             return
         # info_key = possible_annot_keys[-1]
 
@@ -1292,7 +1297,7 @@ def server(input, output, session: Session):
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
         bv_objct.click_counters['marker_info'] += 1
         if bv_objct.marker_gene_vars['marker_info_dict'] is not None:
-            logging.info("Download information for currently selected marker groups, " \
+            logger.info("Download information for currently selected marker groups, " \
                 "results in: 'marker_groups_info.json'")
             buffer = io.StringIO()
             json.dump(bv_objct.marker_gene_vars['marker_info_dict'], buffer, indent=4)
@@ -1300,7 +1305,7 @@ def server(input, output, session: Session):
 
             yield buffer.read()
         else:
-            logging.warning("No marker information yet available. Click 'get_markers' to create this.")
+            logger.warning("No marker information yet available. Click 'get_markers' to create this.")
 
     def make_user_specific_marker_name():
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
@@ -1353,7 +1358,7 @@ def server(input, output, session: Session):
     @reactive.event(renew_legend)
     def legend_content():
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
-        logging.debug("Main legend number {}".format(renew_legend.get()))
+        logger.debug("Main legend number {}".format(renew_legend.get()))
         bv_objct.bonvis_fig.create_legend()
         if bv_objct.bonvis_fig.bonvis_settings.node_style['annot_info'].color_type == 'categorical':
             return ui.output_table("get_legend_df")
@@ -1773,14 +1778,14 @@ def server(input, output, session: Session):
                     if bv_objct.mask_counters['temp_mask'][subset_ind] == 0:
                         with reactive.isolate():
                             curr_selected_subset = selected_subsets[subset_ind].get()
-                            logging.debug("Switching mask {} on.".format(subset_ind))
+                            logger.debug("Switching mask {} on.".format(subset_ind))
                             curr_selected_subset['mask_is_on'] = True
                             selected_subsets[subset_ind].set(curr_selected_subset)
                             update_mask.set(update_mask.get() + 1)
                 elif bv_objct.mask_counters['temp_mask'][subset_ind] == TEMP_MASK_STEPS:
                     with reactive.isolate():
                         curr_selected_subset = selected_subsets[subset_ind].get()
-                        logging.debug("Switching mask {} off.".format(subset_ind))
+                        logger.debug("Switching mask {} off.".format(subset_ind))
                         # if input.use_mask():
                         curr_selected_subset['mask_is_on'] = False
                         selected_subsets[subset_ind].set(curr_selected_subset)
@@ -1873,7 +1878,7 @@ def server(input, output, session: Session):
                 picked_gene.set(data_selected.iat[0, ids_ind])
                 node_style.set(picked_gene.get())
         except IndexError:
-            logging.debug("Shiny encountered its bug where it tries to access an old index while the dataframe changed.")
+            logger.debug("Shiny encountered its bug where it tries to access an old index while the dataframe changed.")
 
     @reactive.effect
     def _():
@@ -1891,7 +1896,7 @@ def server(input, output, session: Session):
             # selected_idx = input.get_marker_genes_df_selected_rows()[0]
             # picked_gene.set(bonvis_fig.marker_genes_df.iat[selected_idx, marker_ids_ind])
         except IndexError:
-            logging.debug("Shiny encountered its bug where it tries to access an old index while the dataframe changed.")
+            logger.debug("Shiny encountered its bug where it tries to access an old index while the dataframe changed.")
 
     # One can select node-style through selecting annotation in Annotation-tab.
     @reactive.effect

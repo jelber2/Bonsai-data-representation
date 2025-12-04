@@ -9,7 +9,18 @@ import bonsai.bonsai_globals as bs_glob
 import copy
 import gc
 import json
+import heapq
+
 import logging
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 
 class Metadata:
@@ -55,7 +66,11 @@ class Metadata:
         if curr_metadata is not None:
             for attr in attr_list:
                 if getattr(curr_metadata, attr) is not None:
-                    setattr(self, attr, getattr(curr_metadata, attr))
+                    if attr in ['cellIds', 'geneIds', 'geneVariances']:
+                        copied_attr = getattr(curr_metadata, attr).copy()
+                    else:
+                        copied_attr = getattr(curr_metadata, attr)
+                    setattr(self, attr, copied_attr)
 
     def to_dict(self):
         self_dict = self.__dict__
@@ -94,7 +109,7 @@ class Metadata:
     def take_subset_genes(self, genes_to_keep):
         new_nGenes = len(genes_to_keep)
         if self.nGenes < new_nGenes:
-            logging.error("Trying to take a subset of genes with more genes than original.")
+            logger.error("Trying to take a subset of genes with more genes than original.")
             exit()
         elif self.nGenes > new_nGenes:
             self.geneIds = [self.geneIds[ind] for ind in genes_to_keep]
@@ -185,8 +200,9 @@ class SCData:
                 originalData.ltqs /= np.sqrt(originalData.geneVariances[:, None])
                 if originalData.ltqsVars is not None:
                     originalData.ltqsVars /= (originalData.geneVariances[:, None])
-                self.metadata.loglikVarCorr = - (self.metadata.nCells-1) * np.sum(
-                    np.log(originalData.geneVariances))  # - self.metadata.nCells * self.metadata.nGenes * np.log(2* np.pi)
+                self.metadata.loglikVarCorr = - (self.metadata.nCells - 1) * np.sum(
+                    np.log(
+                        originalData.geneVariances))  # - self.metadata.nCells * self.metadata.nGenes * np.log(2* np.pi)
                 originalData.geneDiffusionScaling = 'geneVariances'
                 self.metadata.geneDiffusionScaling = 'geneVariances'
             # elif originalData.ltqs is not None:
@@ -223,47 +239,8 @@ class SCData:
 
         if createStarTree:
             self.tree = Tree()
-            # self.tree.geneVariances = originalData.geneVariances  # TODO: Remove this if possible
-            self.tree.buildTree(originalData.ltqs, originalData.ltqsVars, self.metadata.cellIds)
-
-            # TODO: Remove eventually, only uncomment this for making animations
-            # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
-            #     self.tree.to_newick(use_ids=True,
-            #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
-            #     bs_glob.nwk_counter += 1
-
-            # Do initial optimisation of diffusion times along branches of star-tree
-            startTimeOpt = time.time()
-            if optTimes:
-                tStar, optLogLik, W_g, self.tree.root.ltqs = optimiseTStar(originalData.ltqs, originalData.ltqsVars,
-                                                                           verbose=verbose)
-                self.tree.root.setLtqsVarsOrW(W_g=W_g)
-            else:
-                tStar = np.ones(bs_glob.nCells)
-                optLogLik = -1e9
-
-            dTimeOpt = time.time() - startTimeOpt
-            self.tree.root.assignTs(tStar)
-
-            # TODO: Remove eventually, only uncomment this for making animations
-            # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
-            #     self.tree.to_newick(use_ids=True,
-            #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
-            #     bs_glob.nwk_counter += 1
-
-            if verbose and optTimes:
-                mp_print("Initial optimisation of times with EM took " + str(dTimeOpt) + " seconds.")
-                mp_print("Loglikelihood after time optimization is: " + str(
-                    self.tree.calcLogLComplete(mem_friendly=True, loglikVarCorr=self.metadata.loglikVarCorr)) + '\n')
-
-            # Specialized for the star tree:
-            # lambda_g = optimiseLambdaStar(tStar, originalData.ltqs, originalData.ltqsVars, self.metadata.geneVariances,
-            #                               verbose=verbose)
-            # self.tree.root.assignVs(lambda_g)
-            # self.metadata.geneVariances *= lambda_g
-            # self.tree.root.getLtqsComplete()
-            # self.metadata.loglikVarCorr = - self.metadata.nCells * np.sum(
-            #     np.log(self.metadata.geneVariances))  # - self.metadata.nCells * self.metadata.nGenes * np.log(2 * np.pi)
+            self.tree.initialize_star_tree(originalData.ltqs, originalData.ltqsVars, self.metadata,
+                                           opt_times=optTimes, verbose=verbose)
 
     """----------TREE MANIPULATIONS-------------------------------"""
 
@@ -314,49 +291,49 @@ class SCData:
             orig_vert_names.append(right_child)
         return edge_list, dist_list, orig_vert_names, starryYN
 
-    # Used
-    def buildTreeFromMergers(self, mergers):
-        edgeList, distList, origVertNames, starryYN = self.compile_tree_from_mergers(mergers)
-        tree = Tree()
-        tree.starryYN = starryYN
-        rootInd = edgeList[0][0]
-        tree.root.nodeInd = rootInd
-        tree.root.childNodes = []
-        currInds = [rootInd]
-        currNodes = [tree.root]
-        # Build tree from edgeList, distList
-        for ind, edge in enumerate(edgeList):
-            dist = distList[ind]
-            if edge[0] in currInds:
-                parentInd = currInds.index(edge[0])
-                childInd = edge[1]
-            else:
-                parentInd = currInds.index(edge[1])
-                childInd = edge[0]
-            parent = currNodes[parentInd]
-            if dist > 0 or (origVertNames[ind + 1][:8] != 'internal'):
-                parent.isLeaf = False
-                child = TreeNode(nodeInd=childInd, tParent=dist, childNodes=[], isLeaf=True)
-                parent.childNodes.append(child)
-                bs_glob.nNodes += 1
-                currInds.append(childInd)
-                currNodes.append(child)
-            else:
-                currInds.append(childInd)
-                currNodes.append(parent)
-
-        # Add ltq-information to leafs of the tree
-        for cellInd, cellId in enumerate(self.metadata.cellIds):
-            nodeInd = origVertNames.index(cellId)
-            node = currNodes[nodeInd]
-            node.nodeId = cellId
-            node.isCell = True
-            if self.originalData is not None:
-                node.ltqs = self.originalData.ltqs[:, cellInd]
-                node.ltqsVars = self.originalData.ltqsVars[:, cellInd]
-            node.nodeInd = cellInd
-        tree.root.renumberNodes()
-        return tree
+    # Not Used
+    # def buildTreeFromMergers(self, mergers):
+    #     edgeList, distList, origVertNames, starryYN = self.compile_tree_from_mergers(mergers)
+    #     tree = Tree()
+    #     tree.starryYN = starryYN
+    #     rootInd = edgeList[0][0]
+    #     tree.root.nodeInd = rootInd
+    #     tree.root.childNodes = []
+    #     currInds = [rootInd]
+    #     currNodes = [tree.root]
+    #     # Build tree from edgeList, distList
+    #     for ind, edge in enumerate(edgeList):
+    #         dist = distList[ind]
+    #         if edge[0] in currInds:
+    #             parentInd = currInds.index(edge[0])
+    #             childInd = edge[1]
+    #         else:
+    #             parentInd = currInds.index(edge[1])
+    #             childInd = edge[0]
+    #         parent = currNodes[parentInd]
+    #         if dist > 0 or (origVertNames[ind + 1][:8] != 'internal'):
+    #             parent.isLeaf = False
+    #             child = TreeNode(nodeInd=childInd, tParent=dist, childNodes=[], isLeaf=True)
+    #             parent.childNodes.append(child)
+    #             bs_glob.nNodes += 1
+    #             currInds.append(childInd)
+    #             currNodes.append(child)
+    #         else:
+    #             currInds.append(childInd)
+    #             currNodes.append(parent)
+    #
+    #     # Add ltq-information to leafs of the tree
+    #     for cellInd, cellId in enumerate(self.metadata.cellIds):
+    #         nodeInd = origVertNames.index(cellId)
+    #         node = currNodes[nodeInd]
+    #         node.nodeId = cellId
+    #         node.isCell = True
+    #         if self.originalData is not None:
+    #             node.ltqs = self.originalData.ltqs[:, cellInd]
+    #             node.ltqsVars = self.originalData.ltqsVars[:, cellInd]
+    #         node.nodeInd = cellInd
+    #     tree.root.renumberNodes(change_node_inds=False)
+    #     return tree
 
     # Used
     def storeTreeInFolder(self, treeFolder, with_coords=False, verbose=False, all_ranks=False, cleanup_tree=True,
@@ -365,7 +342,8 @@ class SCData:
         mpiRank = mpi_wrapper.get_process_rank()
         if cleanup_tree:
             self.tree.root.mergeZeroTimeChilds()
-            self.tree.root.renumberNodes()
+            self.cleanup_node_inds()
+            # self.tree.root.renumberNodes(change_node_inds=False)
             self.tree.nNodes = bs_glob.nNodes
         if (mpiRank == 0) or all_ranks:
             Path(treeFolder).mkdir(parents=True, exist_ok=True)
@@ -949,7 +927,7 @@ class SCData:
             file_list = os.listdir(annotation_folder)
         else:
             file_list = []
-            logging.info("No celltype-annotation was found. Assigning same celltype to all cells")
+            logger.info("No celltype-annotation was found. Assigning same celltype to all cells")
 
         file_list = [file for file in file_list if (os.path.splitext(file)[1] in ['.csv', '.tsv'])]
         annotation_dfs_cell = []
@@ -965,7 +943,8 @@ class SCData:
                 delim = ','
             else:
                 continue
-            annot_input = pd.read_csv(filepath, header=0, index_col=0, delimiter=delim, dtype={0: str})  # .astype(dtype=str)
+            annot_input = pd.read_csv(filepath, header=0, index_col=0, delimiter=delim,
+                                      dtype={0: str})  # .astype(dtype=str)
             if hasattr(self.metadata, 'nCss') and (
                     annot_input.shape[0] in [self.metadata.nCss - 1, self.metadata.nCss]):
                 if annot_input.shape[0] == (self.metadata.nCss - 1):
@@ -1100,7 +1079,7 @@ class SCData:
     def read_in_data(self, filenamesData=None, getOrigData=False, verbose=False, noDataNeeded=False, sanityOutput=False,
                      zscoreCutoff=-1, mpiInfo=None, all_genes=False):
         if mpiInfo is None:
-            mpi_wrapper.get_mpi_info()
+            mpiInfo = mpi_wrapper.get_mpi_info()
         originalData = OriginalData()
         # Determine correct filenames
         if filenamesData is None:
@@ -1115,11 +1094,15 @@ class SCData:
                 filenameStds = None
 
         try:
+            tmp_folder = self.result_path('processed_data_communication')
+            if (mpiInfo.size > 1) and (mpiInfo.rank == 0):
+                Path(tmp_folder).mkdir(parents=True, exist_ok=True)
             originalData.ltqs, originalData.ltqsVars, originalData.geneVariances, \
             self.metadata.nCells, \
             self.metadata.nGenes, genes_to_keep, ltqStdsFound, \
             n_genes_orig = read_and_filter(self.data_path(), filenameMeans, filenameStds, sanityOutput,
-                                           zscoreCutoff, mpiInfo, verbose=verbose, all_genes=all_genes)
+                                           zscoreCutoff, mpiInfo, tmp_folder=tmp_folder, verbose=verbose,
+                                           all_genes=all_genes)
 
         except FileNotFoundError:
             if noDataNeeded:
@@ -1183,7 +1166,7 @@ class SCData:
                 if (n_unq_ids != self.metadata.nCells) or (len(self.metadata.cellIds) != self.metadata.nCells):
                     mp_print("Number of unique object-IDs given in {} does not "
                              "match the number of columns in your feature"
-                         "matrix.\n "
+                             "matrix.\n "
                              "Please resolve this and start Bonsai again.".format(self.data_path('cellID.txt')),
                              ERROR=True)
                     exit()
@@ -1276,6 +1259,308 @@ class SCData:
         else:
             originalData.geneVariances = None
 
+    def cleanup_node_inds(self):
+        if self.metadata.cellIds is None:
+            mp_print("Cannot cleanup node-indices without defined metadata.cellIds.", WARNING=True)
+            return
+        cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(self.metadata.cellIds)}
+        nodes_list = self.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
+        bs_glob.max_node_ind = -1
+        n_cells = 0
+        for node in nodes_list:
+            if node.nodeId in cell_id_to_ind:
+                n_cells += 1
+                node.nodeInd = cell_id_to_ind[node.nodeId]
+                node.isCell = True
+                bs_glob.max_node_ind = max(node.nodeInd, bs_glob.max_node_ind)
+
+        # bs_glob.max_node_ind = np.max(list(cell_id_to_ind.values()))
+        self.tree.max_node_ind = bs_glob.max_node_ind
+        self.metadata.nCells = n_cells
+        bs_glob.nCells = self.metadata.nCells
+        self.tree.root.renumberNodes(change_node_inds=True)
+
+
+def do_spr_moveset(scData, args, strategy='determ_random_determ', tracking=False, output_folder=''):
+    """
+
+    :param strategy: Current options are 'determ_random_determ', 'deterministic', 'deterministic_exhaustive'.
+    This relates to what kind of SPR-moves we propose in what order.
+    :return:
+    """
+    mpi_info = mpi_wrapper.get_mpi_info()
+    info_dict = None
+    if (mpi_info.rank == 0) and tracking:
+        info_dict = {'steps': [], 'runtimes': [], 'd_loglik': [], 'successes': []}
+        orig_loglik = scData.tree.calcLogLComplete(mem_friendly=True)
+        orig_time = time.time()
+
+    if strategy == 'large_tree':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=None,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict,
+                                                     min_branch_length=1e-2,
+                                                     large_tree=True)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=None,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict,
+                                                     min_branch_length=1e-2,
+                                                     large_tree=True)
+    else:
+        if mpi_info.rank != 0:
+            mp_print("Can't contribute to doing SPR moves in any other mode than 'large_tree'. "
+                     "Choose --spr_strategy='large_tree' to benefit from parallelization "
+                     "(at the cost of memory usage) for the SPR-moves.")
+            return
+
+    if strategy == 'determ_random_determ':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=None,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict,
+                                                     min_branch_length=1e-2)
+
+        # TODO: REVERT THIS?
+        # info_dict = self.do_spr_moves_with_postprocessing(args=args,
+        #                                                   select_cand='random',
+        #                                                   select_target='random',
+        #                                                   max_moves=None,
+        #                                                   moves_id='C_random_T_random',
+        #                                                   tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=None,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict,
+                                                     min_branch_length=1e-2)
+
+    elif strategy == 'super_sure':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=None,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='all',
+                                                     max_moves=1000,
+                                                     moves_id='C_random_T_random',
+                                                     tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=None,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict)
+
+        # info_dict = self.do_spr_moves_with_postprocessing(args=args,
+        #                                                   select_cand='long_branches_first',
+        #                                                   select_target='all',
+        #                                                   max_moves=2000,
+        #                                                   moves_id='C_random_T_random',
+        #                                                   tracking=tracking, info_dict=info_dict)
+
+    elif strategy == 'deterministic_exhaustive':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='all',
+                                                     max_moves=10000,
+                                                     moves_id='C_long_branches_T_all',
+                                                     tracking=tracking, info_dict=info_dict)
+
+    elif strategy == 'deterministic':
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=10000,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict)
+
+        info_dict = do_spr_moves_with_postprocessing(scData, args=args,
+                                                     select_cand='long_branches_first',
+                                                     select_target='cluster_centers',
+                                                     max_moves=10000,
+                                                     moves_id='C_long_branches_T_cluster_centers',
+                                                     tracking=tracking, info_dict=info_dict)
+
+    if (mpi_info.rank == 0) and tracking:
+        info_dict['total_time'] = time.time() - orig_time
+        final_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        info_dict['total_loglik_change'] = final_logl - orig_loglik
+        mp_print("Loglikelihood of final tree is {}".format(final_logl))
+
+        with open(os.path.join(output_folder, "spr_info_strategy_{}.json".format(strategy)), "w") as f:
+            json.dump(info_dict, f, indent=4)
+
+
+def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, max_moves=None,
+                                     moves_id=None, tracking=False, info_dict=None, min_branch_length=-1,
+                                     large_tree=False):
+    """
+
+    :param args:
+    :param select_cand:
+    :param select_target:
+    :param max_moves:
+    :param moves_id:
+    :param tracking:
+    :param info_dict:
+    :param min_branch_length:
+    :param large_tree: If True, SPR moves in a sequence are done normally until we drop below 10 successes in 1000
+    attempts. After that, we start scanning all moves without executing successes, because this can be parallelized.
+    Finally, we take only the successes and execute them in order of predicted dLogL
+    :return:
+    """
+    mpi_info = mpi_wrapper.get_mpi_info()
+    if max_moves is None:
+        max_moves = bs_glob.nNodes
+
+    # Just some tracking
+    if (mpi_info.rank == 0) and tracking:
+        start_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        mp_print("Loglikelihood of inferred tree before "
+                 "{}: {}".format(moves_id, start_logl))
+        start = time.time()
+
+    # The actual moves!
+    if not large_tree:
+        successful_moves, total_dlogl, _ = scData.tree.do_spr_moves(max_moves=max_moves,
+                                                                    select_cand=select_cand,
+                                                                    select_target=select_target,
+                                                                    min_branch_length=min_branch_length)
+    else:
+        # In this case, do three phases:
+        # Phase 1: only moves are performed until they occur at low frequency only,
+        # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
+        # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
+
+        # Phase 1: only moves are performed until they occur at low frequency only,
+        intermediate_folder = scData.result_path('spr_intermediate_{}'.format(np.random.randint(1e6)))
+        if mpi_info.rank == 0:
+            # Do the first SPR moves (coming at high freq) only at first process
+            successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(max_moves=max_moves,
+                                                                                   select_cand=select_cand,
+                                                                                   select_target=select_target,
+                                                                                   min_branch_length=min_branch_length,
+                                                                                   freq_cutoff=.01)
+            # Store the resulting tree with coordinates, such that it can be read in by other processes
+            # mp_print("Before storing tree, memory usage is ",
+            #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+            scData.storeTreeInFolder(os.path.join(intermediate_folder), with_coords=True,
+                                     verbose=False, nwk=False)
+
+            # Communicate the node indices of the remaining candidates. This also serves as a barrier between
+            # storing the tree and loading it on other processes
+            df_nodes_list = scData.tree.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            remain_cands_set = set(remain_cands)
+            remain_cands_df_sorted = [node.nodeInd for node in df_nodes_list if node.nodeInd in remain_cands_set]
+
+            remain_cands = np.array(remain_cands_df_sorted)
+            remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
+            intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
+        else:
+            remain_cands = None
+            # Other processes receive the node-indices that need to be checked
+            remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
+            intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
+            # Then they read the tree that was stored from process 0
+            scData = loadReconstructedTreeAndData(args, intermediate_folder,
+                                                  reprocess_data=False, all_genes=False, get_cell_info=False,
+                                                  all_ranks=True, rel_to_results=False)
+            scData.tree.root.storeParent()
+
+        # Now, every process should have the full tree-result of the first SPR moves. Ready to start Phase 2
+        # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
+
+        # First, distribute node-inds to check over the cores. We'll do this by cutting a depth-first list up in
+        # blocks. Eventually, this may help keep memory-usage friendly
+        my_tasks = getMyTaskNumbers(len(remain_cands), mpi_info.size, mpi_info.rank, skippingSteps=False)
+        my_tasks = remain_cands[my_tasks]  # This now contains the node-inds for candidates to be treated per proc.
+
+        # Scan over these candidates
+        negdlogl_nodeind_tuples = scData.tree.do_spr_moves(select_cand='list', select_target=select_target,
+                                                           cand_list=my_tasks, only_scan=True)
+        # The variable negdlogl_nodeind_tuples should contain the successful-candidates that were found on this core,
+        # as a list of tuples (-d_log_l, cand_node_ind)
+
+        # Sorting the candidates calculated on this process
+        if len(negdlogl_nodeind_tuples):
+            negdlogl_nodeind_tuples.sort(key=lambda x: x[0], reverse=False)
+        else:
+            negdlogl_nodeind_tuples = []
+
+        # Gather the succesful candidates from all processes
+        if mpi_info.size > 1:
+            all_negdlogl_nodeind_tuples = mpi_wrapper.gather(negdlogl_nodeind_tuples, root=0)
+            if mpi_info.rank != 0:
+                # The memory on these processes can be freed, as they will be idle for a while
+                try:
+                    del negdlogl_nodeind_tuples
+                    del scData
+                    gc.collect()
+                except UnboundLocalError:
+                    pass
+                mp_print("My job in the SPR-moves is done.", ALL_RANKS=True)
+                return
+
+            # So only process zero goes here. It merges all the sorted lists using the heapq.merge algorithm
+            negdlogl_nodeind_tuples = list(heapq.merge(*all_negdlogl_nodeind_tuples))
+
+        # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
+        # OPTIONAL: Re-load tree that was stored as intermediate, because then we the scanning behavior didn't change
+        # the ordering of children, which makes it perfectly comparable when running on different numbers of cores
+        scData = loadReconstructedTreeAndData(args, intermediate_folder,
+                                              reprocess_data=False, all_genes=False, get_cell_info=False,
+                                              all_ranks=True, rel_to_results=False)
+        scData.tree.root.storeParent()
+
+        my_tasks = [node_ind_dlogl[1] for node_ind_dlogl in negdlogl_nodeind_tuples]
+        successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(select_cand='list',
+                                                                               select_target=select_target,
+                                                                               cand_list=my_tasks, only_scan=False)
+
+        if mpi_info.rank == 0:
+            remove_tree_folders(intermediate_folder, removeDir=True)
+
+    # Just some tracking
+    if tracking:
+        info_dict['steps'].append(moves_id)
+        info_dict['runtimes'].append(time.time() - start)
+        new_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        info_dict['d_loglik'].append(new_logl - start_logl)
+        info_dict['successes'].append(successful_moves)
+        mp_print("Loglikelihood of inferred tree after "
+                 "{} successful SPR-moves: {}".format(successful_moves, new_logl))
+
+        start = time.time()
+        start_logl = new_logl
+
+    scData.tree.do_spr_postprocessing()
+
+    # Just some tracking
+    if tracking:
+        info_dict['steps'].append(moves_id + "_postproc")
+        info_dict['runtimes'].append(time.time() - start)
+        new_logl = scData.tree.calcLogLComplete(mem_friendly=True)
+        info_dict['d_loglik'].append(new_logl - start_logl)
+        info_dict['successes'].append(0)
+        mp_print("Loglikelihood of inferred tree after postprocessing: {}".format(new_logl))
+    return info_dict
+
     # Used
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
     #     if (zscoreCutoff > 0) or (nGenesToKeep > 0):
@@ -1353,7 +1638,7 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
                                                   get_cell_info=False, all_ranks=False, rel_to_results=True)
         Path(tmp_folder).mkdir(parents=True, exist_ok=True)
         scData.tree.root.mergeZeroTimeChilds()
-        scData.tree.root.renumberNodes()
+        scData.tree.root.renumberNodes(change_node_inds=False)
         scData.tree.nNodes = bs_glob.nNodes
 
         # First make sure every node knows where its parent node is
@@ -1474,7 +1759,7 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
             max_rand_loglik = logliks[bestTreeInd]
             take_original_tree = False
             if max_rand_loglik < origLoglik:
-                mp_print("Best random tree still has lower likelihood than the original tree. This is probably normal"
+                mp_print("Best random tree still has lower likelihood than the original tree. This is probably normal "
                          "and desired behavior, but maybe check if something didn't go terribly wrong.", WARNING=True)
                 take_original_tree = True
             if verbose and (not take_original_tree):
@@ -1730,50 +2015,51 @@ def correct_means_stds(originalData, priorVariances, all_genes=False):
     return uncorrected, genes_to_keep, problematic_cells
 
 
-def recoverTmpTree(args, tmpFolder, optimizeTimes=True):
-    scData = recoverTreeFromFile(args, tmpFolder, allRanks=False)
+# Not used
+# def recoverTmpTree(args, tmpFolder, optimizeTimes=True):
+#     scData = recoverTreeFromFile(args, tmpFolder, allRanks=False)
+#
+#     # If tmp-tree comes from unfinished run, optimal branch lengths to root have not been stored.
+#     mpiRank = mpi_wrapper.get_process_rank()
+#     if (mpiRank == 0) and (scData.tree.starryYN or optimizeTimes):
+#         startTimeOpt = time.time()
+#         # Get ltqs and ltqsVars of children
+#         scData.tree.root.getLtqsComplete(mem_friendly=True)
+#         scData.tree.optTimes(verbose=args.verbose, mem_friendly=True)
+#         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
+#                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
+#         # scData.tree.root.setLtqsVarsOrW(W_g=W_g)
+#         dTimeOpt = time.time() - startTimeOpt
+#         if args.verbose:
+#             mp_print("Initial optimisation of times of recovered tree took " + str(dTimeOpt) + " seconds.")
+#             mp_print("Optimal loglikelihood is: " + str(scData.metadata.loglik))
+#
+#     scData = broadcastRecursiveStruct(scData, root=0)
+#     communicateGlobalVars()
+#     return scData
 
-    # If tmp-tree comes from unfinished run, optimal branch lengths to root have not been stored.
-    mpiRank = mpi_wrapper.get_process_rank()
-    if (mpiRank == 0) and (scData.tree.starryYN or optimizeTimes):
-        startTimeOpt = time.time()
-        # Get ltqs and ltqsVars of children
-        scData.tree.root.getLtqsComplete(mem_friendly=True)
-        scData.tree.optTimes(verbose=args.verbose, mem_friendly=True)
-        scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
-                                                              loglikVarCorr=scData.metadata.loglikVarCorr)
-        # scData.tree.root.setLtqsVarsOrW(W_g=W_g)
-        dTimeOpt = time.time() - startTimeOpt
-        if args.verbose:
-            mp_print("Initial optimisation of times of recovered tree took " + str(dTimeOpt) + " seconds.")
-            mp_print("Optimal loglikelihood is: " + str(scData.metadata.loglik))
 
-    scData = broadcastRecursiveStruct(scData, root=0)
-    communicateGlobalVars()
-    return scData
-
-
-# Used
-def recoverTreeFromFile(args, mergerFilename, allRanks=True):
-    mpiRank = mpi_wrapper.get_process_rank()
-    if mpiRank == 0:
-        scData = SCData(dataset=args.dataset, filenamesData=args.filenames_data, verbose=args.verbose,
-                        pathToOrigData=args.data_folder, zscoreCutoff=args.zscore_cutoff,
-                        createStarTree=False)
-
-        scData.mergers = np.loadtxt(scData.result_path(mergerFilename))
-        scData.tree = scData.buildTreeFromMergers(scData.mergers)
-        scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
-                                                              loglikVarCorr=scData.metadata.loglikVarCorr)
-        if args.verbose:
-            mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik) + '\n')
-    else:
-        scData = None
-    if allRanks:
-        # scData = mpi_wrapper.bcast(scData, root=0)
-        scData = broadcastRecursiveStruct(scData, root=0)
-        communicateGlobalVars()
-    return scData
+# Not used
+# def recoverTreeFromFile(args, mergerFilename, allRanks=True):
+#     mpiRank = mpi_wrapper.get_process_rank()
+#     if mpiRank == 0:
+#         scData = SCData(dataset=args.dataset, filenamesData=args.filenames_data, verbose=args.verbose,
+#                         pathToOrigData=args.data_folder, zscoreCutoff=args.zscore_cutoff,
+#                         createStarTree=False)
+#
+#         scData.mergers = np.loadtxt(scData.result_path(mergerFilename))
+#         scData.tree = scData.buildTreeFromMergers(scData.mergers)
+#         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
+#                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
+#         if args.verbose:
+#             mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik) + '\n')
+#     else:
+#         scData = None
+#     if allRanks:
+#         # scData = mpi_wrapper.bcast(scData, root=0)
+#         scData = broadcastRecursiveStruct(scData, root=0)
+#         communicateGlobalVars()
+#     return scData
 
 
 # Used
@@ -2009,6 +2295,8 @@ def reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=False):
         vertIndToNodeId[vert_ind] = node.nodeId
         vertIndToNodeInd[vert_ind] = node.nodeInd
     tree_tuple = vertIndToNode, vertIndToNodeInd, vertIndToNodeId, edgeList, distList
+    scData.tree.max_node_ind = scData.tree.root.get_max_node_ind(-np.inf)
+    bs_glob.max_node_ind = scData.tree.max_node_ind
     if verbose:
         mp_print("\n\nReconstructed tree loaded from: \n%s \n%s" % (edgeFile, vertFile))
     return tree_tuple
@@ -2029,6 +2317,7 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
         if verbose and (scData.metadata.loglik is not None):
             mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik))
         return True
+
     # Read all metadata
     scData.metadata = Metadata(json_filepath=os.path.join(tree_folder, 'metadata.json'), curr_metadata=scData.metadata)
     bs_glob.nGenes = scData.metadata.nGenes
@@ -2063,12 +2352,16 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
         scData.metadata.processedDatafolder = readFolder
 
     if get_all_data:
+        cell_id_set = set(scData.metadata.cellIds)
         try:
             start = time.time()
             if ltqs_found or posteriors_found:
                 print_ind = 1000
                 ltqs_cg = np.load(meanspath, allow_pickle=False, mmap_mode='r')
                 ltqsVars_cg = np.load(varspath, allow_pickle=False, mmap_mode='r')
+                if ltqs_cg.shape[0] != bs_glob.nNodes:
+                    raise Exception("Trying to load data for {} nodes, "
+                                    "while tree has {} nodes.".format(ltqs_cg.shape[0], bs_glob.nNodes))
                 for vert_ind in range(bs_glob.nNodes):
                     if (vert_ind == print_ind) and verbose:
                         print_ind *= 2
@@ -2081,7 +2374,7 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
                     else:
                         node.ltqs = ltqs_cg[vert_ind, :]
                         node.setLtqsVarsOrW(ltqsVars=ltqsVars_cg[vert_ind, :])
-                    node.isCell = node.nodeId in scData.metadata.cellIds
+                    node.isCell = node.nodeId in cell_id_set
                 del ltqs_cg
                 del ltqsVars_cg
                 gc.collect()
@@ -2096,9 +2389,16 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
                     varspath = os.path.join(origFolder, 'delta_vars.npy')
                     scData.originalData.ltqs = np.load(meanspath, allow_pickle=False, mmap_mode='r')
                     scData.originalData.ltqsVars = np.load(varspath, allow_pickle=False, mmap_mode='r')
+                    if scData.originalData.ltqs.shape[1] != len(scData.metadata.cellIds):
+                        raise Exception("Trying to load data for {} cells from folder {}, "
+                                        "while tree seems to have {} cells.".format(scData.originalData.ltqs.shape[1],
+                                                                                    origFolder,
+                                                                                    len(scData.metadata.cellIds)))
                     # scData.originalData.ltqs = ltqs_cg.T
                     # scData.originalData.ltqsVars = ltqsVars_cg.T
                 elif os.path.exists(os.path.join(origFolder, 'delta_vmax.txt')):
+                    raise Exception("Trying to load data from folder {}, "
+                                    "but no pre-processed data can be found.".format(origFolder))
                     scData.originalData.ltqs = np.loadtxt(os.path.join(origFolder, 'delta_vmax.txt'))
                     scData.originalData.ltqsVars = np.loadtxt(os.path.join(origFolder, 'd_delta_vmax.txt')) ** 2
                 elif no_data_needed:
@@ -2126,9 +2426,10 @@ def load_data_for_tree(scData, tree_folder, vertind_to_node, get_all_data=True, 
 
 
 def addDataToTree(scData, vertIndToNode):
+    cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(scData.metadata.cellIds)}
     for vert, node in vertIndToNode.items():
-        if node.nodeId in scData.metadata.cellIds:
-            cellInd = scData.metadata.cellIds.index(node.nodeId)
+        if node.nodeId in cell_id_to_ind:
+            cellInd = cell_id_to_ind[node.nodeId]
             if (scData.originalData is not None) and (scData.originalData.ltqs is not None):
                 node.ltqs = scData.originalData.ltqs[:, cellInd]
                 node.setLtqsVarsOrW(ltqsVars=scData.originalData.ltqsVars[:, cellInd])
@@ -2198,7 +2499,7 @@ def get_cell_info_tree(scData, vertIndToNode):
         scData.csToVerts = {}
         scData.csIndToVertInd = {}
         get_cs_info = True
-        logging.error("I didn't think getting cs-info here would ever be necessary. Check why this happens.")
+        logger.error("I didn't think getting cs-info here would ever be necessary. Check why this happens.")
         exit()
     else:
         get_cs_info = False
@@ -2257,7 +2558,8 @@ def loglik_given_true_var_log(true_var_log, inferred_vals, inferred_vars):
         np.sum(alpha))  # the middle term was missing in the other implementation
 
 
-def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff, mpiInfo, verbose=False, all_genes=False):
+def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff, mpiInfo, tmp_folder=None,
+                    verbose=False, all_genes=False):
     """
     Reads in means and standard deviations line by line (i.e per gene/feature), possibly parallelized over multiple
     processes. For each gene, we determine if it makes the zscore-cutoff before adding it to the data to save memory.
@@ -2276,6 +2578,9 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
     tmp_vars = []
     tmp_gene_vars = []
     print_ind = 1000
+    if tmp_folder is None:
+        tmp_folder = data_folder
+        Path(tmp_folder).mkdir(parents=True, exist_ok=True)
 
     # Define cutoff for how close the variances on LTQs can be to the true variances before throwing out a gene.
     # In error-less data, variances on the LTQ-posterior should always be smaller than the true variance
@@ -2313,8 +2618,8 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
                          "Make sure to run Sanity with the argument '-max_v only_max_output'", ERROR=True)
             else:
                 mp_print("Could not find (the right) Sanity-output.\n"
-                 "Are you sure the argument --input_is_sanity_output should be set to True?"
-                 "\nAre you sure you are running Sanity with the extended-output flag -e 1, "
+                         "Are you sure the argument --input_is_sanity_output should be set to True?"
+                         "\nAre you sure you are running Sanity with the extended-output flag -e 1, "
                          "and the vmax-argument: -vmax true?", ERROR=True)
             exit()
     else:
@@ -2465,7 +2770,7 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
         if len(tmp_vars) == 0:
             ltqsVars = np.zeros((0, nCells))
             ltqs = np.zeros((0, nCells))
-            genes_to_keep = np.zeros(0)
+            genes_to_keep = np.zeros(0, dtype=int)
             gene_vars = np.zeros(0)
         else:
             ltqsVars = np.vstack(tmp_vars)
@@ -2499,7 +2804,7 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
         if len(tmp_means) == 0:
             ltqsVars = np.zeros((0, nCells))
             ltqs = np.zeros((0, nCells))
-            genes_to_keep = np.zeros(0)
+            genes_to_keep = np.zeros(0, dtype=int)
             gene_vars = np.zeros(0)
         else:
             ltqs = np.vstack(tmp_means)
@@ -2509,45 +2814,107 @@ def read_and_filter(data_folder, meansfile, stdsfile, sanityOutput, zscoreCutoff
             gene_vars = np.array(tmp_gene_vars)
 
     if mpiInfo.size > 1:
-        # Make all processes communicate the read-in data with process 0.
-        ltqsInfo = np.concatenate((genes_to_keep[:, None], gene_vars[:, None], ltqs, ltqsVars), axis=1)
-        mp_print("Size of ltqsInfo that is communicated with other processes: ", ltqsInfo.shape, ONLY_RANK=0)
-        ltqsInfo = mpi_wrapper.GatherNpUnknownSize(ltqsInfo, root=0)
+        # Write the data gathered on each process to a numpy file
+        if not os.path.exists(tmp_folder):
+            Path(tmp_folder).mkdir(parents=True, exist_ok=True)
+        fname = os.path.join(tmp_folder, 'tmp_data_proc_{}.npz'.format(mpiInfo.rank))
+        np.savez(fname, genes_to_keep=genes_to_keep, gene_vars=gene_vars, ltqs=ltqs, ltqsVars=ltqsVars)
+
+        # Wait until all processes are done
+        mpi_wrapper.barrier()
+
+        # Gather data only on process 0
         if mpiInfo.rank == 0:
-            if ltqsInfo.shape[0] <= 1:
-                # Check if there are genes to continue, otherwise communicate with other processes to exit
+            genes_to_keep_list = []
+            gene_vars_list = []
+            ltqs_list = []
+            ltqs_vars_list = []
+            for proc in range(mpiInfo.size):
+                fname = os.path.join(tmp_folder, 'tmp_data_proc_{}.npz'.format(proc))
+                data = np.load(fname)
+
+                genes_to_keep_list.append(data["genes_to_keep"])
+                gene_vars_list.append(data["gene_vars"])
+                ltqs_list.append(data["ltqs"])
+                ltqs_vars_list.append(data["ltqsVars"])
+
+            # Concatenate vertically
+            genes_to_keep = np.concatenate(genes_to_keep_list, axis=0)
+            gene_vars = np.concatenate(gene_vars_list, axis=0)
+            ltqs = np.vstack(ltqs_list)
+            ltqsVars = np.vstack(ltqs_vars_list)
+            del ltqs_list
+            del ltqs_vars_list
+            gc.collect()
+
+            # Check if there are genes to continue, otherwise communicate with other processes to exit
+            if len(genes_to_keep) <= 1:
                 continueYN = False
                 mpi_wrapper.bcast(continueYN, root=0)
-                if ltqsInfo.shape[0] == 0:
+                if len(genes_to_keep) == 0:
                     exit("No gene made the zscore-cutoff. Considering lowering the cutoff.")
                 else:
                     exit("Only one gene made the zscore-cutoff. Considering lowering the zscore-cutoff.")
-            # Gather all information from all processes, this is now a matrix with a gene on each row, and then blocks
-            # with, respectively, gene_inds, means, variances
-            ltqsInfo = np.vstack(ltqsInfo)
-            genes_to_keep, gene_vars, ltqs, ltqsVars = np.array_split(ltqsInfo, indices_or_sections=[1, 2, nCells + 2],
-                                                                      axis=1)
             continueYN = True
             mpi_wrapper.bcast(continueYN, root=0)
+
+            # Remove the communicated data
+            if (mpiInfo.rank == 0) and (tmp_folder is not None):
+                remove_folder(tmp_folder)
         else:
             continueOrBreak = None
             continueYN = mpi_wrapper.bcast(continueOrBreak, root=0)
             if not continueYN:
                 exit()
+
     else:
         if ltqs.shape[0] == 0:
             exit("Exiting: No gene made the zscore-cutoff. Consider lowering the cutoff.")
         elif ltqs.shape[0] == 1:
             exit("Exiting: Only one gene made the zscore-cutoff. Consider lowering the cutoff.")
+
+    """REPLACE FROM HERE!"""
+    # if mpiInfo.size > 1:
+    #     # Make all processes communicate the read-in data with process 0.
+    #     ltqsInfo = np.concatenate((genes_to_keep[:, None], gene_vars[:, None], ltqs, ltqsVars), axis=1)
+    #     mp_print("Size of ltqsInfo that is communicated with other processes: ", ltqsInfo.shape, ONLY_RANK=0)
+    #     ltqsInfo = mpi_wrapper.GatherNpUnknownSize(ltqsInfo, root=0)
+    #     if mpiInfo.rank == 0:
+    #         if ltqsInfo.shape[0] <= 1:
+    #             # Check if there are genes to continue, otherwise communicate with other processes to exit
+    #             continueYN = False
+    #             mpi_wrapper.bcast(continueYN, root=0)
+    #             if ltqsInfo.shape[0] == 0:
+    #                 exit("No gene made the zscore-cutoff. Considering lowering the cutoff.")
+    #             else:
+    #                 exit("Only one gene made the zscore-cutoff. Considering lowering the zscore-cutoff.")
+    #         # Gather all information from all processes, this is now a matrix with a gene on each row, and then blocks
+    #         # with, respectively, gene_inds, means, variances
+    #         ltqsInfo = np.vstack(ltqsInfo)
+    #         genes_to_keep, gene_vars, ltqs, ltqsVars = np.array_split(ltqsInfo, indices_or_sections=[1, 2, nCells + 2],
+    #                                                                   axis=1)
+    #         continueYN = True
+    #         mpi_wrapper.bcast(continueYN, root=0)
+    #     else:
+    #         continueOrBreak = None
+    #         continueYN = mpi_wrapper.bcast(continueOrBreak, root=0)
+    #         if not continueYN:
+    #             exit()
+    # else:
+    #     if ltqs.shape[0] == 0:
+    #         exit("Exiting: No gene made the zscore-cutoff. Consider lowering the cutoff.")
+    #     elif ltqs.shape[0] == 1:
+    #         exit("Exiting: Only one gene made the zscore-cutoff. Consider lowering the cutoff.")
+    """REPLACE UNTIL HERE!"""
+
     if mpiInfo.rank != 0:
         # Save memory by removing all data-variables from processes other than 0
-        del ltqsInfo
         del ltqs
         del ltqsVars
         gc.collect()
         return None, None, None, None, None, None, None, None
-    genes_to_keep = genes_to_keep.flatten().astype(dtype=int)
-    gene_vars = gene_vars.flatten()
+    # genes_to_keep = genes_to_keep.flatten().astype(dtype=int)
+    # gene_vars = gene_vars.flatten()
     nGenes = ltqs.shape[0]
     if verbose:
         mp_print("Processed %d genes in %.2f seconds, found %d cells. At zscore-cutoff of %f, %d genes were kept." % (

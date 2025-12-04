@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import sys
 from downstream_analyses.get_cluster_helpers import Cluster_Tree
+from bonsai.bonsai_helpers import mp_print
 from itertools import combinations
 import csv
 import time
@@ -71,7 +72,7 @@ def get_footfall_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None
 def get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
                                              node_id_to_n_cells=None, verbose=True, footfall=False):
     if verbose:
-        print("\nInit min-dist clustering-tree")
+        mp_print("\nInit min-dist clustering-tree")
     cluster_tree = Cluster_Tree()
     cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
     if node_id_to_n_cells is not None:
@@ -111,6 +112,8 @@ def get_max_diam_clustering_from_nwk_str(tree_nwk_str, max_diam_threshold, cell_
 
 
 def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False):
+    if cell_ids is not None:
+        cell_id_set = set(cell_ids)
     if get_cell_ids_all_splits:
         cell_ids_splits = {}
 
@@ -173,7 +176,7 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
                         if node.isLeaf:
                             leaf_ids_tree.append(node.nodeId)
                     else:
-                        if node.nodeId in cell_ids:
+                        if node.nodeId in cell_id_set:
                             leaf_ids_tree.append(node.nodeId)
                 cell_ids_splits[(ds_node.nodeId, us_node.nodeId)].append(leaf_ids_tree)
 
@@ -185,7 +188,7 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
                 if node.isLeaf:
                     leaf_ids_tree.append(node.nodeId)
             else:
-                if node.nodeId in cell_ids:
+                if node.nodeId in cell_id_set:
                     leaf_ids_tree.append(node.nodeId)
         clusters.append(leaf_ids_tree)
     # Should produce a list of lists with the node-IDs of the various clusterings
@@ -196,6 +199,8 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
 
 
 def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True):
+    if cell_ids is not None:
+        cell_id_set = set(cell_ids)
     if get_cell_ids_all_splits:
         cell_ids_splits = {}
 
@@ -263,7 +268,7 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                         if node.isLeaf:
                             leaf_ids_tree.append(node.nodeId)
                     else:
-                        if node.nodeId in cell_ids:
+                        if node.nodeId in cell_id_set:
                             leaf_ids_tree.append(node.nodeId)
                 cell_ids_splits[(ds_node.nodeId, us_node.nodeId)].append(leaf_ids_tree)
     # Should produce a list of lists with the node-IDs of the various clusterings
@@ -275,11 +280,12 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                 if node.isLeaf:
                     leaf_ids_tree.append(node.nodeId)
             else:
-                if node.nodeId in cell_ids:
+                if node.nodeId in cell_id_set:
                     leaf_ids_tree.append(node.nodeId)
         clusters.append(leaf_ids_tree)
     if verbose:
         print("clustering done")
+
     if get_cell_ids_all_splits:
         return clusters, footfall_edges, cell_ids_splits
     return clusters, footfall_edges
@@ -289,6 +295,8 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
                                   footfall=False):
     # if get_cell_ids_all_splits:
     #     cell_ids_splits = {}
+    if cell_ids is not None:
+        cell_ids_set = set(cell_ids)
     if cluster_tree.vert_ind_to_node is None:
         cluster_tree.vert_ind_to_node, cluster_tree.nNodes = cluster_tree.root.renumber_verts(vertIndToNode={},
                                                                                               vert_count=0)
@@ -383,7 +391,7 @@ def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_c
                     if node.isLeaf:
                         leaf_ids_tree.append(node.nodeId)
                 else:
-                    if node.nodeId in cell_ids:
+                    if node.nodeId in cell_ids_set:
                         leaf_ids_tree.append(node.nodeId)
             clusters[ind_tree] = leaf_ids_tree
         # Store current clustering in dictionary of clusterings

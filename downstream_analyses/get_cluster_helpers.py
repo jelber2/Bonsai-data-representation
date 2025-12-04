@@ -630,7 +630,8 @@ class Cluster_TreeNode:
             self.tParent = None
             self.isRoot = True
         if len(new_children) == 0:
-            self.isLeaf = True
+            # self.isLeaf = True
+            self.childNodes = []
         else:
             self.isLeaf = False
             self.childNodes = new_children

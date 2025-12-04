@@ -146,3 +146,4 @@ useful_scripts_not_bonsai/simulating_datasets/analyzing_simulated_datasets/resul
 slurm_runs_pipeline/
 .idea/Private-bonsai.iml
 local_scripts/*
+*.prof

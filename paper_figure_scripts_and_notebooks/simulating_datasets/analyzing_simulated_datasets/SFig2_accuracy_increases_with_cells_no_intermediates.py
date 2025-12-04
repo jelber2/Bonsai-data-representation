@@ -10,13 +10,16 @@ from natsort import natsorted
 from scipy.spatial.distance import squareform
 import seaborn as sns
 import logging
-
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
-logging.basicConfig(format=FORMAT, datefmt='%H:%M:%S',
-                    level=log_level)
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
 
-plt.set_loglevel(level='warning')
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 logging.getLogger("umap").disabled = True
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
