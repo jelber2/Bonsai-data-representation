@@ -1430,8 +1430,9 @@ class TreeNode:
 
                 if (optNodeInd1 is None) and (not optimisedTimes):
                     if runConfigs['useUBNow']:
-                        mp_print("No pair could be merged that increased the loglikelihood. Trying again with new"
-                                 "UB estimates.")
+                        if verbose:
+                            mp_print("No pair could be merged that increased the loglikelihood. Trying again with new"
+                                     "UB estimates.")
                         runConfigs['useUBNow'] = False
                         runConfigs['getNewUB'] = True
                         runConfigs['getNewNN'] = True
