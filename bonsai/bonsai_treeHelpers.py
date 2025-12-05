@@ -3772,6 +3772,7 @@ class Tree:
         :return:
         """
 
+        print_memory("Start of do_spr_moves()")
         """Initialize some values"""
         if select_target == 'all':
             do_local_search = False
@@ -3846,6 +3847,7 @@ class Tree:
         # TODO: Remove this useless initialization
         orig_t = None
 
+        print_memory("Did preprocessing in do_spr_moves()")
         while n_moves < max_moves - 1:
             # TODO: Remove this
             # nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
@@ -3867,8 +3869,9 @@ class Tree:
                                                                      successful_moves, total_dlogl_increase,
                                                                      orig_t))
                 # TODO: Remove this memory measurement maybe
-                mp_print("Current memory usage is ",
-                         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+                # mp_print("Current memory usage is ",
+                #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+                print_memory("n_moves: {}".format(n_moves))
 
                 n_print *= 2
 
@@ -3876,6 +3879,10 @@ class Tree:
             candidate, old_parent = self.select_spr_candidate(select_cand=select_cand,
                                                               cands_list=cands_list,
                                                               n_moves=n_moves)
+            print_memory("Did candidate {}".format(n_moves))
+            if n_moves == 10:
+                mpi_wrapper.barrier()
+                exit()
 
             if candidate is None:
                 unsuccessful_moves += 1
@@ -3995,7 +4002,8 @@ class Tree:
                         #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
 
             # If we run with a frequency cutoff and we did N_CHECK moves. Check whether we need to exit
-            N_CHECK = 1000
+            # TODO: Turn back N_CHECK to 1000
+            N_CHECK = 100
             if (freq_cutoff is not None) and (n_moves % N_CHECK == 0):
                 if last_n_successes is not None:
                     if (successful_moves - last_n_successes) < freq_cutoff * N_CHECK:
@@ -4220,8 +4228,9 @@ class Tree:
                                                                      n_added + 1, n_to_add_total,
                                                                      100 * (n_added + 1) / n_to_add_total))
                 mp_print("Total number of searches done: {}".format(total_search_moves))
-                mp_print("Current memory usage is ",
-                         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+                # mp_print("Current memory usage is ",
+                #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+                print_memory("n_added: {}".format(n_added))
                 n_print *= 2
 
             # Create TreeNode that can be added

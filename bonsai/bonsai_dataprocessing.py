@@ -1295,6 +1295,7 @@ def do_spr_moveset(scData, args, strategy='determ_random_determ', tracking=False
         orig_loglik = scData.tree.calcLogLComplete(mem_friendly=True)
         orig_time = time.time()
 
+    print_memory("Entering large_tree part")
     if strategy == 'large_tree':
         info_dict = do_spr_moves_with_postprocessing(scData, args=args,
                                                      select_cand='long_branches_first',
@@ -1304,6 +1305,9 @@ def do_spr_moveset(scData, args, strategy='determ_random_determ', tracking=False
                                                      tracking=tracking, info_dict=info_dict,
                                                      min_branch_length=1e-2,
                                                      large_tree=True)
+
+        mpi_wrapper.barrier()
+        exit()
 
         info_dict = do_spr_moves_with_postprocessing(scData, args=args,
                                                      select_cand='long_branches_first',
@@ -1452,11 +1456,12 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
         intermediate_folder = scData.result_path('spr_intermediate_{}'.format(np.random.randint(1e6)))
         if mpi_info.rank == 0:
             # Do the first SPR moves (coming at high freq) only at first process
+            # TODO: Turn back the freq_cutoff to .01
             successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(max_moves=max_moves,
                                                                                    select_cand=select_cand,
                                                                                    select_target=select_target,
                                                                                    min_branch_length=min_branch_length,
-                                                                                   freq_cutoff=.01)
+                                                                                   freq_cutoff=.2)
             # Store the resulting tree with coordinates, such that it can be read in by other processes
             # mp_print("Before storing tree, memory usage is ",
             #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)

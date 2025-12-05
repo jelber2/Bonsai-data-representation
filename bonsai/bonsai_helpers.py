@@ -1158,3 +1158,21 @@ def write_ids(filepath, ids_list):
     with open(filepath, 'w') as f:
         for ID in ids_list:
             f.write("%s\n" % ID)
+
+
+import psutil
+import tracemalloc
+import resource
+def print_memory(location=None):
+    mp_print('\n')
+    message = ''
+    if location is not None:
+        message += "{}: ".format(location)
+    # mp_print("Current RSS memory usage is ",
+    #       psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+    # print("Current shared memory usage is ",
+    #       psutil.Process(os.getpid()).memory_info().shared / 1024 ** 2, " MB.")
+    message += "Python-heap: {} MB".format(tracemalloc.get_traced_memory()[0] / 1024 ** 2)
+    # mp_print("Python data segment =",
+    #       resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2, "MB", ALL_RANKS=True)
+    mp_print(message, ALL_RANKS=True)
