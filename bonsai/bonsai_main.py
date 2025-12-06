@@ -6,15 +6,16 @@ import os, sys, psutil
 
 # TODO: Remove this later maybe
 import tracemalloc
-tracemalloc.start()
 
+tracemalloc.start()
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
 sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
-from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, str2bool, print_memory
+from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, str2bool, \
+    print_memory, store_scdata_and_communicate_path
 
 parser = ArgumentParser(
     description='Infers a cell-tree to approximate the distances in gene expression space between cells in single'
@@ -174,8 +175,8 @@ if args.step in ['preprocess', 'all']:
     if args.pickup_intermediate:
         try:
             scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
-                                         get_cell_info=False,
-                                         all_ranks=False, rel_to_results=True)
+                                                  get_cell_info=False,
+                                                  all_ranks=False, rel_to_results=True)
             mp_print("Since --pickup_intermediate = True, Bonsai successfully loaded the preprocessing result from {}."
                      "\nPlease set --pickup_intermediate False "
                      "for redoing the preprocessing.".format(scData.result_path(outputFolder)))
@@ -196,7 +197,8 @@ if args.step in ['preprocess', 'all']:
                 scData = loadReconstructedTreeAndData(args, args.tmp_folder, all_genes=False, get_cell_info=False,
                                                       corrected_data=True)
             else:
-                mp_print("Could not find tmp-folder at {}. Loading tree from start.".format(args.tmp_folder), ERROR=True)
+                mp_print("Could not find tmp-folder at {}. Loading tree from start.".format(args.tmp_folder),
+                         ERROR=True)
                 scData = initializeSCData(args, createStarTree=True, getOrigData=False, otherRanksMinimalInfo=True)
         else:
             scData = initializeSCData(args, createStarTree=True, getOrigData=False, otherRanksMinimalInfo=True)
@@ -401,21 +403,34 @@ if args.step in ['core_calc', 'all']:
                  "the results of this step are already present in {}".format(results_folder))
     else:
         mp_print("Starting SPR moves.")
-        print_memory("Loading tree for SPR moves.")
-        if scData is None or args.skip_greedy_merging:
-            # Determine where to load results from
-            outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
-                                           redo_starry=True, opt_times=True,
-                                           tmp_file=os.path.basename(args.tmp_folder))
-            scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
-                                                  get_cell_info=False, all_ranks=False, rel_to_results=True)
-
         start_spr = time.time()
-        print_memory("Starting SPR moves")
+        if mpiRank == 0:
+            if scData is None or args.skip_greedy_merging:
+                print_memory("Loading tree for SPR moves.")
+                # Determine where to load results from
+                outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+                                               redo_starry=True, opt_times=True,
+                                               tmp_file=os.path.basename(args.tmp_folder))
+                scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
+                                                      get_cell_info=False, all_ranks=False, rel_to_results=True)
+                print_memory("Done loading tree for SPR moves.")
+
+            rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
+            print_memory("Done resetting root.")
+
+            scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
+                                                                  loglikVarCorr=scData.metadata.loglikVarCorr)
+            mp_print("Loglikelihood of inferred tree before starting SPR moves: " + str(scData.metadata.loglik))
+            print_memory("Calculated loglikelihood.")
+
+        # For memory usage reasons, it's best to here delete scData, then read it in using memmap in the SPR-moves
+        # function
+        scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        scData = None
+        print_memory("Cleaned up the scData before starting SPR-moves")
+
         # Do the actual moves here:
-        # TODO: Turn on!
-        # rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
-        do_spr_moveset(scData, args, strategy=spr_strategy, tracking=True, output_folder=scData.result_path())
+        do_spr_moveset(scdata_path, args, strategy=spr_strategy)
         print_memory("Done with SPR moves")
         mpi_wrapper.barrier()
         exit()
@@ -432,6 +447,11 @@ if args.step in ['core_calc', 'all']:
                                            redo_starry=True, opt_times=True, tmp_file=os.path.basename(args.tmp_folder))
             mp_print("Storing result after SPR moves in " + scData.result_path(outputFolder) + "\n")
             scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose)
+
+            redundant_folder = scData.result_path('spr_intermediates')
+            if os.path.exists(redundant_folder):
+                remove_tree_folders(redundant_folder, removeDir=True)
+
             # Store tree topology with optimised times, and the data only for selected genes, such that it can be read
             # by multiple cores such that the next part of the program can be run in parallel
             # storeCurrentState(outputFolder, scData, dataOrResults='results', args=args)

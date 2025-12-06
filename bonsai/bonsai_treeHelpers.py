@@ -3771,7 +3771,7 @@ class Tree:
         self.nNodes = bs_glob.nNodes
 
     def do_spr_moves(self, max_moves=None, seed=42, select_cand='random', select_target='random', do_local_search=True,
-                     do_postprocessing=False, min_branch_length=-1, verbose=False, freq_cutoff=None, cand_list=None,
+                     do_postprocessing=True, min_branch_length=-1, verbose=False, freq_cutoff=None, cand_list=None,
                      only_scan=False, mem_friendly=False):
         """
 
@@ -3842,7 +3842,8 @@ class Tree:
             nodes_list = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
             node_ind_to_node = {node.nodeInd: node for node in nodes_list}
             # TODO: Check this, cands_list is smaller than cand_list. Somehow, some candidates were still on the list,
-            #  but no longer in the tree
+            #  but no longer in the tree.
+            # Probably, because they were parent-nodes, and one of the child-nodes was replaced
             cands_list = [node_ind_to_node[node_ind] for node_ind in cand_list if node_ind in node_ind_to_node]
             max_moves = min(len(cands_list), max_moves)
 
@@ -3992,12 +3993,10 @@ class Tree:
                 print_memory("After clearing AIRoot {}".format(n_moves))
                 self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
                 print_memory("After keeping only ltqsVars {}".format(n_moves))
-            if n_moves == 699:
-                mpi_wrapper.barrier()
-                exit()
 
             # TODO: Eventually check if I want to remove this
-            if do_postprocessing and found_new_parent:
+            if do_postprocessing and found_new_parent and len(new_parent.childNodes) > 2:
+                print_memory("Before postprocessing SPR")
                 # if found_new_parent and len(new_parent.childNodes) > 2:
                 # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
                 # likelihood increases when we add an ancestor for the candidate with some other child
@@ -4008,6 +4007,7 @@ class Tree:
                                                               sequential=False, verbose=False, random=False,
                                                               specialChild=candidate.nodeInd,
                                                               singleProcess=True, mergeDownstream=False)
+
                 if changedSomething:  # Now the ltqs upstream of the new_parent should be updated again
                     new_parent.setLtqsUpstream()
                     as_if_root_version += 1
@@ -4026,6 +4026,8 @@ class Tree:
                         #             gch.parentNode = ch
                         #     if ch.nodeId is None:
                         #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
+
+                print_memory("After postprocessing SPR")
 
             # If we run with a frequency cutoff and we did N_CHECK moves. Check whether we need to exit
             # TODO: Turn back N_CHECK to 1000
@@ -4055,7 +4057,7 @@ class Tree:
         self.nNodes = bs_glob.nNodes
         mp_print("The {} SPR-moves led to an increase of {} "
                  "of the tree loglikelihood.".format(n_moves + 1, total_dlogl_increase))
-        mp_print("Total loglikelihood should now thus be {}, "
+        mp_print("Total loglikelihood should now thus be {} (not accounting for any resolved polytomies), "
                  "and is {} according to the normal loglik "
                  "calculation.".format(origLoglik + total_dlogl_increase,
                                        self.calcLogLComplete(mem_friendly=True, recalc=True)))

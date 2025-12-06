@@ -1171,7 +1171,26 @@ def print_memory(location=None):
     #       psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
     # print("Current shared memory usage is ",
     #       psutil.Process(os.getpid()).memory_info().shared / 1024 ** 2, " MB.")
-    message += "Python-heap: {} MB".format(tracemalloc.get_traced_memory()[0] / 1024 ** 2)
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.reset_peak()
+    message += "Current-mem: {} MB, Peak-mem since last: {} MB".format(current / 1024 ** 2, peak / 1024 ** 2)
     # mp_print("Python data segment =",
     #       resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2, "MB", ALL_RANKS=True)
     mp_print(message, ALL_RANKS=True)
+
+
+def store_scdata_and_communicate_path(scData, folder):
+    mpi_info = mpi_wrapper.get_mpi_info()
+    if mpi_info.rank == 0:
+        scdata_path = scData.result_path(os.path.join(folder, 'scdata_state_{}'.format(folder, np.random.randint(1e6))))
+        # We store the tree to make sure we have the data of all vertices
+        scData.storeTreeInFolder(os.path.join(scdata_path), with_coords=True, verbose=False, nwk=False)
+
+        # Communicate the path where scData is stored with the other processes. This also serves as a barrier between
+        # storing the tree and loading it on other processes
+        scdata_path = mpi_wrapper.bcast(scdata_path, root=0)
+    else:
+        scdata_path = None
+        # Other processes receive the path to scData
+        scdata_path = mpi_wrapper.bcast(scdata_path, root=0)
+    return scdata_path
