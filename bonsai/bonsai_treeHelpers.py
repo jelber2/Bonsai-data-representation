@@ -502,6 +502,7 @@ class TreeNode:
 
     # Used
     def getLtqsVars(self, AIRoot=False, mem_friendly=False):
+        mem_friendly = mem_friendly or bs_glob.mem_friendly
         if not AIRoot:
             if self._ltqsVars is None:
                 if self._W_g is not None:
@@ -519,13 +520,17 @@ class TreeNode:
 
     # Used
     def getW(self, AIRoot=False, mem_friendly=False):
+        mem_friendly = mem_friendly or bs_glob.mem_friendly
         if not AIRoot:
             if self._W_g is None:
                 if self._ltqsVars is not None:
                     # If ltqsVars is known, return 1/ltqsVars, if that is None as well, then just return None
-                    self._W_g = 1 / self._ltqsVars
-                    if mem_friendly:
-                        self._ltqsVars = None
+                    if mem_friendly and isinstance(self._ltqsVars, np.memmap):
+                        return 1 / self._ltqsVars
+                    else:
+                        self._W_g = 1 / self._ltqsVars
+                        if mem_friendly:
+                            self._ltqsVars = None
             return self._W_g
         else:
             if self._W_gAIRoot is None:
@@ -2699,6 +2704,21 @@ class TreeNode:
         if as_if_root_version is not None:
             self._AIRoot_version = as_if_root_version
 
+    def clear_AIRoot(self):
+        self.ltqsAIRoot = None
+        self._W_gAIRoot = None
+        self._ltqsVarsAIRoot = None
+        for child in self.childNodes:
+            child.clear_AIRoot()
+
+    def keep_one_ltqsvars_or_W(self, keep_ltqsvars=True):
+        if keep_ltqsvars:
+            if self._ltqsVars is not None:
+                self._W_g = None
+        else:
+            if self._W_g is not None:
+                self._ltqsVars = None
+
     def getNodeList(self, nodeList, returnLeafs=True, returnRoot=True):
         if self.isLeaf and not returnLeafs:
             pass
@@ -2815,8 +2835,7 @@ class TreeNode:
         candidate.parentNode = None
 
         # Update the ltq-coordinates (non-ai-root) as well for removing the node
-        ltqs_wo_old_parent_g, ltqsVars_wo_old_parent_g = subtract_contrib_ltqs(self.ltqs,
-                                                                               self.getW(AIRoot=False),
+        ltqs_wo_old_parent_g, ltqsVars_wo_old_parent_g = subtract_contrib_ltqs(self.ltqs, self.getW(AIRoot=False),
                                                                                ltqs_cand_g, wbar_cand_g)
         self.ltqs = ltqs_wo_old_parent_g
         self.setLtqsVarsOrW(ltqsVars=ltqsVars_wo_old_parent_g)
@@ -3753,7 +3772,7 @@ class Tree:
 
     def do_spr_moves(self, max_moves=None, seed=42, select_cand='random', select_target='random', do_local_search=True,
                      do_postprocessing=False, min_branch_length=-1, verbose=False, freq_cutoff=None, cand_list=None,
-                     only_scan=False):
+                     only_scan=False, mem_friendly=False):
         """
 
         :param max_moves: When we do random moves, this sets the number of SPR-moves
@@ -3879,10 +3898,6 @@ class Tree:
             candidate, old_parent = self.select_spr_candidate(select_cand=select_cand,
                                                               cands_list=cands_list,
                                                               n_moves=n_moves)
-            print_memory("Did candidate {}".format(n_moves))
-            if n_moves == 10:
-                mpi_wrapper.barrier()
-                exit()
 
             if candidate is None:
                 unsuccessful_moves += 1
@@ -3969,6 +3984,17 @@ class Tree:
             # Add the candidate node on the tree, and update the coordinates
             new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
             as_if_root_version += 1
+
+            # TODO: Eventually only do this in cleaning-up rounds
+            print_memory("Did candidate {}".format(n_moves))
+            if mem_friendly:
+                self.root.clear_AIRoot()
+                print_memory("After clearing AIRoot {}".format(n_moves))
+                self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
+                print_memory("After keeping only ltqsVars {}".format(n_moves))
+            if n_moves == 699:
+                mpi_wrapper.barrier()
+                exit()
 
             # TODO: Eventually check if I want to remove this
             if do_postprocessing and found_new_parent:

@@ -1164,8 +1164,7 @@ import psutil
 import tracemalloc
 import resource
 def print_memory(location=None):
-    mp_print('\n')
-    message = ''
+    message = '\n'
     if location is not None:
         message += "{}: ".format(location)
     # mp_print("Current RSS memory usage is ",

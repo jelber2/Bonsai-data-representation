@@ -230,6 +230,8 @@ class SCData:
         # Some variables are nice to have access to from all functions
         bs_glob.nCells = self.metadata.nCells
         bs_glob.nGenes = self.metadata.nGenes
+        if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
+            bs_glob.mem_friendly = True
 
         # Update recursion limits so that very deep trees don't create errors
         set_recursion_limits(int(2 * bs_glob.nCells))
@@ -1461,7 +1463,7 @@ def do_spr_moves_with_postprocessing(scData, args, select_cand, select_target, m
                                                                                    select_cand=select_cand,
                                                                                    select_target=select_target,
                                                                                    min_branch_length=min_branch_length,
-                                                                                   freq_cutoff=.2)
+                                                                                   freq_cutoff=.2, mem_friendly=True)
             # Store the resulting tree with coordinates, such that it can be read in by other processes
             # mp_print("Before storing tree, memory usage is ",
             #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
@@ -2077,6 +2079,7 @@ def initializeSCData(args, createStarTree=True, allGenes=False, allRanks=True, o
                     returnUncorrected=returnUncorrected, createStarTree=createStarTree, optTimes=optTimes,
                     noDataNeeded=noDataNeeded, sanityOutput=args.input_is_sanity_output, mpiInfo=mpiInfo,
                     results_folder=args.results_folder, rescale_by_var=args.rescale_by_var, all_genes=allGenes)
+
     if allRanks:
         if not otherRanksMinimalInfo:
             # scData = mpi_wrapper.bcast(scData, root=0)
@@ -2215,6 +2218,9 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
         mp_print("Loaded tree has loglikelihood %.4f" % scData.metadata.loglik)
+
+    if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
+        bs_glob.mem_friendly = True
 
     # if (not corrected_data) and (scData.unscaled is not None) and (scData.unscaled.ltqs is not None) \
     #         and get_all_data and data_found:
