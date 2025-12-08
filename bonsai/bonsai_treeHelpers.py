@@ -3107,6 +3107,7 @@ class Tree:
             loglik = self.root.prefactor
         else:
             loglik = self.root.prefactor + loglikVarCorr
+        self.loglik = loglik
         return loglik
 
     # Used
@@ -3772,7 +3773,7 @@ class Tree:
 
     def do_spr_moves(self, max_moves=None, seed=42, select_cand='random', select_target='random', do_local_search=True,
                      do_postprocessing=True, min_branch_length=-1, verbose=False, freq_cutoff=None, cand_list=None,
-                     only_scan=False, mem_friendly=False):
+                     only_scan=False, mem_friendly=False, skip_prepare_tree=False):
         """
 
         :param max_moves: When we do random moves, this sets the number of SPR-moves
@@ -3814,15 +3815,10 @@ class Tree:
 
         """Prepare the tree"""
         # nChildren = self.root.gatherInfoDepthFirst([])
-        self.remove_two_child_root()
-        self.root.deleteParentsWithOneChild()
-        self.root.mergeZeroTimeChilds()
-        self.root.renumberNodes(change_node_inds=False)
-        self.nNodes = bs_glob.nNodes
-
-        self.root.storeParent()
-        self.root.getLtqsComplete(mem_friendly=True)
-        origLoglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
+        if not skip_prepare_tree:
+            orig_loglik = self.prepare_tree_spr_moves()
+        else:
+            orig_loglik = np.nan if (self.loglik is None) else self.loglik
 
         # Store at every node how many nodes are downstream (including itself). Will need it for picking candidates
         self.root.get_ds_node_counts()
@@ -4057,16 +4053,30 @@ class Tree:
         self.nNodes = bs_glob.nNodes
         mp_print("The {} SPR-moves led to an increase of {} "
                  "of the tree loglikelihood.".format(n_moves + 1, total_dlogl_increase))
-        mp_print("Total loglikelihood should now thus be {} (not accounting for any resolved polytomies), "
-                 "and is {} according to the normal loglik "
-                 "calculation.".format(origLoglik + total_dlogl_increase,
-                                       self.calcLogLComplete(mem_friendly=True, recalc=True)))
+        if not np.isnan(orig_loglik):
+            mp_print("Total loglikelihood should now thus be {} (not accounting for any resolved polytomies), "
+                     "and is {} according to the normal loglik "
+                     "calculation.".format(orig_loglik + total_dlogl_increase,
+                                           self.calcLogLComplete(mem_friendly=True, recalc=True)))
         mp_print("Move statistics:\n"
                  "Successful: {}\n"
                  "Failed: {}\n"
                  "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
 
         return successful_moves, total_dlogl_increase, remain_cands
+
+    def prepare_tree_spr_moves(self):
+        self.remove_two_child_root()
+        self.root.deleteParentsWithOneChild()
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes(change_node_inds=False)
+        self.nNodes = bs_glob.nNodes
+
+        self.root.storeParent()
+        # TODO: Only do this when necessary?
+        self.root.getLtqsComplete(mem_friendly=True)
+        orig_loglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
+        return orig_loglik
 
     def do_spr_postprocessing(self, change_node_inds=False, only_time_opt=False, verbose=False, only_cleanup=False):
         """

@@ -1182,7 +1182,11 @@ def print_memory(location=None):
 def store_scdata_and_communicate_path(scData, folder):
     mpi_info = mpi_wrapper.get_mpi_info()
     if mpi_info.rank == 0:
-        scdata_path = scData.result_path(os.path.join(folder, 'scdata_state_{}'.format(folder, np.random.randint(1e6))))
+        no_scdata_path = True
+        while no_scdata_path:
+            scdata_path = scData.result_path(os.path.join(folder, 'scdata_state_{}'.format(np.random.randint(1e6))))
+            if not os.path.exists(scdata_path):
+                no_scdata_path = False
         # We store the tree to make sure we have the data of all vertices
         scData.storeTreeInFolder(os.path.join(scdata_path), with_coords=True, verbose=False, nwk=False)
 

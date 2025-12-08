@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import numpy as np
 import time
 from pathlib import Path
-import os, sys, psutil
+import os, sys, psutil, gc
 
 # TODO: Remove this later maybe
 import tracemalloc
@@ -425,15 +425,15 @@ if args.step in ['core_calc', 'all']:
 
         # For memory usage reasons, it's best to here delete scData, then read it in using memmap in the SPR-moves
         # function
-        scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
-        print_memory("Cleaned up the scData before starting SPR-moves")
+        gc.collect()
+        print_memory("Cleaned up scData before starting SPR-moves")
 
         # Do the actual moves here:
-        do_spr_moveset(scdata_path, args, strategy=spr_strategy)
+        scData = do_spr_moveset(scdata_path, args, strategy=spr_strategy)
         print_memory("Done with SPR moves")
-        mpi_wrapper.barrier()
-        exit()
+
         if mpiRank == 0:
             scData.tree.remove_two_child_root()
 

@@ -1311,11 +1311,9 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
                                                   min_branch_length=1e-2,
                                                   large_tree=True)
 
-        mpi_wrapper.barrier()
-        exit()
-
-        scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
+        gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1337,8 +1335,10 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
                                                   max_moves=None,
                                                   min_branch_length=1e-2)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
+        gc.collect()
+
         # TODO: REVERT THIS?
         # scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
         #                                                   select_cand='random',
@@ -1346,8 +1346,9 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
         #                                                   max_moves=None,
         #                                                   moves_id='C_random_T_random',
         #                                                   tracking=tracking, info_dict=info_dict)
-        # scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        # scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         # scData = None
+        # gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1361,16 +1362,18 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
                                                   select_target='cluster_centers',
                                                   max_moves=None)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
+        gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
                                                   select_target='all',
                                                   max_moves=1000)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
+        gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1395,8 +1398,9 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
                                                   select_target='cluster_centers',
                                                   max_moves=10000)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder=scData.result_path('spr_intermediates'))
+        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
+        gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1429,10 +1433,6 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
     Finally, we take only the successes and execute them in order of predicted dLogL
     :return:
     """
-    scData = loadReconstructedTreeAndData(args, scdata_path,
-                                          reprocess_data=False, all_genes=False, get_cell_info=False,
-                                          all_ranks=True, rel_to_results=False)
-
     mpi_info = mpi_wrapper.get_mpi_info()
     if max_moves is None:
         max_moves = bs_glob.nNodes
@@ -1446,55 +1446,60 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
 
     # The actual moves!
     if not large_tree:
+        scData = loadReconstructedTreeAndData(args, scdata_path,
+                                              reprocess_data=False, all_genes=False, get_cell_info=False,
+                                              all_ranks=True, rel_to_results=False)
+
         successful_moves, total_dlogl, _ = scData.tree.do_spr_moves(max_moves=max_moves,
                                                                     select_cand=select_cand,
                                                                     select_target=select_target,
                                                                     min_branch_length=min_branch_length)
     else:
-        # TODO: REMOVE THIS LATER
-        print("\n\n\n")
-        print_memory("Before storing.")
-        test_path = scData.result_path('spr_intermediate_test')
-        scData.storeTreeInFolder(test_path, with_coords=True,
-                                 verbose=False, nwk=False)
-        print_memory('before deleting scdata')
-        import weakref
-        wr = weakref.ref(scData)
-        del scData
-        gc.collect()
-        print("Alive?", wr() is not None)
-        print_memory('After deleting scData')
-        import objgraph
-        objgraph.show_backrefs([wr()], max_depth=5, filename='leak.png')
-        scData = loadReconstructedTreeAndData(args, test_path,
-                                              reprocess_data=False, all_genes=False, get_cell_info=False,
-                                              all_ranks=True, rel_to_results=False)
-        scData.tree.root.storeParent()
-        print_memory("After loading new tree")
-        mpi_wrapper.barrier()
-        exit()
-        # TODO: END REMOVE THIS LATER
-
         # In this case, do three phases:
         # Phase 1: only moves are performed until they occur at low frequency only,
         # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
         # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
 
         # Phase 1: only moves are performed until they occur at low frequency only,
-        intermediate_folder = scData.result_path('spr_intermediate_{}'.format(np.random.randint(1e6)))
+        # intermediate_folder = scData.result_path('spr_intermediate_{}'.format(np.random.randint(1e6)))
         if mpi_info.rank == 0:
+            scData = loadReconstructedTreeAndData(args, scdata_path,
+                                                  reprocess_data=False, all_genes=False, get_cell_info=False,
+                                                  all_ranks=True, rel_to_results=False, single_process=True)
+
+            # To save on memory, do the preparing tree already here, after that store and load the tree again. The
+            # reason is that ltqs at internal nodes will be mem-mapped in this way, rather than read into RAM
+            orig_loglik = scData.tree.prepare_tree_spr_moves()
+        else:
+            scData = None
+
+        # Store tree again, and communicate tree-folder with all processes
+        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
+        scData = None
+        gc.collect()
+
+        if mpi_info.rank == 0:
+            scData = loadReconstructedTreeAndData(args, scdata_path,
+                                                  reprocess_data=False, all_genes=False, get_cell_info=False,
+                                                  all_ranks=False, rel_to_results=False, single_process=True)
+
             # Do the first SPR moves (coming at high freq) only at first process
             # TODO: Turn back the freq_cutoff to .01
             successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(max_moves=max_moves,
                                                                                    select_cand=select_cand,
                                                                                    select_target=select_target,
                                                                                    min_branch_length=min_branch_length,
-                                                                                   freq_cutoff=.2, mem_friendly=True)
+                                                                                   freq_cutoff=.2, mem_friendly=True,
+                                                                                   skip_prepare_tree=True)
+
+            # Prepare the tree already for the next phase, do this only on Process 0
+            orig_loglik = scData.tree.prepare_tree_spr_moves()
+
             # Store the resulting tree with coordinates, such that it can be read in by other processes
             # mp_print("Before storing tree, memory usage is ",
             #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
-            scData.storeTreeInFolder(os.path.join(intermediate_folder), with_coords=True,
-                                     verbose=False, nwk=False)
+            # scData.storeTreeInFolder(os.path.join(intermediate_folder), with_coords=True,
+            #                          verbose=False, nwk=False)
 
             # Communicate the node indices of the remaining candidates. This also serves as a barrier between
             # storing the tree and loading it on other processes
@@ -1504,17 +1509,30 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
 
             remain_cands = np.array(remain_cands_df_sorted)
             remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
-            intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
+            # intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
         else:
             remain_cands = None
             # Other processes receive the node-indices that need to be checked
             remain_cands = mpi_wrapper.bcast(remain_cands, root=0)
-            intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
+            # intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
             # Then they read the tree that was stored from process 0
-            scData = loadReconstructedTreeAndData(args, intermediate_folder,
-                                                  reprocess_data=False, all_genes=False, get_cell_info=False,
-                                                  all_ranks=True, rel_to_results=False)
-            scData.tree.root.storeParent()
+
+        print_memory("Communicated remaining candidates")
+        scdata_path_parallelphase = store_scdata_and_communicate_path(scData,
+                                                                      folder='spr_intermediates')
+
+        print_memory("Stored the tree")
+        scData = None
+        if mpi_info.rank == 0:
+            del df_nodes_list
+        gc.collect()
+        print_memory("Tried to forget about the tree")
+
+        scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
+                                              reprocess_data=False, all_genes=False, get_cell_info=False,
+                                              all_ranks=True, rel_to_results=False)
+        # scData.tree.root.storeParent()
+        print_memory("Loaded the tree again.")
 
         # Now, every process should have the full tree-result of the first SPR moves. Ready to start Phase 2
         # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
@@ -1526,7 +1544,8 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
 
         # Scan over these candidates
         negdlogl_nodeind_tuples = scData.tree.do_spr_moves(select_cand='list', select_target=select_target,
-                                                           cand_list=my_tasks, only_scan=True, mem_friendly=True)
+                                                           cand_list=my_tasks, only_scan=True, mem_friendly=True,
+                                                           skip_prepare_tree=True)
         # The variable negdlogl_nodeind_tuples should contain the successful-candidates that were found on this core,
         # as a list of tuples (-d_log_l, cand_node_ind)
 
@@ -1559,23 +1578,21 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
         print_memory('before deleting scdata')
         del scData
         print_memory('After deleting scData')
-        scData = loadReconstructedTreeAndData(args, intermediate_folder,
+        scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
-                                              all_ranks=True, rel_to_results=False)
-        scData.tree.root.storeParent()
+                                              all_ranks=True, rel_to_results=False, single_process=True)
+        # scData.tree.root.storeParent()
         print_memory("After loading new tree")
-        del df_nodes_list
-
-        print_memory("After deleting df_nodes_list")
 
         my_tasks = [node_ind_dlogl[1] for node_ind_dlogl in negdlogl_nodeind_tuples]
         successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(select_cand='list',
                                                                                select_target=select_target,
                                                                                cand_list=my_tasks, only_scan=False,
-                                                                               mem_friendly=True)
+                                                                               mem_friendly=True,
+                                                                               skip_prepare_tree=True)
 
         if mpi_info.rank == 0:
-            remove_tree_folders(intermediate_folder, removeDir=True)
+            remove_tree_folders(scData.result_path('spr_intermediates'), removeDir=True)
 
     # Just some tracking
     # if tracking:
@@ -1589,7 +1606,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
 
     # start = time.time()
     # start_logl = new_logl
-
+    mp_print("Start round of postprocessing after SPR-moves.", ALL_RANKS=True)
     scData.tree.do_spr_postprocessing()
 
     # Just some tracking
@@ -1727,7 +1744,7 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
         scData = loadReconstructedTreeAndData(args, os.path.join(random_folder, 'orig_tree'),
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
                                               all_ranks=True, rel_to_results=False)
-        scData.tree.root.storeParent()
+        # scData.tree.root.storeParent()
         # mp_print(scData.metadata.loglik, scData.tree.root.ltqs[:5], ALL_RANKS=True)
         currLoglik = scData.metadata.loglik
         # Then do random moves on this copy of the tree
@@ -1860,7 +1877,7 @@ def nnnReorder(args, tmp_folder, stored_tree_ind, maxMoves=100, closenessBound=0
     currLoglik = scData.metadata.loglik
     # mp_print("After loading initial tree, memory usage is ",
     #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
-    scData.tree.root.storeParent()
+    # scData.tree.root.storeParent()
     stored_tree_ind += 1
     goodMovesLeft = True
     while goodMovesLeft and (moveCounter < maxMoves):
@@ -2096,6 +2113,7 @@ def correct_means_stds(originalData, priorVariances, all_genes=False):
 #             mp_print("\nLoglikelihood of tree recovered from file: " + str(scData.metadata.loglik) + '\n')
 #     else:
 #         scData = None
+#         gc.collect()
 #     if allRanks:
 #         # scData = mpi_wrapper.bcast(scData, root=0)
 #         scData = broadcastRecursiveStruct(scData, root=0)
@@ -2273,6 +2291,9 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
         if scData.tree.root.ltqs is None:
             scData.tree.root.getLtqsComplete(mem_friendly=True)
         scData.tree.root.getAIRootInfo(None, None)
+
+    # Also store for every node who its parent is
+    scData.tree.root.storeParent()
 
     if not get_cell_info:
         return scData
