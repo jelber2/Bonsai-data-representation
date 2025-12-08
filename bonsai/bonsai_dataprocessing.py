@@ -232,11 +232,9 @@ class SCData:
         bs_glob.nCells = self.metadata.nCells
         bs_glob.nGenes = self.metadata.nGenes
         # TODO: Change this to 25000, remove memory prints
-        if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000):
-            print_memory("Before keeping only ltqsVars")
+        if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
             bs_glob.mem_friendly = True
             self.tree.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
-            print_memory("After keeping only ltqsVars")
 
         # Update recursion limits so that very deep trees don't create errors
         set_recursion_limits(int(2 * bs_glob.nCells))
@@ -1302,7 +1300,6 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
     #     orig_loglik = scData.tree.calcLogLComplete(mem_friendly=True)
     #     orig_time = time.time()
 
-    print_memory("Entering large_tree part")
     if strategy == 'large_tree':
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1517,22 +1514,21 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
             # intermediate_folder = mpi_wrapper.bcast(intermediate_folder, root=0)
             # Then they read the tree that was stored from process 0
 
-        print_memory("Communicated remaining candidates")
         scdata_path_parallelphase = store_scdata_and_communicate_path(scData,
                                                                       folder='spr_intermediates')
 
-        print_memory("Stored the tree")
+        print_memory("Stored the tree before parallel-phase of SPR moves")
         scData = None
         if mpi_info.rank == 0:
             del df_nodes_list
         gc.collect()
-        print_memory("Tried to forget about the tree")
+        print_memory("Removed old scData-object before parallel-phase of SPR moves")
 
         scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
                                               all_ranks=True, rel_to_results=False)
         # scData.tree.root.storeParent()
-        print_memory("Loaded the tree again.")
+        print_memory("Loaded fresh scData from file before parallel-phase of SPR.")
 
         # Now, every process should have the full tree-result of the first SPR moves. Ready to start Phase 2
         # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
@@ -1575,14 +1571,14 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
         # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
         # OPTIONAL: Re-load tree that was stored as intermediate, because then we the scanning behavior didn't change
         # the ordering of children, which makes it perfectly comparable when running on different numbers of cores
-        print_memory('before deleting scdata')
         del scData
-        print_memory('After deleting scData')
+        gc.collect()
+        print_memory('Deleted scData after parallel phase')
         scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
                                               all_ranks=True, rel_to_results=False, single_process=True)
         # scData.tree.root.storeParent()
-        print_memory("After loading new tree")
+        print_memory("Loaded tree again after parallel phase")
 
         my_tasks = [node_ind_dlogl[1] for node_ind_dlogl in negdlogl_nodeind_tuples]
         successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(select_cand='list',
@@ -1608,6 +1604,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
     # start_logl = new_logl
     mp_print("Start round of postprocessing after SPR-moves.", ALL_RANKS=True)
     scData.tree.do_spr_postprocessing()
+    print_memory("After round of postprocessing after SPR-moves.")
 
     # Just some tracking
     # if tracking:
@@ -2271,12 +2268,9 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
         mp_print("Loaded tree has loglikelihood %.4f" % scData.metadata.loglik)
 
-    # TODO: Change this to 25000
-    if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000):
-        print_memory("Before keeping only ltqsVars")
+    if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
         bs_glob.mem_friendly = True
         scData.tree.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
-        print_memory("After keeping only ltqsVars")
 
     # if (not corrected_data) and (scData.unscaled is not None) and (scData.unscaled.ltqs is not None) \
     #         and get_all_data and data_found:

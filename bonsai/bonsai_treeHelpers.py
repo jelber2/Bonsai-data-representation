@@ -3792,7 +3792,6 @@ class Tree:
         :return:
         """
 
-        print_memory("Start of do_spr_moves()")
         """Initialize some values"""
         if select_target == 'all':
             do_local_search = False
@@ -3863,7 +3862,6 @@ class Tree:
         # TODO: Remove this useless initialization
         orig_t = None
 
-        print_memory("Did preprocessing in do_spr_moves()")
         while n_moves < max_moves - 1:
             # TODO: Remove this
             # nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
@@ -3983,16 +3981,12 @@ class Tree:
             as_if_root_version += 1
 
             # TODO: Eventually only do this in cleaning-up rounds
-            print_memory("Did candidate {}".format(n_moves))
             if mem_friendly:
                 self.root.clear_AIRoot()
-                print_memory("After clearing AIRoot {}".format(n_moves))
                 self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
-                print_memory("After keeping only ltqsVars {}".format(n_moves))
 
             # TODO: Eventually check if I want to remove this
             if do_postprocessing and found_new_parent and len(new_parent.childNodes) > 2:
-                print_memory("Before postprocessing SPR")
                 # if found_new_parent and len(new_parent.childNodes) > 2:
                 # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
                 # likelihood increases when we add an ancestor for the candidate with some other child
@@ -4022,8 +4016,6 @@ class Tree:
                         #             gch.parentNode = ch
                         #     if ch.nodeId is None:
                         #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
-
-                print_memory("After postprocessing SPR")
 
             # If we run with a frequency cutoff and we did N_CHECK moves. Check whether we need to exit
             # TODO: Turn back N_CHECK to 1000

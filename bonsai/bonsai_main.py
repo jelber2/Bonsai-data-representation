@@ -406,29 +406,24 @@ if args.step in ['core_calc', 'all']:
         start_spr = time.time()
         if mpiRank == 0:
             if scData is None or args.skip_greedy_merging:
-                print_memory("Loading tree for SPR moves.")
                 # Determine where to load results from
                 outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
                                                redo_starry=True, opt_times=True,
                                                tmp_file=os.path.basename(args.tmp_folder))
                 scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
                                                       get_cell_info=False, all_ranks=False, rel_to_results=True)
-                print_memory("Done loading tree for SPR moves.")
 
             rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
-            print_memory("Done resetting root.")
-
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                                   loglikVarCorr=scData.metadata.loglikVarCorr)
             mp_print("Loglikelihood of inferred tree before starting SPR moves: " + str(scData.metadata.loglik))
-            print_memory("Calculated loglikelihood.")
 
         # For memory usage reasons, it's best to here delete scData, then read it in using memmap in the SPR-moves
         # function
         scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
         gc.collect()
-        print_memory("Cleaned up scData before starting SPR-moves")
+        print_memory("Ready to start SPR moves")
 
         # Do the actual moves here:
         scData = do_spr_moveset(scdata_path, args, strategy=spr_strategy)
