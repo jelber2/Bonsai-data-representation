@@ -1471,7 +1471,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
         else:
             scData = None
 
-        # Store tree again, and communicate tree-folder with all processes
+        # Store tree again, and communicate tree-folder with all processes.
         scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
         scData = None
         gc.collect()

@@ -2718,6 +2718,8 @@ class TreeNode:
         else:
             if self._W_g is not None:
                 self._ltqsVars = None
+        for child in self.childNodes:
+            child.keep_one_ltqsvars_or_W(keep_ltqsvars=keep_ltqsvars)
 
     def getNodeList(self, nodeList, returnLeafs=True, returnRoot=True):
         if self.isLeaf and not returnLeafs:
@@ -3805,6 +3807,9 @@ class Tree:
         as_if_root_version = 0
         spr_target_version = 0
 
+        # Determine how often to clean the stored AIRoot-values, to free some memory
+        n_free_mem = int(bs_glob.nNodes / 10)
+
         self.root.reset_version_numbers('_AIRoot_version')
         self.root.reset_version_numbers('_spr_target_version')
 
@@ -3981,9 +3986,12 @@ class Tree:
             as_if_root_version += 1
 
             # TODO: Eventually only do this in cleaning-up rounds
-            if mem_friendly:
+            if (n_moves % n_free_mem == 0):
                 self.root.clear_AIRoot()
-                self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
+                print_memory("Freed memory kept by old posterior-node-coordinate values.")
+                if mem_friendly:
+                    self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
+                    print_memory("Freed memory kept by double storage of variance and precision.")
 
             # TODO: Eventually check if I want to remove this
             if do_postprocessing and found_new_parent and len(new_parent.childNodes) > 2:
