@@ -1445,7 +1445,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
     if not large_tree:
         scData = loadReconstructedTreeAndData(args, scdata_path,
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
-                                              all_ranks=True, rel_to_results=False)
+                                              all_ranks=True, rel_to_results=False, verbose=False)
 
         successful_moves, total_dlogl, _ = scData.tree.do_spr_moves(max_moves=max_moves,
                                                                     select_cand=select_cand,
@@ -1462,7 +1462,8 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
         if mpi_info.rank == 0:
             scData = loadReconstructedTreeAndData(args, scdata_path,
                                                   reprocess_data=False, all_genes=False, get_cell_info=False,
-                                                  all_ranks=True, rel_to_results=False, single_process=True)
+                                                  all_ranks=True, rel_to_results=False, single_process=True,
+                                                  verbose=False)
 
             # To save on memory, do the preparing tree already here, after that store and load the tree again. The
             # reason is that ltqs at internal nodes will be mem-mapped in this way, rather than read into RAM
@@ -1478,7 +1479,8 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
         if mpi_info.rank == 0:
             scData = loadReconstructedTreeAndData(args, scdata_path,
                                                   reprocess_data=False, all_genes=False, get_cell_info=False,
-                                                  all_ranks=False, rel_to_results=False, single_process=True)
+                                                  all_ranks=False, rel_to_results=False, single_process=True,
+                                                  verbose=False)
 
             # Do the first SPR moves (coming at high freq) only at first process
             # TODO: Turn back the freq_cutoff to .01
@@ -1526,7 +1528,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
 
         scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
-                                              all_ranks=True, rel_to_results=False)
+                                              all_ranks=True, rel_to_results=False, verbose=False)
         # scData.tree.root.storeParent()
         print_memory("Loaded fresh scData from file before parallel-phase of SPR.")
 
@@ -1576,7 +1578,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
         print_memory('Deleted scData after parallel phase')
         scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
-                                              all_ranks=True, rel_to_results=False, single_process=True)
+                                              all_ranks=True, rel_to_results=False, single_process=True, verbose=False)
         # scData.tree.root.storeParent()
         print_memory("Loaded tree again after parallel phase")
 
@@ -2120,7 +2122,7 @@ def correct_means_stds(originalData, priorVariances, all_genes=False):
 
 # Used
 def initializeSCData(args, createStarTree=True, allGenes=False, allRanks=True, otherRanksMinimalInfo=False,
-                     optTimes=True, getOrigData=False, returnUncorrected=False, noDataNeeded=False):
+                     optTimes=True, getOrigData=False, returnUncorrected=False, noDataNeeded=False, verbose=True):
     zscoreCutoff = -1 if allGenes else args.zscore_cutoff
     mpiInfo = mpi_wrapper.get_mpi_info(singleProcess=(not allRanks))
     scData = SCData(dataset=args.dataset, filenamesData=args.filenames_data, verbose=args.verbose,
@@ -2242,21 +2244,21 @@ def getMetadata(args, scData, outputFolder_raw, computationTime):
 def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_genes=False, all_ranks=True,
                                  get_cell_info=False, corrected_data=True, rel_to_results=False, no_data_needed=False,
                                  single_process=False, keep_original_data=False, calc_loglik=False, get_data=True,
-                                 get_posterior_ltqs=False, otherRanksMinimalInfo=False):
+                                 get_posterior_ltqs=False, otherRanksMinimalInfo=False, verbose=True):
     if type(args) is dict:
         args = convert_dict_to_named_tuple(args)
     mpi_info = mpi_wrapper.get_mpi_info(singleProcess=single_process)
     if reprocess_data:
         scData = initializeSCData(args, createStarTree=False, allGenes=all_genes, allRanks=all_ranks, optTimes=False,
                                   getOrigData=True, returnUncorrected=(not corrected_data), noDataNeeded=no_data_needed,
-                                  otherRanksMinimalInfo=otherRanksMinimalInfo)
+                                  otherRanksMinimalInfo=otherRanksMinimalInfo, verbose=verbose)
     else:
         scData = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
     if rel_to_results:
         tree_folder = scData.result_path(tree_folder)
 
     get_all_data = get_data and ((mpi_info.rank == 0) or (all_ranks and (not otherRanksMinimalInfo)))
-    tree_tuple = reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=args.verbose)
+    tree_tuple = reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=verbose)
     vertIndToNode, vertIndToNodeInd, vertIndToNodeId, edgeList, distList = tree_tuple
     data_found = load_data_for_tree(scData, tree_folder, vertIndToNode, get_all_data=get_all_data,
                                     load_data=(not reprocess_data),
@@ -2266,7 +2268,8 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
     if data_found and get_all_data and calc_loglik and (mpi_info.rank == 0):
         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
-        mp_print("Loaded tree has loglikelihood %.4f" % scData.metadata.loglik)
+        if verbose:
+            mp_print("Loaded tree has loglikelihood %.4f" % scData.metadata.loglik)
 
     if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
         bs_glob.mem_friendly = True

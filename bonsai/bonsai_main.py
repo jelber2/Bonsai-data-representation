@@ -411,7 +411,8 @@ if args.step in ['core_calc', 'all']:
                                                redo_starry=True, opt_times=True,
                                                tmp_file=os.path.basename(args.tmp_folder))
                 scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
-                                                      get_cell_info=False, all_ranks=False, rel_to_results=True)
+                                                      get_cell_info=False, all_ranks=False, rel_to_results=True,
+                                                      verbose=True)
 
             rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
