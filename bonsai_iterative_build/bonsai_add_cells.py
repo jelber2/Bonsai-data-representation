@@ -244,5 +244,8 @@ scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=T
                                                                   loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
 mp_print("Loglikelihood of inferred tree after adding cells: " + str(scdata_guide.metadata.loglik))
 
-mp_print("Storing result after reordering children in " + scdata_guide.result_path() + "\n\n")
+mp_print("Storing result after adding all cells in " + scdata_guide.result_path() + "\n\n")
 scdata_guide.storeTreeInFolder(scdata_guide.result_path(), with_coords=True, verbose=args.verbose)
+
+if tmp_folder is not None:
+    remove_tree_folders(tmp_folder, removeDir=True, base='added')

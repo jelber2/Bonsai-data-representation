@@ -4414,8 +4414,6 @@ class Tree:
         #     np.savetxt(scdata.result_path('counts_search_moves.txt'), np.array(counts_search_moves), fmt='%d')
         #     exit()
         self.nNodes = bs_glob.nNodes
-        if tmp_folder is not None:
-            remove_tree_folders(tmp_folder, removeDir=True, base='added')
         logger.info("The {} added cells led to a decrease of {} "
                      "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
         logger.info("Not taking account intermediate resolving of polytomies: total loglikelihood should now be {}, "
