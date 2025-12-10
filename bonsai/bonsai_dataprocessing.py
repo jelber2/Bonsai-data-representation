@@ -352,7 +352,7 @@ class SCData:
             self.tree.nNodes = bs_glob.nNodes
         if (mpiRank == 0) or all_ranks:
             Path(treeFolder).mkdir(parents=True, exist_ok=True)
-            edgeList, distList, vertInfo = self.tree.getEdgeVertInfo(coords_folder=coords_folder, verbose=False,
+            edgeList, distList, vertInfo = self.tree.getEdgeVertInfo_memfriendly(coords_folder=coords_folder, verbose=False,
                                                                      store_posterior_ltqs=store_posterior_ltqs,
                                                                      geneDiffusionScaling=self.metadata.geneDiffusionScaling,
                                                                      variances=self.metadata.geneVariances)

@@ -2689,6 +2689,17 @@ class TreeNode:
         for child in self.childNodes:
             child.getAIRootInfo(ltqsAIRoot, WAIRoot)
 
+    def get_AIRoot_info_store_and_delete(self, ltqsParent, W_gParent, memmapped_file=None):
+        if self.isRoot:
+            ltqsAIRoot = self.ltqs.copy()
+            WAIRoot = self.getW().copy()
+        else:
+            ltqsAIRoot, WAIRoot = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, ltqsParent, W_gParent)
+        self.ltqsAIRoot = ltqsAIRoot
+        self.setLtqsVarsOrW(W_g=WAIRoot, AIRoot=True)
+        for child in self.childNodes:
+            child.getAIRootInfo(ltqsAIRoot, WAIRoot)
+
     def getAIRootUpstream(self, as_if_root_version=None):
         if (as_if_root_version is not None) and (self._AIRoot_version == as_if_root_version):
             return
@@ -3032,9 +3043,95 @@ class Tree:
                                                                                                         nodeIndToNode)
         return edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
 
+    def getEdgeVertInfo_memfriendly(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
+                        geneDiffusionScaling=None, variances=None):
+        print_memory("Start getEdgeVertInfo")
+        edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
+        print_memory("Got Tree")
+        if coords_folder is not None:
+            if not store_posterior_ltqs:
+                ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'ltqsVars_vertByGene.npy')
+            else:
+                ltqs_file = os.path.join(coords_folder, 'posterior_ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'posterior_ltqsVars_vertByGene.npy')
+            # Pre-allocate room for the matrices that we are going to write on the disk
+            ltqs_mm = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+', shape=(self.nNodes, bs_glob.nGenes))
+            ltqs_vars_mm = np.lib.format.open_memmap(ltqsVars_file, dtype='float64', mode='w+', shape=(self.nNodes, bs_glob.nGenes))
+        vertInfo = {}
+        nodeIndToVertInd = {}
+        vertIndCounter = 0
+
+        if coords_folder is not None:
+            if store_posterior_ltqs:
+                self.root.getAIRootInfo(None, None)
+            # TODO: Remove these
+            print_memory("After reading posterior LTQs")
+            verbose = True
+            # TODO: END Remove these
+            start = time.time()
+            ltqs = []
+            ltqsVars = []
+            for edge in edgeList:
+                for ind, nodeInd in enumerate(edge):
+                    if nodeInd not in nodeIndToVertInd:
+                        nodeIndToVertInd[nodeInd] = vertIndCounter
+                        vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
+                        if verbose and (vertIndCounter % 1000 == 0):
+                            mp_print("Writing coords of vertex %d to file." % vertIndCounter)
+                            print_memory("Getting coords at vert {}".format(vertIndCounter))
+                        if not store_posterior_ltqs:
+                            ltqs_mm[vertIndCounter] = nodeIndToNode[nodeInd].ltqs
+                            ltqs_vars_mm[vertIndCounter] = nodeIndToNode[nodeInd].getLtqsVars()
+                            # ltqs.append(nodeIndToNode[nodeInd].ltqs)
+                            # ltqsVars.append(nodeIndToNode[nodeInd].getLtqsVars())
+                        else:
+                            if geneDiffusionScaling == 'geneVariances':
+                                # This means we have to undo the rescaling that was done before
+                                node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(variances)
+                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * variances
+                            else:
+                                node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(geneDiffusionScaling)
+                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(
+                                    AIRoot=True) * geneDiffusionScaling
+                            ltqs.append(node_ltqs_post)
+                            ltqsVars.append(node_ltqsVars_post)
+                        # ltqsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].ltqs)) + '\n')
+                        # varsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].getLtqsVars())) + '\n')
+                        vertIndCounter += 1
+                    vertInd = nodeIndToVertInd[nodeInd]
+                    edge[ind] = vertInd
+            del ltqs_mm
+            del ltqs_vars_mm
+            print_memory("Wrote ltqs and ltqsVars to file")
+            # print_memory("Got all ltqs in a list")
+            # ltqs = np.vstack(ltqs)
+            # np.save(ltqs_file, ltqs, allow_pickle=False)
+            # print_memory("Stored ltqs")
+            # del ltqs
+            # print_memory("Deleted ltqs")
+            # ltqsVars = np.vstack(ltqsVars)
+            # np.save(ltqsVars_file, ltqsVars, allow_pickle=False)
+            # print_memory("Stored ltqsVars")
+            # del ltqsVars
+            # print_memory("Deleted ltqsVars")
+            mp_print("Printing to file took %.2f seconds." % (time.time() - start))
+        else:
+            for edge in edgeList:
+                for ind, nodeInd in enumerate(edge):
+                    if nodeInd not in nodeIndToVertInd:
+                        nodeIndToVertInd[nodeInd] = vertIndCounter
+                        vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
+                        vertIndCounter += 1
+                    vertInd = nodeIndToVertInd[nodeInd]
+                    edge[ind] = vertInd
+        return edgeList, distList, vertInfo
+
     def getEdgeVertInfo(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
                         geneDiffusionScaling=None, variances=None):
+        print_memory("Start getEdgeVertInfo")
         edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
+        print_memory("Got Tree")
         if coords_folder is not None:
             if not store_posterior_ltqs:
                 ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
@@ -3049,6 +3146,10 @@ class Tree:
         if coords_folder is not None:
             if store_posterior_ltqs:
                 self.root.getAIRootInfo(None, None)
+            # TODO: Remove these
+            print_memory("After reading posterior LTQs")
+            verbose = True
+            # TODO: END Remove these
             start = time.time()
             ltqs = []
             ltqsVars = []
@@ -3059,6 +3160,7 @@ class Tree:
                         vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
                         if verbose and (vertIndCounter % 1000 == 0):
                             mp_print("Writing coords of vertex %d to file." % vertIndCounter)
+                            print_memory("Getting coords at vert {}".format(vertIndCounter))
                         if not store_posterior_ltqs:
                             ltqs.append(nodeIndToNode[nodeInd].ltqs)
                             ltqsVars.append(nodeIndToNode[nodeInd].getLtqsVars())
@@ -3078,10 +3180,17 @@ class Tree:
                         vertIndCounter += 1
                     vertInd = nodeIndToVertInd[nodeInd]
                     edge[ind] = vertInd
+            print_memory("Got all ltqs in a list")
             ltqs = np.vstack(ltqs)
-            ltqsVars = np.vstack(ltqsVars)
             np.save(ltqs_file, ltqs, allow_pickle=False)
+            print_memory("Stored ltqs")
+            del ltqs
+            print_memory("Deleted ltqs")
+            ltqsVars = np.vstack(ltqsVars)
             np.save(ltqsVars_file, ltqsVars, allow_pickle=False)
+            print_memory("Stored ltqsVars")
+            del ltqsVars
+            print_memory("Deleted ltqsVars")
             mp_print("Printing to file took %.2f seconds." % (time.time() - start))
         else:
             for edge in edgeList:
