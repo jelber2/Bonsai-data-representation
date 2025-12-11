@@ -2689,17 +2689,6 @@ class TreeNode:
         for child in self.childNodes:
             child.getAIRootInfo(ltqsAIRoot, WAIRoot)
 
-    def get_AIRoot_info_store_and_delete(self, ltqsParent, W_gParent, memmapped_file=None):
-        if self.isRoot:
-            ltqsAIRoot = self.ltqs.copy()
-            WAIRoot = self.getW().copy()
-        else:
-            ltqsAIRoot, WAIRoot = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, ltqsParent, W_gParent)
-        self.ltqsAIRoot = ltqsAIRoot
-        self.setLtqsVarsOrW(W_g=WAIRoot, AIRoot=True)
-        for child in self.childNodes:
-            child.getAIRootInfo(ltqsAIRoot, WAIRoot)
-
     def getAIRootUpstream(self, as_if_root_version=None):
         if (as_if_root_version is not None) and (self._AIRoot_version == as_if_root_version):
             return
@@ -2895,7 +2884,7 @@ class TreeNode:
         # opt_t = orig_ti
         if not converged:
             logger.warning("Somehow, the optimization of the branch length in an SPR move diverged, setting branch "
-                            "length to 1.")
+                           "length to 1.")
             opt_t = 1
 
         dlogl_target = getLoglik2LeafTree(ltqs1_g=self.ltqsAIRoot, ltqsVars1_g=self.getLtqsVars(AIRoot=True),
@@ -2936,6 +2925,69 @@ class TreeNode:
             new_parent.add_n_nodes_upstream(1)
 
         return new_parent
+
+    def get_tree_info(self, edge_lst, dist_lst, vert_info, int_counter):
+        """
+        Function that works per node, recursively. Should build up the lists edge_lst, dist_lst, and the dict vert_info.
+        """
+        if (self.nodeId is None) or (self.nodeId[:9] == 'internal_'):
+            self.nodeId = "internal_%d" % int_counter
+            int_counter += 1
+
+        vert_info[self.vert_ind] = (self.nodeInd, self.nodeId)
+
+        for child in self.childNodes:
+            edge_lst.append([self.vert_ind, child.vert_ind])
+            dist_lst.append(child.tParent)
+            edge_lst, dist_lst, vert_info, int_counter = child.get_tree_info(edge_lst, dist_lst, vert_info, int_counter)
+
+        return edge_lst, dist_lst, vert_info, int_counter
+
+    def store_coords(self, ltqs_vg, ltqs_vars_vg):
+        ltqs_vg[self.vert_ind] = self.ltqs
+        ltqs_vars_vg[self.vert_ind] = self.getLtqsVars()
+        for child in self.childNodes:
+            child.store_coords(ltqs_vg, ltqs_vars_vg)
+
+    def store_coords_posterior(self, ltqs_vg, ltqs_vars_vg, geneDiffusionScaling, variances=None):
+
+        if geneDiffusionScaling == 'geneVariances':
+            # This means we have to undo the rescaling by variance that was done before
+            node_ltqs_post = self.ltqsAIRoot * np.sqrt(variances)
+            node_ltqsVars_post = self.getLtqsVars(AIRoot=True) * variances
+        else:
+            # This means we have to undo the rescaling by *average* variance that was done before
+            node_ltqs_post = self.ltqsAIRoot * np.sqrt(geneDiffusionScaling)
+            node_ltqsVars_post = self.getLtqsVars(AIRoot=True) * geneDiffusionScaling
+
+        ltqs_vg[self.vert_ind] = node_ltqs_post
+        ltqs_vars_vg[self.vert_ind] = node_ltqsVars_post
+        for child in self.childNodes:
+            child.store_coords_posterior(ltqs_vg, ltqs_vars_vg, geneDiffusionScaling=geneDiffusionScaling,
+                                         variances=variances)
+
+    def store_coords_posterior_memfriendly(self, ltqs_vg, ltqs_vars_vg, ltqs_parent, W_g_parent,
+                                           geneDiffusionScaling, variances=None):
+        if self.isRoot:
+            ltqs_ai_root = self.ltqs.copy()
+            W_ai_root = self.getW().copy()
+        else:
+            ltqs_ai_root, W_ai_root = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, ltqs_parent, W_g_parent)
+        for child in self.childNodes:
+            child.store_coords_posterior_memfriendly(ltqs_vg, ltqs_vars_vg, ltqs_ai_root, W_ai_root,
+                                                     geneDiffusionScaling, variances=variances)
+
+        if geneDiffusionScaling == 'geneVariances':
+            # This means we have to undo the rescaling by variance that was done before
+            node_ltqs_post = ltqs_ai_root * np.sqrt(variances)
+            node_ltqsVars_post = (1 / W_ai_root) * variances
+        else:
+            # This means we have to undo the rescaling by *average* variance that was done before
+            node_ltqs_post = ltqs_ai_root * np.sqrt(geneDiffusionScaling)
+            node_ltqsVars_post = (1 / W_ai_root) * geneDiffusionScaling
+
+        ltqs_vg[self.vert_ind] = node_ltqs_post
+        ltqs_vars_vg[self.vert_ind] = node_ltqsVars_post
 
 
 class Tree:
@@ -3043,8 +3095,177 @@ class Tree:
                                                                                                         nodeIndToNode)
         return edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
 
+    def getEdgeVertInfo_very_memfriendly(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
+                                         geneDiffusionScaling=None, variances=None):
+        """
+        Should store coordinates of all nodes, and return lists that capture the tree structure.
+
+        :param coords_folder: Gives path to where coordinates should be stored.
+        :param verbose:
+        :param store_posterior_ltqs: Whether coordinates should be AIRoot (as-if-root) for each node
+        :param geneDiffusionScaling: Whether coordinates were rescaled in preprocessing or not
+        :param variances: (Optional) variances with which they were rescaled
+
+        :return edge_lst: List of 2-lists, one for each edge, giving the vert-indices for the edge
+        :return dist_lst: Gives the corresponding distances for each edge
+        :return vert_info: For each vertex, this is a dictionary from vert_ind to tuple (node_ind, vert_id)
+        """
+        start = time.time()
+        print_memory("Start getEdgeVertInfo")
+        # edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
+        # edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
+        edge_lst = []
+        dist_lst = []
+        vert_info = {}
+
+        if self.root.nodeId is None:
+            self.root.nodeId = 'root'
+        int_counter = 0
+        vert_counter = 0
+
+        # First make sure each node has a vert_ind that is depth-first increasing
+        _, vert_count = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
+
+        if self.nNodes != vert_count:
+            mp_print("Watch out, the number of nodes stored in tree.nNodes is not equal to the number I just counted.",
+                     WARNING=True)
+            self.nNodes = vert_count
+            bs_glob.nNodes = vert_count
+
+        # Then do depth-search run to get edge_list, dist_list
+        edge_lst, dist_lst, vert_info, int_counter = self.root.get_tree_info(edge_lst, dist_lst, vert_info, int_counter)
+
+        # Finally, we do another depth-first search to store the coordinates at the rows given by the vert_inds
+        if coords_folder is not None:
+            # We initialize the filenames first
+            if not store_posterior_ltqs:
+                ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'ltqsVars_vertByGene.npy')
+            else:
+                ltqs_file = os.path.join(coords_folder, 'posterior_ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'posterior_ltqsVars_vertByGene.npy')
+
+            # If memory-friendly mode, we reserve a memmap-region and write row-by-row
+            if bs_glob.mem_friendly:
+                # Pre-allocate room for the matrices that we are going to write on the disk
+                ltqs = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+',
+                                                 shape=(self.nNodes, bs_glob.nGenes))
+                ltqs_vars = np.lib.format.open_memmap(ltqsVars_file, dtype='float64', mode='w+',
+                                                      shape=(self.nNodes, bs_glob.nGenes))
+            else:
+                # If not mem-friendly, we just build up a numpy array and store it at once. This may be slightly faster.
+                # TODO: Test if we can get rid of this option alltogether
+                ltqs = np.zeros((self.nNodes, bs_glob.nGenes))
+                ltqs_vars = np.zeros((self.nNodes, bs_glob.nGenes))
+
+            if not store_posterior_ltqs:
+                # In this case, simply loop through the nodes and store the ltqs in the arrays
+                self.root.store_coords(ltqs, ltqs_vars)
+            else:
+                # In this case, we should calculate the posterior-coordinates at each node
+                if not bs_glob.mem_friendly:
+                    # In this case, first get all the posterior-LTQs at the nodes, then store them all in the array
+                    self.root.getAIRootInfo(None, None)
+                    self.root.store_coords_posterior(ltqs, ltqs_vars, geneDiffusionScaling=geneDiffusionScaling,
+                                                     variances=variances)
+                else:
+                    # In this case, get posterior-LTQs, but delete them once you don't need them anymore.
+                    self.root.store_coords_posterior_memfriendly(ltqs, ltqs_vars, None, None,
+                                                                 geneDiffusionScaling=geneDiffusionScaling,
+                                                                 variances=variances)
+
+            if bs_glob.mem_friendly:
+                del ltqs
+                del ltqs_vars
+            else:
+                np.save(ltqs_file, ltqs, allow_pickle=False)
+                np.save(ltqsVars_file, ltqs_vars, allow_pickle=False)
+        print_memory("Wrote ltqs and ltqsVars to file")
+        mp_print("Printing to file took %.2f seconds." % (time.time() - start))
+
+        return edge_lst, dist_lst, vert_info
+
+        # edgeList, distList, nodeIndToVertId, intCounter, nodeIndToNode = getEdgeDistVertNamesFromNode(self.root,
+        #                                                                                                 edge_list,
+        #                                                                                                 dist_list,
+        #                                                                                                 orig_vert_names,
+        #                                                                                                 intCounter,
+        #                                                                                                 nodeIndToNode)
+        # return edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
+
+        # print_memory("Got Tree")
+        #
+        # vertInfo = {}
+        # nodeIndToVertInd = {}
+        # vertIndCounter = 0
+        #
+        # if coords_folder is not None:
+        #     # if store_posterior_ltqs:
+        #     #     self.root.getAIRootInfo(None, None)
+        #     # TODO: Remove these
+        #     print_memory("After reading posterior LTQs")
+        #     verbose = True
+        #     # TODO: END Remove these
+        #     start = time.time()
+        #     ltqs = []
+        #     ltqsVars = []
+        #     for edge in edgeList:
+        #         for ind, nodeInd in enumerate(edge):
+        #             if nodeInd not in nodeIndToVertInd:
+        #                 nodeIndToVertInd[nodeInd] = vertIndCounter
+        #                 vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
+        #                 if verbose and (vertIndCounter % 1000 == 0):
+        #                     mp_print("Writing coords of vertex %d to file." % vertIndCounter)
+        #                     print_memory("Getting coords at vert {}".format(vertIndCounter))
+        #                 if not store_posterior_ltqs:
+        #                     ltqs_mm[vertIndCounter] = nodeIndToNode[nodeInd].ltqs
+        #                     ltqs_vars_mm[vertIndCounter] = nodeIndToNode[nodeInd].getLtqsVars()
+        #                     # ltqs.append(nodeIndToNode[nodeInd].ltqs)
+        #                     # ltqsVars.append(nodeIndToNode[nodeInd].getLtqsVars())
+        #                 else:
+        #                     if geneDiffusionScaling == 'geneVariances':
+        #                         # This means we have to undo the rescaling that was done before
+        #                         node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(variances)
+        #                         node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * variances
+        #                     else:
+        #                         node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(geneDiffusionScaling)
+        #                         node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(
+        #                             AIRoot=True) * geneDiffusionScaling
+        #                     ltqs.append(node_ltqs_post)
+        #                     ltqsVars.append(node_ltqsVars_post)
+        #                 # ltqsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].ltqs)) + '\n')
+        #                 # varsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].getLtqsVars())) + '\n')
+        #                 vertIndCounter += 1
+        #             vertInd = nodeIndToVertInd[nodeInd]
+        #             edge[ind] = vertInd
+        #     del ltqs_mm
+        #     del ltqs_vars_mm
+        #     print_memory("Wrote ltqs and ltqsVars to file")
+        # print_memory("Got all ltqs in a list")
+        # ltqs = np.vstack(ltqs)
+        # np.save(ltqs_file, ltqs, allow_pickle=False)
+        # print_memory("Stored ltqs")
+        # del ltqs
+        # print_memory("Deleted ltqs")
+        # ltqsVars = np.vstack(ltqsVars)
+        # np.save(ltqsVars_file, ltqsVars, allow_pickle=False)
+        # print_memory("Stored ltqsVars")
+        # del ltqsVars
+        # print_memory("Deleted ltqsVars")
+        #     mp_print("Printing to file took %.2f seconds." % (time.time() - start))
+        # else:
+        #     for edge in edgeList:
+        #         for ind, nodeInd in enumerate(edge):
+        #             if nodeInd not in nodeIndToVertInd:
+        #                 nodeIndToVertInd[nodeInd] = vertIndCounter
+        #                 vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
+        #                 vertIndCounter += 1
+        #             vertInd = nodeIndToVertInd[nodeInd]
+        #             edge[ind] = vertInd
+        # return edgeList, distList, vertInfo
+
     def getEdgeVertInfo_memfriendly(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
-                        geneDiffusionScaling=None, variances=None):
+                                    geneDiffusionScaling=None, variances=None):
         print_memory("Start getEdgeVertInfo")
         edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
         print_memory("Got Tree")
@@ -3056,15 +3277,17 @@ class Tree:
                 ltqs_file = os.path.join(coords_folder, 'posterior_ltqs_vertByGene.npy')
                 ltqsVars_file = os.path.join(coords_folder, 'posterior_ltqsVars_vertByGene.npy')
             # Pre-allocate room for the matrices that we are going to write on the disk
-            ltqs_mm = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+', shape=(self.nNodes, bs_glob.nGenes))
-            ltqs_vars_mm = np.lib.format.open_memmap(ltqsVars_file, dtype='float64', mode='w+', shape=(self.nNodes, bs_glob.nGenes))
+            ltqs_mm = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+',
+                                                shape=(self.nNodes, bs_glob.nGenes))
+            ltqs_vars_mm = np.lib.format.open_memmap(ltqsVars_file, dtype='float64', mode='w+',
+                                                     shape=(self.nNodes, bs_glob.nGenes))
         vertInfo = {}
         nodeIndToVertInd = {}
         vertIndCounter = 0
 
         if coords_folder is not None:
-            if store_posterior_ltqs:
-                self.root.getAIRootInfo(None, None)
+            # if store_posterior_ltqs:
+            #     self.root.getAIRootInfo(None, None)
             # TODO: Remove these
             print_memory("After reading posterior LTQs")
             verbose = True
@@ -4063,7 +4286,7 @@ class Tree:
                 found_new_parent = False
                 if verbose:
                     logger.info("SPR-move {} unsuccessful:, "
-                                 "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
+                                "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
             else:
                 if opt_node.nodeInd == old_parent.nodeInd:
                     returned_moves += 1
@@ -4077,8 +4300,8 @@ class Tree:
                     found_new_parent = True
                     if verbose:
                         logger.info("SPR-move {} success: moving node {} as child of {}. "
-                                     "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
-                                                                          opt_dlogl - dlogl_orig_pos))
+                                    "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
+                                                                         opt_dlogl - dlogl_orig_pos))
                 total_dlogl_increase += (opt_dlogl - dlogl_orig_pos)
 
             """Perform move"""
@@ -4369,7 +4592,7 @@ class Tree:
         start_adding = time.time()
         for n_added in range(n_to_add_total):
             if n_added == n_print:
-            # if True:
+                # if True:
                 mp_print("Seconds since start: {}. "
                          "Adding cell {} out of {}: {:.2f}%.".format(time.time() - start_adding,
                                                                      n_added + 1, n_to_add_total,
@@ -4524,11 +4747,11 @@ class Tree:
         #     exit()
         self.nNodes = bs_glob.nNodes
         logger.info("The {} added cells led to a decrease of {} "
-                     "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
+                    "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
         logger.info("Not taking account intermediate resolving of polytomies: total loglikelihood should now be {}, "
-                     "and it is {} according to the normal loglik "
-                     "calculation.".format(orig_loglik + total_dlogl_decrease,
-                                           self.calcLogLComplete(mem_friendly=True, recalc=True)))
+                    "and it is {} according to the normal loglik "
+                    "calculation.".format(orig_loglik + total_dlogl_decrease,
+                                          self.calcLogLComplete(mem_friendly=True, recalc=True)))
 
 
 def getNewUBInfo(xrAsIfRoot_g, WAsIfRoot_g, epsx, epsW, alldLogLsUB, UBInfo, allPairsUB, oldRoot, del_node_inds,

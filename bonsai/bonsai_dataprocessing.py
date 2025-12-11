@@ -232,7 +232,7 @@ class SCData:
         bs_glob.nCells = self.metadata.nCells
         bs_glob.nGenes = self.metadata.nGenes
         # TODO: Change this to 25000, remove memory prints
-        if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
+        if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000):
             bs_glob.mem_friendly = True
             self.tree.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
 
@@ -352,7 +352,7 @@ class SCData:
             self.tree.nNodes = bs_glob.nNodes
         if (mpiRank == 0) or all_ranks:
             Path(treeFolder).mkdir(parents=True, exist_ok=True)
-            edgeList, distList, vertInfo = self.tree.getEdgeVertInfo_memfriendly(coords_folder=coords_folder, verbose=False,
+            edgeList, distList, vertInfo = self.tree.getEdgeVertInfo_very_memfriendly(coords_folder=coords_folder, verbose=False,
                                                                      store_posterior_ltqs=store_posterior_ltqs,
                                                                      geneDiffusionScaling=self.metadata.geneDiffusionScaling,
                                                                      variances=self.metadata.geneVariances)
@@ -2271,7 +2271,8 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
         if verbose:
             mp_print("Loaded tree has loglikelihood %.4f" % scData.metadata.loglik)
 
-    if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
+    # TODO: Change this number of cells again to 25000
+    if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000):
         bs_glob.mem_friendly = True
         scData.tree.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
 
