@@ -1476,12 +1476,11 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
                                                   verbose=False)
 
             # Do the first SPR moves (coming at high freq) only at first process
-            # TODO: Turn back the freq_cutoff to .01
             successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(max_moves=max_moves,
                                                                                    select_cand=select_cand,
                                                                                    select_target=select_target,
                                                                                    min_branch_length=min_branch_length,
-                                                                                   freq_cutoff=.2, mem_friendly=True,
+                                                                                   freq_cutoff=.01, mem_friendly=True,
                                                                                    skip_prepare_tree=True)
 
             # Prepare the tree already for the next phase, do this only on Process 0
@@ -1615,7 +1614,6 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
     #     if (zscoreCutoff > 0) or (nGenesToKeep > 0):
     #         # Compute zscores for all genes.
-    #         # TODO: Eventually decide which of next zscores-determination is best
     #         # zscores = np.sqrt(np.maximum(np.mean(((originalData.ltqs - np.mean(originalData.ltqs, axis=1)[:,
     #         #                                                            np.newaxis]) ** 2 - originalData.ltqsVars)
     #         #                                      / originalData.ltqsVars, axis=1), 1e-12))
@@ -1664,7 +1662,6 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
     :param verbose:
     :return:
     """
-    # TODO: Clean this function up by splitting it in two: random plus greedy
     mpiInfo = mpi_wrapper.get_mpi_info()
     tmp_folder = os.path.join(resultsFolder, 'intermediate_trees')
     stored_tree_ind = None
@@ -2513,7 +2510,6 @@ def addDataToTree(scData, vertIndToNode):
 #     cellIdToVertInd = {node.nodeId: vertInd for vertInd, node in vertIndToNode.items()}
 #     for ind in range(scData.metadata.nCells):
 #         cellId = scData.metadata.cellIds[ind]
-#         # TODO: We have not yet implemented that we ran it on cs, so now we just map cells to their own cellstate
 #         cellstateId = cellId
 #         cellsToCellstates[cellId] = cellstateId
 #         if cellId in cellIdToVertInd:
@@ -2525,7 +2521,6 @@ def addDataToTree(scData, vertIndToNode):
 #         # Store in cell_assignment to which eventual vertex the original cell was sent
 #         scData.cellsToVerts[cellId] = cellstatesToVerts[cellsToCellstates[cellId]]
 #         # Also store a map of which cellInd went to which vertInd
-#         # TODO: Maybe eventually only store this.
 #         scData.cellIndToVertInd[ind] = vert_ind
 #
 #     # Build up the tree

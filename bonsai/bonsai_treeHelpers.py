@@ -17,7 +17,6 @@ import json
 import heapq
 
 # TODO: Remove this
-import psutil
 
 
 class TreeNode:
@@ -424,7 +423,6 @@ class TreeNode:
         childrenLtqs[:, 0] = leftNeighbour.ltqs
         childrenLtqs[:, -1] = rightNeighbour.ltqs
         # Get distances between children
-        # TODO: Check why this can give a divide by zero warning
         childDists = distance.squareform(np.log(1e-9 + distance.pdist(childrenLtqs.T)))
         if nChild <= maxChild:
             # Get all permutations of childInds up to cyclic permutations
@@ -878,16 +876,8 @@ class TreeNode:
             WChildren[:, cInd] = child.getW()
             tChildren[cInd] = child.tParent
 
-        post_ltqsCh, _ = getLtqsAsIfRoot_vectorized(ltqsChildren, WChildren, tChildren, xrAIRoot, WRoot)
         # Get posterior best guess for coordinates by integrating out everything but the root
-        # # TODO: Check if this for-loop can be vectorized
-        # post_ltqsCh = np.zeros_like(ltqsCh)
-        # WCh = 1 / ltqsVarsCh
-        # WRoot = 1/xrVarsAIRoot
-        # for ind in range(len(self.childNodes)):
-        #     post_ltqsCh[:, ind], _ = getLtqsAsIfRoot(ltqsCh[:, ind], WCh[:, ind], tChildren[ind], xrAIRoot, WRoot)
-        # # We center the ltq-information around the root
-        # post_ltqsCh -= xrAIRoot[:, None]
+        post_ltqsCh, _ = getLtqsAsIfRoot_vectorized(ltqsChildren, WChildren, tChildren, xrAIRoot, WRoot)
         return post_ltqsCh
 
     def addClosenessNNN(self, dist, src=np.nan):
@@ -1845,8 +1835,6 @@ class TreeNode:
         #             pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, NNInfo, verbose=verbose)
         #             boolArgs['getNewNN'] = False
         #             NNInfo['NNcounter'] = 0
-        #             # TODO: Take these new pairs and select the pairs for which UB exists, put them in UB['pairs'] with
-        #             #  corresponding UB['dLogLs']. New pairs go into pairs, which will be treated first.
         #     else:
         #         # If no NNs are used, just pair the new ancestor to all existing root-children
         #         pairs = [(newAnc.nodeInd, child.nodeInd) for child in self.childNodes[:-1]]
@@ -3200,85 +3188,6 @@ class Tree:
 
         return edge_lst, dist_lst, vert_info
 
-        # edgeList, distList, nodeIndToVertId, intCounter, nodeIndToNode = getEdgeDistVertNamesFromNode(self.root,
-        #                                                                                                 edge_list,
-        #                                                                                                 dist_list,
-        #                                                                                                 orig_vert_names,
-        #                                                                                                 intCounter,
-        #                                                                                                 nodeIndToNode)
-        # return edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
-
-        # print_memory("Got Tree")
-        #
-        # vertInfo = {}
-        # nodeIndToVertInd = {}
-        # vertIndCounter = 0
-        #
-        # if coords_folder is not None:
-        #     # if store_posterior_ltqs:
-        #     #     self.root.getAIRootInfo(None, None)
-        #     # TODO: Remove these
-        #     print_memory("After reading posterior LTQs")
-        #     verbose = True
-        #     # TODO: END Remove these
-        #     start = time.time()
-        #     ltqs = []
-        #     ltqsVars = []
-        #     for edge in edgeList:
-        #         for ind, nodeInd in enumerate(edge):
-        #             if nodeInd not in nodeIndToVertInd:
-        #                 nodeIndToVertInd[nodeInd] = vertIndCounter
-        #                 vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
-        #                 if verbose and (vertIndCounter % 1000 == 0):
-        #                     mp_print("Writing coords of vertex %d to file." % vertIndCounter)
-        #                     print_memory("Getting coords at vert {}".format(vertIndCounter))
-        #                 if not store_posterior_ltqs:
-        #                     ltqs_mm[vertIndCounter] = nodeIndToNode[nodeInd].ltqs
-        #                     ltqs_vars_mm[vertIndCounter] = nodeIndToNode[nodeInd].getLtqsVars()
-        #                     # ltqs.append(nodeIndToNode[nodeInd].ltqs)
-        #                     # ltqsVars.append(nodeIndToNode[nodeInd].getLtqsVars())
-        #                 else:
-        #                     if geneDiffusionScaling == 'geneVariances':
-        #                         # This means we have to undo the rescaling that was done before
-        #                         node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(variances)
-        #                         node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * variances
-        #                     else:
-        #                         node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(geneDiffusionScaling)
-        #                         node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(
-        #                             AIRoot=True) * geneDiffusionScaling
-        #                     ltqs.append(node_ltqs_post)
-        #                     ltqsVars.append(node_ltqsVars_post)
-        #                 # ltqsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].ltqs)) + '\n')
-        #                 # varsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].getLtqsVars())) + '\n')
-        #                 vertIndCounter += 1
-        #             vertInd = nodeIndToVertInd[nodeInd]
-        #             edge[ind] = vertInd
-        #     del ltqs_mm
-        #     del ltqs_vars_mm
-        #     print_memory("Wrote ltqs and ltqsVars to file")
-        # print_memory("Got all ltqs in a list")
-        # ltqs = np.vstack(ltqs)
-        # np.save(ltqs_file, ltqs, allow_pickle=False)
-        # print_memory("Stored ltqs")
-        # del ltqs
-        # print_memory("Deleted ltqs")
-        # ltqsVars = np.vstack(ltqsVars)
-        # np.save(ltqsVars_file, ltqsVars, allow_pickle=False)
-        # print_memory("Stored ltqsVars")
-        # del ltqsVars
-        # print_memory("Deleted ltqsVars")
-        #     mp_print("Printing to file took %.2f seconds." % (time.time() - start))
-        # else:
-        #     for edge in edgeList:
-        #         for ind, nodeInd in enumerate(edge):
-        #             if nodeInd not in nodeIndToVertInd:
-        #                 nodeIndToVertInd[nodeInd] = vertIndCounter
-        #                 vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
-        #                 vertIndCounter += 1
-        #             vertInd = nodeIndToVertInd[nodeInd]
-        #             edge[ind] = vertInd
-        # return edgeList, distList, vertInfo
-
     def getEdgeVertInfo_memfriendly(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
                                     geneDiffusionScaling=None, variances=None):
         print_memory("Start getEdgeVertInfo")
@@ -4179,9 +4088,6 @@ class Tree:
         if select_cand == 'list':
             nodes_list = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
             node_ind_to_node = {node.nodeInd: node for node in nodes_list}
-            # TODO: Check this, cands_list is smaller than cand_list. Somehow, some candidates were still on the list,
-            #  but no longer in the tree.
-            # Probably, because they were parent-nodes, and one of the child-nodes was replaced
             cands_list = [node_ind_to_node[node_ind] for node_ind in cand_list if node_ind in node_ind_to_node]
             max_moves = min(len(cands_list), max_moves)
 
@@ -4202,20 +4108,9 @@ class Tree:
             negdlogl_nodeind_tuples = []
 
         last_n_successes = None
-        # TODO: Remove this useless initialization
         orig_t = None
 
         while n_moves < max_moves - 1:
-            # TODO: Remove this
-            # nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
-            # node_of_interest = [node for node in nodesList if node.nodeInd==2006]
-            # # if len(node_of_interest) and node_of_interest[0].parentNode is None:
-            # # if len(node_of_interest) and (node_of_interest[0].parentNode.nodeInd ==2006):
-            # if len(node_of_interest):
-            #     child_node_of_interest = [node for node in node_of_interest[0].childNodes if node.nodeInd==44]
-            #     if not len(child_node_of_interest):
-            #         print("Hello")
-
             n_moves += 1
             spr_target_version += 1
 
@@ -4226,8 +4121,6 @@ class Tree:
                                                                      successful_moves, total_dlogl_increase,
                                                                      orig_t))
                 # TODO: Remove this memory measurement maybe
-                # mp_print("Current memory usage is ",
-                #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
                 print_memory("n_moves: {}".format(n_moves))
 
                 n_print *= 2
@@ -4330,7 +4223,6 @@ class Tree:
                     self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
                     # print_memory("Freed memory kept by double storage of variance and precision.")
 
-            # TODO: Eventually check if I want to remove this
             if do_postprocessing and found_new_parent and len(new_parent.childNodes) > 2:
                 # if found_new_parent and len(new_parent.childNodes) > 2:
                 # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
@@ -4363,8 +4255,7 @@ class Tree:
                         #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
 
             # If we run with a frequency cutoff and we did N_CHECK moves. Check whether we need to exit
-            # TODO: Turn back N_CHECK to 1000
-            N_CHECK = 100
+            N_CHECK = 1000
             if (freq_cutoff is not None) and (n_moves % N_CHECK == 0):
                 if last_n_successes is not None:
                     if (successful_moves - last_n_successes) < freq_cutoff * N_CHECK:
@@ -5434,14 +5325,6 @@ def calcSingleDLogL(xrAsIfRoot_g, WAsIfRoot_g, ltqs1, ltqsVars1, wbar1_g, tOld1,
     if sequential:
         newLogLik, optTimes, t12Opt, converged = optimiseT3LeafStarSequential(ltqs_gi, ltqsVars_gi, t0_i, verbose=False,
                                                                               tol=tol)
-
-        # TODO: REMOVE THIS!
-        # newLogLik_Old, optTimes_Old, t12Opt_Old, converged_Old = optimiseT3LeafStarSequentialOld(ltqs_gi, ltqsVars_gi,
-        #                                                                                          t0_i,
-        #                                                                                          verbose=False, tol=tol)
-        # if np.max(np.abs(optTimes - optTimes_Old)) > 1e-6:
-        #     mp_print("New optTimes: {}, differ from old optTimes {}.".format(optTimes, optTimes_Old), DEBUG=True)
-        #     mp_print("New loglik: {}, differ from old loglik {}.".format(newLogLik, newLogLik_Old), DEBUG=True)
 
         if converged:
             optTimes = [optTimes[0], t12Opt - optTimes[0], optTimes[1]]
