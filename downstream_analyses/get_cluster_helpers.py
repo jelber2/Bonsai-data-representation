@@ -40,6 +40,7 @@ class Cluster_Tree:
     # Used
     def storeTreeInFolder(self, treeFolder, nwk=True):
         Path(treeFolder).mkdir(parents=True, exist_ok=True)
+        # TODO: Replace this with newer file, as in bonsai.bonsai_treeHelpers
         edgeList, distList, vertInfo = self.getEdgeVertInfo(verbose=False)
 
         with open(os.path.join(treeFolder, 'edgeInfo.txt'), "w") as file:

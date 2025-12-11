@@ -477,7 +477,6 @@ def hierarchy_to_newick(pathToMerger, clustIds, pathToOutput):
         f.write("%s" % newick_string)
 
 
-# TODO: Use this again. In tree visualisation
 # Should go to tree vis file
 def compile_tree_from_newick(newickFilename):
     from skbio import TreeNode
@@ -769,7 +768,6 @@ def calcTInit(tOld1, tOld2, sequential):
 
 # Used
 def getAllDLogLs(dLogLDict, mpi_rank, nChildren):
-    # TODO: Wrap this communication step in a function
     # Gather all dLogLs on the first process
     dLogLsDicts = mpi_wrapper.world_allgather(dLogLDict)
     if mpi_rank != 0:
