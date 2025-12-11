@@ -5,6 +5,10 @@ from pathlib import Path
 import os, sys, csv
 import subprocess
 
+# TODO: REMOVE THIS EVENTUALLY
+import tracemalloc
+tracemalloc.start()
+
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
 sys.path.append(parent_dir)

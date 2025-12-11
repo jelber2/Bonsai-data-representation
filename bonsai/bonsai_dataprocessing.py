@@ -232,7 +232,7 @@ class SCData:
         bs_glob.nCells = self.metadata.nCells
         bs_glob.nGenes = self.metadata.nGenes
         # TODO: Change this to 25000, remove memory prints
-        if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000):
+        if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000) and (self.tree is not None):
             bs_glob.mem_friendly = True
             self.tree.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
 

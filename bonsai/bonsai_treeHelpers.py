@@ -4443,6 +4443,7 @@ class Tree:
         self.root.renumberNodes(change_node_inds=change_node_inds)
         self.nNodes = bs_glob.nNodes
         self.root.storeParent()
+        self.root.clear_memory()
 
         if only_cleanup:
             return
@@ -4542,13 +4543,13 @@ class Tree:
                 queue.append(child)
         return nodeList
 
-    def add_cells(self, ltqs_to_add, ltqsvars_to_add, cell_ids, growth_before_cleanup=.1,
+    def add_cells(self, ltqs_to_add_cg, ltqsvars_to_add_cg, cell_ids, growth_before_cleanup=.1,
                   select_target='cluster_centers', resolve_polytomies_immediately=True, scdata=None, tmp_folder=None,
                   tmp_tree_ind=0, search_tol=2, n_centers=None, only_count_search_moves=False):
         """
 
-        :param ltqs_to_add: Numpy array (genes x cells) with coordinates of cells that should be added to the tree
-        :param ltqsvars_to_add: Numpy array (genes x cells) with corresponding uncertainties
+        :param ltqs_to_add_cg: Numpy array (cells x genes) with coordinates of cells that should be added to the tree
+        :param ltqsvars_to_add_cg: Numpy array (cells x genes) with corresponding uncertainties
         :param growth_before_cleanup: Fraction of growth of number of nodes before we do a cleanup of the tree
         (resolving polytomies + optimizing branch lengths)
         :param spr_strategy: Determines how we search for where to add the node.
@@ -4557,8 +4558,7 @@ class Tree:
         # TODO: Turn this off
         very_verbose = False
         # We initialize some variables, and do a first clean-up of the tree
-        if select_target == 'cluster_centers':
-            growth_bf_clst_cntrs = .1
+        growth_bf_small_cleanup = .1
 
         as_if_root_version = 0
         spr_target_version = 0
@@ -4578,13 +4578,10 @@ class Tree:
         self.root.getLtqsComplete(mem_friendly=True)
         orig_loglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
 
-        n_to_add_total = ltqs_to_add.shape[1]
+        n_to_add_total = ltqs_to_add_cg.shape[0]
         tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
         n_before_cleanup = int(np.ceil(growth_before_cleanup * tree_size))
-        if select_target == 'cluster_centers':
-            n_bf_clst_cntrs = int(np.ceil(growth_bf_clst_cntrs * tree_size))
-        else:
-            n_bf_clst_cntrs = n_before_cleanup
+        n_bf_small_cleanup = int(np.ceil(growth_bf_small_cleanup * tree_size))
 
         # If select_target is cluster_centers, we get cluster-centers here, which will be used as start-points for the
         # tree-based search of where to put the new cells
@@ -4618,8 +4615,8 @@ class Tree:
                 n_print *= 2
 
             # Create TreeNode that can be added
-            ltqs = ltqs_to_add[:, n_added]
-            ltqsvars = ltqsvars_to_add[:, n_added]
+            ltqs = ltqs_to_add_cg[n_added, :]
+            ltqsvars = ltqsvars_to_add_cg[n_added, :]
             cell_id = cell_ids[n_added]
             cand_node_ind = bs_glob.max_node_ind + 1
             bs_glob.max_node_ind += 1
@@ -4705,7 +4702,7 @@ class Tree:
 
             # Increase metadata (nNodes, ...?)
 
-            if n_added in [n_before_cleanup, n_bf_clst_cntrs]:
+            if n_added in [n_before_cleanup, n_bf_small_cleanup]:
                 tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
 
                 if n_added != n_before_cleanup:
@@ -4722,15 +4719,14 @@ class Tree:
                 if not only_cleanup:
                     n_before_cleanup += int(np.ceil(growth_before_cleanup * tree_size))
                     n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
-
-                if select_target == 'cluster_centers':
-                    n_bf_clst_cntrs += int(np.ceil(growth_bf_clst_cntrs * tree_size))
-                    n_bf_clst_cntrs = min(n_bf_clst_cntrs, n_to_add_total - 1)
-                else:
-                    n_bf_clst_cntrs = n_before_cleanup
-
+                n_bf_small_cleanup += int(np.ceil(growth_bf_small_cleanup * tree_size))
+                n_bf_small_cleanup = min(n_bf_small_cleanup, n_to_add_total - 1)
+                if not only_cleanup:
+                    print_memory("Before postprocessing big cleanup")
                 self.do_spr_postprocessing(change_node_inds=False, verbose=False, only_cleanup=only_cleanup,
                                            only_time_opt=resolve_polytomies_immediately)
+                if not only_cleanup:
+                    print_memory("After postprocessing big cleanup")
                 if not only_cleanup:
                     mp_print("Round of re-optimizing times took {} seconds.".format(time.time() - start_postprocessing))
                     start_cluster_centers = time.time()
@@ -4753,6 +4749,9 @@ class Tree:
                                                  with_coords=False, verbose=True, cleanup_tree=False)
                         remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
                         tmp_tree_ind += 1
+
+                    if not only_cleanup:
+                        print_memory("After storing tree")
 
                 start_adding = time.time()
 

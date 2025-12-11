@@ -4,6 +4,10 @@ import time
 import os, sys, csv
 from pathlib import Path
 
+import tracemalloc
+
+tracemalloc.start()
+
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
 sys.path.append(parent_dir)
@@ -83,7 +87,7 @@ args.pickup_intermediate = pickup_intermediate
 
 from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
     OriginalData, Metadata
-from bonsai.bonsai_helpers import mp_print, startMPI
+from bonsai.bonsai_helpers import mp_print, startMPI, print_memory
 import bonsai.bonsai_globals as bs_glob
 
 if guide_tree_folder is None:
@@ -200,9 +204,31 @@ else:
 
 # Create random order of cells to be added
 np.random.shuffle(cell_inds_to_add)
-ltqs_to_add = scdata_all_cells.originalData.ltqs[:, cell_inds_to_add]
-ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, cell_inds_to_add]
+print_memory("Before reading ltqs_to_add")
+# ltqs_to_add = scdata_all_cells.originalData.ltqs[:, cell_inds_to_add]
+# ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, cell_inds_to_add]
+
+# Store ltqs to be added in a file, such that they can be memory-mapped when reading in
+n_to_add = len(cell_inds_to_add)
+ltqs_file = os.path.join(tmp_folder, 'ltqs_to_add_cell_by_gene.npy')
+ltqsvars_file = os.path.join(tmp_folder, 'ltqsvars_to_add_cell_by_gene.npy')
+ltqs_to_add = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+',
+                                        shape=(n_to_add, bs_glob.nGenes))
+ltqsvars_to_add = np.lib.format.open_memmap(ltqsvars_file, dtype='float64', mode='w+',
+                                            shape=(n_to_add, bs_glob.nGenes))
+for out_row, orig_col in enumerate(cell_inds_to_add):
+    ltqs_to_add[out_row, :] = scdata_all_cells.originalData.ltqs[:, orig_col]    # memmap → memmap copy
+    ltqsvars_to_add[out_row, :] = scdata_all_cells.originalData.ltqsVars[:, orig_col]    # memmap → memmap copy
+
+# Flush to disk
+ltqs_to_add.flush()
+ltqsvars_to_add.flush()
+del ltqs_to_add
+del ltqsvars_to_add
+ltqs_to_add_cg = np.load(ltqs_file, allow_pickle=False, mmap_mode='r')
+ltqsvars_to_add_cg = np.load(ltqsvars_file, allow_pickle=False, mmap_mode='r')
 cell_ids_to_add = [scdata_all_cells.metadata.cellIds[ind] for ind in cell_inds_to_add]
+print_memory("After reading ltqs_to_add")
 # TODO: Store these two data-matrices in an .npy-file, such that we can do lazy reading. Then just give the filenames
 
 # Make sure that all ltqs are calculated at all nodes (automatically done when calculating a loglikelihood)
@@ -219,7 +245,7 @@ if args.select_target == 'root':
 else:
     n_centers = None
 
-scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
+scdata_guide.tree.add_cells(ltqs_to_add_cg, ltqsvars_to_add_cg, cell_ids_to_add,
                             growth_before_cleanup=args.growth_before_cleanup,
                             select_target=args.select_target,
                             resolve_polytomies_immediately=args.resolve_polytomies_immediately,

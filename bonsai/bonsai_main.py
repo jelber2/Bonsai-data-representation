@@ -281,7 +281,8 @@ if args.step in ['core_calc', 'all']:
                                          ellipsoidSize=origEllipsoidSize, outputFolder=outputFolder, nChildNN=nChildNN,
                                          kNN=args.use_knn, mergeDownstream=True, tree=scData.tree,
                                          tmpTreeInd=tmpTreeInd)
-        scData.tree.root.clear_memory()
+        if scData.tree is not None:
+            scData.tree.root.clear_memory()
         if mpiRank == 0:
             mp_print("First greedy maximisation of tree likelihood took " + str(time.time() - startGML) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
@@ -336,7 +337,8 @@ if args.step in ['core_calc', 'all']:
                                                 sequential=SEQUENTIAL, verbose=args.verbose,
                                                 ellipsoidSize=origEllipsoidSize, nChildNN=nChildNN, kNN=args.use_knn,
                                                 mergeDownstream=True, tree=scData.tree)
-        scData.tree.root.clear_memory()
+        if scData.tree is not None:
+            scData.tree.root.clear_memory()
         if mpiRank == 0:
             mp_print("Redoing starry nodes took " + str(time.time() - startRedoingStarry) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
@@ -373,7 +375,8 @@ if args.step in ['core_calc', 'all']:
             startOptTimes = time.time()
             optTimes = scData.tree.optTimes(verbose=True, singleProcess=True, mem_friendly=True, maxiter=100)
 
-            scData.tree.root.clear_memory()
+            if scData.tree is not None:
+                scData.tree.root.clear_memory()
             mp_print("Optimization of diffusion times took " + str(time.time() - startOptTimes) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                                   loglikVarCorr=scData.metadata.loglikVarCorr)
@@ -432,7 +435,8 @@ if args.step in ['core_calc', 'all']:
         # Do the actual moves here:
         scData = do_spr_moveset(scdata_path, args, strategy=spr_strategy)
         print_memory("Done with SPR moves")
-        scData.tree.root.clear_memory()
+        if scData.tree is not None:
+            scData.tree.root.clear_memory()
 
         if mpiRank == 0:
             scData.tree.remove_two_child_root()
@@ -503,7 +507,8 @@ if args.step in ['core_calc', 'all']:
         # mp_print("Before starting nnnReorder, memory usage is ",
         #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
         scData = nnnReorder(args, tmp_folder, stored_tree_ind, maxMoves=1000, closenessBound=0.5, verbose=args.verbose)
-        scData.tree.root.clear_memory()
+        if scData.tree is not None:
+            scData.tree.root.clear_memory()
 
         if mpiRank != 0:
             mp_print("This process's job is done. Closing down.")
@@ -525,7 +530,8 @@ if args.step in ['core_calc', 'all']:
         mp_print("Optimization of diffusion times took " + str(time.time() - startOptTimes) + " seconds.")
         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
-        scData.tree.root.clear_memory()
+        if scData.tree is not None:
+            scData.tree.root.clear_memory()
 
         mp_print("Loglikelihood of inferred tree after optimising diffusion times: " + str(scData.metadata.loglik))
 
@@ -582,7 +588,8 @@ if args.step in ['core_calc', 'all']:
             scData.tree.nNodes = bs_glob.nNodes
             # scData.tree.root.reorderChildrenRoot(verbose=args.verbose, maxChild=8)
             scData.tree.root.ladderize_in_main()
-            scData.tree.root.clear_memory()
+            if scData.tree is not None:
+                scData.tree.root.clear_memory()
 
             mp_print("Reordering children took " + str(time.time() - startReorderEdges) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
