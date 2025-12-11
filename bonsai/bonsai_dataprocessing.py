@@ -231,8 +231,8 @@ class SCData:
         # Some variables are nice to have access to from all functions
         bs_glob.nCells = self.metadata.nCells
         bs_glob.nGenes = self.metadata.nGenes
-        # TODO: Change this to 25000, remove memory prints
-        if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000) and (self.tree is not None):
+
+        if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000) and (self.tree is not None):
             bs_glob.mem_friendly = True
             self.tree.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
 
@@ -2265,8 +2265,7 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
         if verbose:
             mp_print("Loaded tree has loglikelihood %.4f" % scData.metadata.loglik)
 
-    # TODO: Change this number of cells again to 25000
-    if (bs_glob.nCells is not None) and (bs_glob.nCells > 1000):
+    if (bs_glob.nCells is not None) and (bs_glob.nCells > 25000):
         bs_glob.mem_friendly = True
         scData.tree.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
 

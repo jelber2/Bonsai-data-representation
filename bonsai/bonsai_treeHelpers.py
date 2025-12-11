@@ -2990,7 +2990,7 @@ class TreeNode:
         ltqs_vars_vg[self.vert_ind] = node_ltqsVars_post
 
     def clear_memory(self, verbose=True, mem_friendly=False):
-        print_memory("Starting to clear memory.")
+        # print_memory("Starting to clear memory.")
         mem_friendly = mem_friendly or bs_glob.mem_friendly
         self.clear_AIRoot()
         if mem_friendly:
@@ -3119,7 +3119,7 @@ class Tree:
         :return vert_info: For each vertex, this is a dictionary from vert_ind to tuple (node_ind, vert_id)
         """
         start = time.time()
-        print_memory("Start getEdgeVertInfo")
+        # print_memory("Start getEdgeVertInfo")
         # edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
         # edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
         edge_lst = []
@@ -3283,7 +3283,7 @@ class Tree:
                                     geneDiffusionScaling=None, variances=None):
         print_memory("Start getEdgeVertInfo")
         edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
-        print_memory("Got Tree")
+        # print_memory("Got Tree")
         if coords_folder is not None:
             if not store_posterior_ltqs:
                 ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
@@ -3303,10 +3303,6 @@ class Tree:
         if coords_folder is not None:
             # if store_posterior_ltqs:
             #     self.root.getAIRootInfo(None, None)
-            # TODO: Remove these
-            print_memory("After reading posterior LTQs")
-            verbose = True
-            # TODO: END Remove these
             start = time.time()
             ltqs = []
             ltqsVars = []
@@ -3317,7 +3313,7 @@ class Tree:
                         vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
                         if verbose and (vertIndCounter % 1000 == 0):
                             mp_print("Writing coords of vertex %d to file." % vertIndCounter)
-                            print_memory("Getting coords at vert {}".format(vertIndCounter))
+                            # print_memory("Getting coords at vert {}".format(vertIndCounter))
                         if not store_posterior_ltqs:
                             ltqs_mm[vertIndCounter] = nodeIndToNode[nodeInd].ltqs
                             ltqs_vars_mm[vertIndCounter] = nodeIndToNode[nodeInd].getLtqsVars()
@@ -3369,7 +3365,7 @@ class Tree:
                         geneDiffusionScaling=None, variances=None):
         print_memory("Start getEdgeVertInfo")
         edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
-        print_memory("Got Tree")
+        # print_memory("Got Tree")
         if coords_folder is not None:
             if not store_posterior_ltqs:
                 ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
@@ -3384,10 +3380,6 @@ class Tree:
         if coords_folder is not None:
             if store_posterior_ltqs:
                 self.root.getAIRootInfo(None, None)
-            # TODO: Remove these
-            print_memory("After reading posterior LTQs")
-            verbose = True
-            # TODO: END Remove these
             start = time.time()
             ltqs = []
             ltqsVars = []
@@ -3398,7 +3390,6 @@ class Tree:
                         vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
                         if verbose and (vertIndCounter % 1000 == 0):
                             mp_print("Writing coords of vertex %d to file." % vertIndCounter)
-                            print_memory("Getting coords at vert {}".format(vertIndCounter))
                         if not store_posterior_ltqs:
                             ltqs.append(nodeIndToNode[nodeInd].ltqs)
                             ltqsVars.append(nodeIndToNode[nodeInd].getLtqsVars())
@@ -4334,10 +4325,10 @@ class Tree:
 
             if n_moves % n_free_mem == 0:
                 self.root.clear_AIRoot()
-                print_memory("Freed memory kept by old posterior-node-coordinate values.")
+                # print_memory("Freed memory kept by old posterior-node-coordinate values.")
                 if mem_friendly:
                     self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
-                    print_memory("Freed memory kept by double storage of variance and precision.")
+                    # print_memory("Freed memory kept by double storage of variance and precision.")
 
             # TODO: Eventually check if I want to remove this
             if do_postprocessing and found_new_parent and len(new_parent.childNodes) > 2:
@@ -4721,12 +4712,8 @@ class Tree:
                     n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
                 n_bf_small_cleanup += int(np.ceil(growth_bf_small_cleanup * tree_size))
                 n_bf_small_cleanup = min(n_bf_small_cleanup, n_to_add_total - 1)
-                if not only_cleanup:
-                    print_memory("Before postprocessing big cleanup")
                 self.do_spr_postprocessing(change_node_inds=False, verbose=False, only_cleanup=only_cleanup,
                                            only_time_opt=resolve_polytomies_immediately)
-                if not only_cleanup:
-                    print_memory("After postprocessing big cleanup")
                 if not only_cleanup:
                     mp_print("Round of re-optimizing times took {} seconds.".format(time.time() - start_postprocessing))
                     start_cluster_centers = time.time()
@@ -4749,9 +4736,6 @@ class Tree:
                                                  with_coords=False, verbose=True, cleanup_tree=False)
                         remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
                         tmp_tree_ind += 1
-
-                    if not only_cleanup:
-                        print_memory("After storing tree")
 
                 start_adding = time.time()
 

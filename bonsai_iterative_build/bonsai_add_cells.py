@@ -204,7 +204,6 @@ else:
 
 # Create random order of cells to be added
 np.random.shuffle(cell_inds_to_add)
-print_memory("Before reading ltqs_to_add")
 # ltqs_to_add = scdata_all_cells.originalData.ltqs[:, cell_inds_to_add]
 # ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, cell_inds_to_add]
 
@@ -228,8 +227,6 @@ del ltqsvars_to_add
 ltqs_to_add_cg = np.load(ltqs_file, allow_pickle=False, mmap_mode='r')
 ltqsvars_to_add_cg = np.load(ltqsvars_file, allow_pickle=False, mmap_mode='r')
 cell_ids_to_add = [scdata_all_cells.metadata.cellIds[ind] for ind in cell_inds_to_add]
-print_memory("After reading ltqs_to_add")
-# TODO: Store these two data-matrices in an .npy-file, such that we can do lazy reading. Then just give the filenames
 
 # Make sure that all ltqs are calculated at all nodes (automatically done when calculating a loglikelihood)
 scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=True,
