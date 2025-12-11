@@ -341,9 +341,9 @@ class SCData:
     #     return tree
 
     # Used
-    def storeTreeInFolder(self, treeFolder, with_coords=False, verbose=False, all_ranks=False, cleanup_tree=True,
+    def storeTreeInFolder(self, tree_folder, with_coords=False, verbose=False, all_ranks=False, cleanup_tree=True,
                           nwk=True, store_posterior_ltqs=False):
-        coords_folder = treeFolder if with_coords else None
+        coords_folder = tree_folder if with_coords else None
         mpiRank = mpi_wrapper.get_process_rank()
         if cleanup_tree:
             self.tree.root.mergeZeroTimeChilds()
@@ -351,23 +351,16 @@ class SCData:
             # self.tree.root.renumberNodes(change_node_inds=False)
             self.tree.nNodes = bs_glob.nNodes
         if (mpiRank == 0) or all_ranks:
-            Path(treeFolder).mkdir(parents=True, exist_ok=True)
-            edgeList, distList, vertInfo = self.tree.getEdgeVertInfo_very_memfriendly(coords_folder=coords_folder, verbose=False,
-                                                                     store_posterior_ltqs=store_posterior_ltqs,
-                                                                     geneDiffusionScaling=self.metadata.geneDiffusionScaling,
-                                                                     variances=self.metadata.geneVariances)
+            Path(tree_folder).mkdir(parents=True, exist_ok=True)
+            self.tree.store_tree_info_and_coords(tree_folder, coords_folder=coords_folder,
+                                                 verbose=False,
+                                                 store_posterior_ltqs=store_posterior_ltqs,
+                                                 geneDiffusionScaling=self.metadata.geneDiffusionScaling,
+                                                 variances=self.metadata.geneVariances)
 
-            with open(os.path.join(treeFolder, 'edgeInfo.txt'), "w") as file:
-                for ind, edge in enumerate(edgeList):
-                    file.write('%d\t%d\t%.8e\n' % (edge[0], edge[1], distList[ind]))
-            with open(os.path.join(treeFolder, 'vertInfo.txt'), "w") as file:
-                file.write("vertInd\tnodeInd\tvertName\n")
-                for vert in vertInfo:
-                    file.write('%d\t%d\t%s\n' % (vert, vertInfo[vert][0], vertInfo[vert][1]))
-
-            self.metadata.to_json(os.path.join(treeFolder, 'metadata.json'))
+            self.metadata.to_json(os.path.join(tree_folder, 'metadata.json'))
             if nwk:
-                self.tree.to_newick(use_ids=True, results_path=os.path.join(treeFolder, 'tree.nwk'))
+                self.tree.to_newick(use_ids=True, results_path=os.path.join(tree_folder, 'tree.nwk'))
 
     def communicate_tree_topology(self):
         if mpi_wrapper.get_process_rank() == 0:
@@ -2244,7 +2237,8 @@ def getMetadata(args, scData, outputFolder_raw, computationTime):
 def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_genes=False, all_ranks=True,
                                  get_cell_info=False, corrected_data=True, rel_to_results=False, no_data_needed=False,
                                  single_process=False, keep_original_data=False, calc_loglik=False, get_data=True,
-                                 get_posterior_ltqs=False, otherRanksMinimalInfo=False, verbose=True):
+                                 get_posterior_ltqs=False, otherRanksMinimalInfo=False, verbose=True,
+                                 calc_posteriors=True):
     if type(args) is dict:
         args = convert_dict_to_named_tuple(args)
     mpi_info = mpi_wrapper.get_mpi_info(singleProcess=single_process)
@@ -2285,7 +2279,7 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
     #     mp_print("Calculating ltqs of internal nodes", ALL_RANKS=True)
     #     scData.tree.root.getLtqsComplete(mem_friendly=True)
 
-    if data_found and get_posterior_ltqs and get_all_data and (scData.tree.root.ltqsAIRoot is None):
+    if data_found and get_posterior_ltqs and get_all_data and (scData.tree.root.ltqsAIRoot is None) and calc_posteriors:
         if scData.tree.root.ltqs is None:
             scData.tree.root.getLtqsComplete(mem_friendly=True)
         scData.tree.root.getAIRootInfo(None, None)

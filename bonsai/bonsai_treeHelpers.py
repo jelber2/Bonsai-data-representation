@@ -2989,6 +2989,14 @@ class TreeNode:
         ltqs_vg[self.vert_ind] = node_ltqs_post
         ltqs_vars_vg[self.vert_ind] = node_ltqsVars_post
 
+    def clear_memory(self, verbose=True, mem_friendly=False):
+        print_memory("Starting to clear memory.")
+        mem_friendly = mem_friendly or bs_glob.mem_friendly
+        self.clear_AIRoot()
+        if mem_friendly:
+            self.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
+        print_memory("Finished clearing memory.")
+
 
 class Tree:
     root = None
@@ -3095,8 +3103,8 @@ class Tree:
                                                                                                         nodeIndToNode)
         return edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
 
-    def getEdgeVertInfo_very_memfriendly(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
-                                         geneDiffusionScaling=None, variances=None):
+    def store_tree_info_and_coords(self, tree_folder, coords_folder=None, verbose=False, store_posterior_ltqs=False,
+                                   geneDiffusionScaling=None, variances=None):
         """
         Should store coordinates of all nodes, and return lists that capture the tree structure.
 
@@ -3120,8 +3128,6 @@ class Tree:
 
         if self.root.nodeId is None:
             self.root.nodeId = 'root'
-        int_counter = 0
-        vert_counter = 0
 
         # First make sure each node has a vert_ind that is depth-first increasing
         _, vert_count = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
@@ -3132,8 +3138,17 @@ class Tree:
             self.nNodes = vert_count
             bs_glob.nNodes = vert_count
 
+        int_counter = 0
         # Then do depth-search run to get edge_list, dist_list
         edge_lst, dist_lst, vert_info, int_counter = self.root.get_tree_info(edge_lst, dist_lst, vert_info, int_counter)
+
+        with open(os.path.join(tree_folder, 'edgeInfo.txt'), "w") as file:
+            for ind, edge in enumerate(edge_lst):
+                file.write('%d\t%d\t%.8e\n' % (edge[0], edge[1], dist_lst[ind]))
+        with open(os.path.join(tree_folder, 'vertInfo.txt'), "w") as file:
+            file.write("vertInd\tnodeInd\tvertName\n")
+            for vert in vert_info:
+                file.write('%d\t%d\t%s\n' % (vert, vert_info[vert][0], vert_info[vert][1]))
 
         # Finally, we do another depth-first search to store the coordinates at the rows given by the vert_inds
         if coords_folder is not None:
@@ -4317,8 +4332,7 @@ class Tree:
             new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
             as_if_root_version += 1
 
-            # TODO: Eventually only do this in cleaning-up rounds
-            if (n_moves % n_free_mem == 0):
+            if n_moves % n_free_mem == 0:
                 self.root.clear_AIRoot()
                 print_memory("Freed memory kept by old posterior-node-coordinate values.")
                 if mem_friendly:
