@@ -1480,7 +1480,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
                                                                                    select_cand=select_cand,
                                                                                    select_target=select_target,
                                                                                    min_branch_length=min_branch_length,
-                                                                                   freq_cutoff=.01, mem_friendly=True,
+                                                                                   freq_cutoff=.05, mem_friendly=True,
                                                                                    skip_prepare_tree=True)
 
             # Prepare the tree already for the next phase, do this only on Process 0
