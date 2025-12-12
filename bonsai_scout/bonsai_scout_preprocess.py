@@ -25,7 +25,8 @@ sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
 from bonsai.bonsai_helpers import str2bool, Run_Configs, find_latest_tree_folder
-from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str, get_min_pdists_clustering_from_nwk_str_new, get_cluster_assignments_new
+from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str, \
+    get_cluster_assignments
 
 parser = ArgumentParser(
     description='Starts from a reconstructed tree output by Bonsai and creates a data-object necessary for further '
@@ -457,7 +458,7 @@ for ind, node_id in enumerate(node_ids):
     if vert_n_cells[ind] > 0:
         node_ids_with_cells.append(node_id)
 # node_id_to_n_cells = {node_id: vert_n_cells[ind] for ind, node_id in enumerate(node_ids)}
-all_clusterings, cut_edges = get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str=nwk_str, n_clusters=100,
+all_clusterings, cut_edges = get_min_pdists_clustering_from_nwk_str(tree_nwk_str=nwk_str, n_clusters=100,
                                                                         cell_ids=node_ids_with_cells,
                                                                         node_id_to_n_cells=node_id_to_n_cells,
                                                                         footfall=False)
@@ -465,7 +466,7 @@ all_clusterings, cut_edges = get_min_pdists_clustering_from_nwk_str_new(tree_nwk
 # We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
 node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
                             vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}
-cl_df = get_cluster_assignments_new(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
+cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
 cl_df = cl_df.loc[metadata_dict['csIds']]
 
 cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='table',

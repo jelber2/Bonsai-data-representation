@@ -16,30 +16,30 @@ import time
 # os.chdir(parent_dir)
 # sys.path.append(os.path.join(parent_dir, 'tree_layout'))
 
-def get_cluster_assignments(clusters_list, assign_singlets_together=False):
-    cluster_idx = 0
-    cluster_assigment = []
-    cell_names = []
-    for cluster in clusters_list:
-        # if singleton, assign -1
-        if assign_singlets_together and (len(cluster) == 1):
-            cluster_assigment.append("cl_{}".format(-1))
-            cell_names.append(cluster[0])
-            # fout.write("{}\t{}\n".format(cluster[0], -1))
-        else:
-            for leaf in cluster:
-                # fout.write("{}\t{}\n".format(leaf, cluster_idx))
-                cluster_assigment.append("cl_{}".format(cluster_idx))
-                cell_names.append(leaf)
-            cluster_idx += 1
+# def get_cluster_assignments(clusters_list, assign_singlets_together=False):
+#     cluster_idx = 0
+#     cluster_assigment = []
+#     cell_names = []
+#     for cluster in clusters_list:
+#         # if singleton, assign -1
+#         if assign_singlets_together and (len(cluster) == 1):
+#             cluster_assigment.append("cl_{}".format(-1))
+#             cell_names.append(cluster[0])
+#             # fout.write("{}\t{}\n".format(cluster[0], -1))
+#         else:
+#             for leaf in cluster:
+#                 # fout.write("{}\t{}\n".format(leaf, cluster_idx))
+#                 cluster_assigment.append("cl_{}".format(cluster_idx))
+#                 cell_names.append(leaf)
+#             cluster_idx += 1
+#
+#     # make dict:
+#
+#     cl_dict = dict(zip(cell_names, cluster_assigment))
+#     return cl_dict
 
-    # make dict:
 
-    cl_dict = dict(zip(cell_names, cluster_assigment))
-    return cl_dict
-
-
-def get_cluster_assignments_new(all_clusterings, node_ids_multiple_cs_ids={}):
+def get_cluster_assignments(all_clusterings, node_ids_multiple_cs_ids={}):
     cluster_assignments = {}
     # Create dictionary with dictionaries for each cs-ID, containing for each clustering in which cluster it falls
     for label, clusters in all_clusterings.items():
@@ -56,7 +56,8 @@ def get_cluster_assignments_new(all_clusterings, node_ids_multiple_cs_ids={}):
     return df
 
 
-def get_footfall_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False):
+def get_footfall_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, cell_ids=None,
+                                                    get_cell_ids_all_splits=False):
     print("\nInit footfall clustering-tree")
     cluster_tree = Cluster_Tree()
     cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
@@ -69,7 +70,7 @@ def get_footfall_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None
     return clusters, footfall_edges
 
 
-def get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
+def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
                                              node_id_to_n_cells=None, verbose=True, footfall=False):
     if verbose:
         mp_print("\nInit min-dist clustering-tree")
@@ -78,13 +79,14 @@ def get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str, n_clusters, cell_id
     if node_id_to_n_cells is not None:
         cluster_tree.root.add_info_to_nodes(node_id_to_info=node_id_to_n_cells, info_key='n_cells')
 
-    all_clusterings, footfall_edges = get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=cell_ids,
+    all_clusterings, footfall_edges = get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=cell_ids,
                                                            verbose=verbose, footfall=footfall)
     return all_clusterings, footfall_edges
 
 
-def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
-                                           node_id_to_n_cells=None, verbose=True):
+def get_min_pdists_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, cell_ids=None,
+                                                      get_cell_ids_all_splits=False,
+                                                      node_id_to_n_cells=None, verbose=True):
     if verbose:
         print("\nInit min-dist clustering-tree")
     cluster_tree = Cluster_Tree()
@@ -92,11 +94,11 @@ def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=No
     if node_id_to_n_cells is not None:
         cluster_tree.root.add_info_to_nodes(node_id_to_info=node_id_to_n_cells, info_key='n_cells')
     if get_cell_ids_all_splits:
-        clusters, footfall_edges, ids_splits = get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=cell_ids,
+        clusters, footfall_edges, ids_splits = get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=cell_ids,
                                                                          get_cell_ids_all_splits=get_cell_ids_all_splits)
         return clusters, footfall_edges, ids_splits
     else:
-        clusters, footfall_edges = get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=cell_ids,
+        clusters, footfall_edges = get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=cell_ids,
                                                              verbose=verbose)
     return clusters, footfall_edges
 
@@ -198,7 +200,7 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
     return clusters, footfall_edges
 
 
-def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True):
+def get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True):
     if cell_ids is not None:
         cell_id_set = set(cell_ids)
     if get_cell_ids_all_splits:
@@ -291,7 +293,7 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
     return clusters, footfall_edges
 
 
-def get_min_pdists_clustering_new(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True,
+def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True,
                                   footfall=False):
     # if get_cell_ids_all_splits:
     #     cell_ids_splits = {}
