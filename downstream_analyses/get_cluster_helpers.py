@@ -316,6 +316,16 @@ class Cluster_Tree:
         self.root.store_us_dists(total_leafs=self.n_leafs)
         return self.n_leafs
 
+    def get_ent_changes(self):
+        if self.vert_ind_to_node is None:
+            self.vert_ind_to_node, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0)
+
+        clade_ent_root = self.root.clade_ent_contrib_ds
+        annot_ent_root = self.root.annot_ent_contrib_ds
+        for vert_ind, node in self.vert_ind_to_node.items():
+            node.clade_ent_change = clade_ent_root - node.clade_ent_contrib_ds - node.clade_ent_contrib_us
+            node.annot_ent_change = annot_ent_root - node.annot_ent_contrib_ds - node.annot_ent_contrib_us
+
 
 class Cluster_TreeNode:
     # TODO remove all the stuff that is not used...
@@ -326,7 +336,21 @@ class Cluster_TreeNode:
     parentNode = None
     isLeaf = None
     isRoot = None
-    ds_leafs = None # Used, but I think I do not need this information
+    ds_leafs = None
+
+    # Variables necessary for the annotation-based clustering
+    own_annot_counts = None
+    ds_annot_counts = None
+    own_n_annots = None
+    ds_n_annots = None
+    clade_ent_contrib_ds = None
+    annot_ent_contrib_ds = None
+    clade_ent_contrib_us = None
+    annot_ent_contrib_us = None
+    clade_ent_change = None
+    annot_ent_change = None
+
+    # Variables necessary for the min-dist clustering
     ds_leafs_weighted = None # not used so far
     dsNodes = None # not used
     usNodes = None # not used
@@ -410,7 +434,10 @@ class Cluster_TreeNode:
         return vertIndToNode, vert_count
 
     def add_info_to_nodes(self, node_id_to_info, info_key):
-        setattr(self, info_key, node_id_to_info[self.nodeId])
+        if self.nodeId in node_id_to_info:
+            setattr(self, info_key, node_id_to_info[self.nodeId])
+        else:
+            setattr(self, info_key, None)
         for child in self.childNodes:
             child.add_info_to_nodes(node_id_to_info, info_key)
 
@@ -684,9 +711,69 @@ class Cluster_TreeNode:
             child.us_dists = total_dists_excl - child.tParent * (child.ds_leafs - (total_leafs - child.ds_leafs))
             child.store_us_dists(total_leafs)
 
+    def get_ds_annot_info(self):
+        self.ds_annot_counts = self.own_annot_counts.copy()
+        self.ds_n_annots = self.own_n_annots
+
+        for child in self.childNodes:
+            child.get_ds_annot_info()
+            self.ds_annot_counts += child.ds_annot_counts
+            self.ds_n_annots += child.ds_n_annots
+
+    def subtract_ds_info_us(self, ds_node):
+        self.ds_annot_counts -= ds_node.ds_annot_counts
+        self.ds_n_annots -= ds_node.ds_n_annots
+        if self.parentNode is not None:
+            self.parentNode.subtract_ds_info_us(ds_node)
+
+    def get_ent_contribs(self, total_n, total_annot_counts, num_annots=None):
+        if num_annots is None:
+            num_annots = len(total_annot_counts)
+        # Store the contribution to the clade- and annotation-entropy given by the subtree downstream
+        # This has the form n_c log n_c (for the clade ent.), where n_c is the total number of labeled cells downstream
+        # or sum_r n_r log n_r (for the annot ent.) where n_r is the number of labeled cells of annotation r
+        self.clade_ent_contrib_ds = - entropy_non_norm(self.ds_n_annots, num_annots=1)
+        self.clade_ent_contrib_us = - entropy_non_norm(total_n - self.ds_n_annots, num_annots=1)
+        self.annot_ent_contrib_ds = - entropy_non_norm(self.ds_annot_counts, num_annots=num_annots)
+        self.annot_ent_contrib_us = - entropy_non_norm(total_annot_counts - self.ds_annot_counts, num_annots=num_annots)
+
+        for child in self.childNodes:
+            child.get_ent_contribs(total_n=total_n, total_annot_counts=total_annot_counts, num_annots=num_annots)
+
     def __repr__(self):
         return "vert_ind: {}\nnodeId: {}\ncluster idx: {}\nedge length: {}\nlen_to_most_distant_leaf: {}\nis_deleted: {}".format(self.vert_ind, self.nodeId, self.cluster_idx, self.tParent, self.len_to_most_distant_leaf, self.is_deleted)
 
+
+def entropy_non_norm(n, num_annots=None):
+    """
+    Compute the Shannon entropy: - ∑_r n_r log(n_r) for a vector.
+    *NOTE THAT THIS FUNCTION DOES NOT NORMALIZE THE VALUES TO SUM TO 1*
+    :param n: int/float or numpy.ndarray of int/float
+        A single non-negative integer or an array of non-negative integers
+        representing counts n_r.
+    :param num_annots: int
+        Should indicate the array-length of n
+    """
+    if num_annots is None:
+        num_annots = len(n)
+    if num_annots == 1:
+        return - n * np.log(n) if n > 0 else 0.0
+
+    tmp = np.zeros(num_annots)
+    np.log(n, out=tmp, where=n > 0)
+    return - np.sum(n * tmp)
+
+
+def entropy(n, num_annots=None):
+    """
+    Calculates the Shannon entropy for a vector n. *Does NOT normalize when n doesn't sum up to 1*.
+
+    :param n: float or numpy.ndarray of float
+        A single non-negative integer or an array of non-negative integers
+        representing counts n_r.
+    :param num_annots: int
+        Should indicate the array-length of n
+    """
 
 def getEdgeDistVertNamesFromNode(node, edge_list, dist_list, orig_vert_names, intCounter, nodeIndToNode):
     nodeIndToNode[node.vert_ind] = node

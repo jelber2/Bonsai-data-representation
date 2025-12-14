@@ -3,11 +3,12 @@ import os
 import numpy as np
 import pandas as pd
 import sys
-from downstream_analyses.get_cluster_helpers import Cluster_Tree
+from downstream_analyses.get_cluster_helpers import Cluster_Tree, entropy_non_norm
 from bonsai.bonsai_helpers import mp_print
 from itertools import combinations
 import csv
 import time
+from scipy.stats import entropy
 
 
 # parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -70,8 +71,34 @@ def get_footfall_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, ce
     return clusters, footfall_edges
 
 
+def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, cell_id_to_node_id=None,
+                                                 verbose=True, cell_ids=None):
+    """
+
+    :param tree_nwk_str: String read from a .nwk-file
+    :param annotation_dict: Dictionary having key-value pairs with cell-ID to annotation
+    :param cell_id_to_node_id: (Optional) Annotation is given for each cell, but multiple cells may have been mapped to
+    the same node. This optional dictionary allows the user to give the mapping. If left to None, we assume that
+    annotated IDs coincide with node-IDs.
+    :param cell_ids: Can contain a list of all node-IDs that should be clustered (typically the cells). If this is None,
+    then we assume that we should cluster the leaves of the given newick string
+    :param verbose:
+    :return:
+    """
+    if verbose:
+        mp_print("\nInit min-dist clustering-tree")
+    cluster_tree = Cluster_Tree()
+    cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
+
+    all_clusterings, cut_edges = get_annotation_based_clustering(cluster_tree,
+                                                                 cell_id_to_node_id=cell_id_to_node_id,
+                                                                 annotation_dict=annotation_dict,
+                                                                 verbose=verbose, cell_ids=cell_ids)
+    return all_clusterings, cut_edges
+
+
 def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
-                                             node_id_to_n_cells=None, verbose=True, footfall=False):
+                                           node_id_to_n_cells=None, verbose=True, footfall=False):
     if verbose:
         mp_print("\nInit min-dist clustering-tree")
     cluster_tree = Cluster_Tree()
@@ -80,7 +107,7 @@ def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=No
         cluster_tree.root.add_info_to_nodes(node_id_to_info=node_id_to_n_cells, info_key='n_cells')
 
     all_clusterings, footfall_edges = get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=cell_ids,
-                                                           verbose=verbose, footfall=footfall)
+                                                                verbose=verbose, footfall=footfall)
     return all_clusterings, footfall_edges
 
 
@@ -94,12 +121,13 @@ def get_min_pdists_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, 
     if node_id_to_n_cells is not None:
         cluster_tree.root.add_info_to_nodes(node_id_to_info=node_id_to_n_cells, info_key='n_cells')
     if get_cell_ids_all_splits:
-        clusters, footfall_edges, ids_splits = get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=cell_ids,
-                                                                         get_cell_ids_all_splits=get_cell_ids_all_splits)
+        clusters, footfall_edges, ids_splits = get_min_pdists_clustering_deprecated(cluster_tree, n_clusters,
+                                                                                    cell_ids=cell_ids,
+                                                                                    get_cell_ids_all_splits=get_cell_ids_all_splits)
         return clusters, footfall_edges, ids_splits
     else:
         clusters, footfall_edges = get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=cell_ids,
-                                                             verbose=verbose)
+                                                                        verbose=verbose)
     return clusters, footfall_edges
 
 
@@ -194,13 +222,14 @@ def get_footfall_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_id
                     leaf_ids_tree.append(node.nodeId)
         clusters.append(leaf_ids_tree)
     # Should produce a list of lists with the node-IDs of the various clusterings
-    print("clustering done")
+    print("Clustering done")
     if get_cell_ids_all_splits:
         return clusters, footfall_edges, cell_ids_splits
     return clusters, footfall_edges
 
 
-def get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True):
+def get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
+                                         verbose=True):
     if cell_ids is not None:
         cell_id_set = set(cell_ids)
     if get_cell_ids_all_splits:
@@ -286,15 +315,252 @@ def get_min_pdists_clustering_deprecated(cluster_tree, n_clusters, cell_ids=None
                     leaf_ids_tree.append(node.nodeId)
         clusters.append(leaf_ids_tree)
     if verbose:
-        print("clustering done")
+        print("Clustering done")
 
     if get_cell_ids_all_splits:
         return clusters, footfall_edges, cell_ids_splits
     return clusters, footfall_edges
 
 
+def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_node_id=None, verbose=True,
+                                    cell_ids=None):
+    """
+    Greedily cuts tree into clades such that mutual information with some annotation is maximized.
+    *NOTE:* We allow for partial annotation, such that some cells have an annotation, while others do not. The use case
+    for this is that people may have partial annotation-information, and want to use the tree to annotate the rest. In
+    that case, these un-annotated cells will not be counted in the mutual annotation score, but they will still be
+    clustered in the final clustering.
+    :param cluster_tree: Cluster_tree object
+    :param n_clusters: Number of desired clusters, all clusterings below this number will be returned
+    :param annotation_dict: Dictionary having key-value pairs with cell-ID to annotation.
+    :param cell_id_to_node_id: (Optional) Annotation is given for each cell, but multiple cells may have been mapped to
+    the same node. This optional dictionary allows the user to give the mapping. If left to None, we assume that
+    annotated IDs coincide with node-IDs.
+    :param verbose:
+    :return:
+    """
+    if cell_ids is not None:
+        cell_ids_set = set(cell_ids)
+
+    if cluster_tree.vert_ind_to_node is None:
+        cluster_tree.vert_ind_to_node, cluster_tree.nNodes = cluster_tree.root.renumber_verts(vertIndToNode={},
+                                                                                              vert_count=0)
+    # First, put the annotation-labels on the tree
+    cluster_tree.root.add_info_to_nodes(node_id_to_info=annotation_dict, info_key='annotation')
+    # Get some statistics on the annotation-labels
+    annot_labels = np.unique(list(annotation_dict.values()))
+    n_labels = len(annot_labels)
+    label_to_ind = {annot: ind for ind, annot in enumerate(annot_labels)}
+
+    # Store the downstream annotation-counts on each node
+    node_id_to_node = {}
+    for _, node in cluster_tree.vert_ind_to_node.items():
+        node_id_to_node[node.nodeId] = node
+        node.own_annot_counts = np.zeros(n_labels, dtype=int)
+        node.own_n_annots = 0
+
+    label_counts = np.zeros(n_labels, dtype=int)
+    for cell_id, annot in annotation_dict.items():
+        if cell_id_to_node_id is not None:
+            node_id = cell_id_to_node_id[node_id]
+        else:
+            node_id = cell_id
+        if node_id not in node_id_to_node:
+            mp_print("WARNING: Node_id {} is not present in the tree. "
+                     "Cannot take its annotation into account in clustering.".format(node_id), WARNING=True)
+            continue
+        else:
+            node = node_id_to_node[node_id]
+
+        node.own_annot_counts[label_to_ind[annot]] += 1
+        node.own_n_annots += 1
+        label_counts[label_to_ind[annot]] += 1
+
+    n_cells = np.sum(label_counts)
+    # Here, we can already calculate the entropy in the annotation. This is independent of the clustering
+    annot_entropy = entropy_non_norm(label_counts / n_cells)
+    # Initial clade entropy is 0, everyone is in the same cluster
+    clade_entropy = 0
+    # Initial joint entropy is the same as the annot_entropy, since all cells are in same cluster
+    joint_entropy = annot_entropy
+
+    # Multiply these three entropies by total number of annotations. This makes calculations easier later
+    annot_entropy *= n_cells
+    clade_entropy *= n_cells
+    joint_entropy *= n_cells
+
+    # Initialize the necessary information on the nodes of the full tree
+    cluster_tree.root.get_ds_annot_info()
+    # Store on each node their contribution to the clade and annot-entropy
+    cluster_tree.root.get_ent_contribs(total_n=cluster_tree.root.ds_n_annots,
+                                       total_annot_counts=cluster_tree.root.ds_annot_counts,
+                                       num_annots=n_labels)
+    # Store on each node how clade- and joint-entropy would change when edge to this node was cut
+    cluster_tree.get_ent_changes()
+
+    all_clusterings = {}
+    tree_ensmbl = [cluster_tree]
+
+    # TODO: Maybe remove
+    # Per tree that we create (i.e., cluster) we keep track of the total number of cells for each label
+    # total_annot_counts = [label_counts]
+
+    # TODO: Check if, for each tree, we can keep track of the maximal mutual information increase,
+    #  and which node we'd have to cut off for that maximal score
+    # max_scores = [None]
+    # max_nodes = [None]
+    clusters = [None]
+    cut_edges = []
+
+    # Can't cut more branches between cells than there are annotated nodes
+    n_clusters = n_cells
+
+    print_i = 2
+    while len(tree_ensmbl) < n_clusters:
+        n_trees = len(tree_ensmbl)
+        if verbose and (n_trees == print_i):
+            print("Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
+            print_i *= 2
+        # Loop over all edges to find which increases mutual information most
+        orig_ent_diff = annot_entropy + clade_entropy - joint_entropy
+        orig_normalization = np.sqrt(annot_entropy * clade_entropy)
+        if orig_normalization == 0:
+            orig_mut_info = 0.
+        else:
+            orig_mut_info = orig_ent_diff / orig_normalization
+        max_tree_ind = None
+        max_node = None
+        max_new_mut_info = -1e9
+
+        for ind_tree, tree in enumerate(tree_ensmbl):
+            # if max_scores[ind_tree] is not None:
+            #     continue
+            # if tree.n_cell_nodes == 1:
+            #     max_scores[ind_tree] = 0.0
+            #     continue
+            # max_footfall_node = None
+            # max_footfall_score = -1e9
+            for vert_ind, node in tree.vert_ind_to_node.items():
+                if node.parentNode is not None:
+                    new_ent_diff = (orig_ent_diff + node.clade_ent_change - node.annot_ent_change)
+                    new_normalization = np.sqrt(annot_entropy * (clade_entropy + node.clade_ent_change))
+                    new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
+                    if new_mut_info > max_new_mut_info:
+                        max_node = node
+                        max_tree_ind = ind_tree
+                        max_new_mut_info = new_mut_info
+
+        # Determine which tree has the maximum score
+        if max_new_mut_info < orig_mut_info + 1e-9:
+            print("\nAfter making {} clusters, norm. mutual information only goes down. "
+                  "Stopping here.".format(n_trees))
+            break
+
+        # Cut the tree into two pieces at the edge that maximizes the norm. mut. info.
+        ds_node = max_node
+        us_node = max_node.parentNode
+        cut_edges.append((ds_node.nodeId, us_node.nodeId))
+
+        # Update current entropies
+        clade_entropy += max_node.clade_ent_change
+        joint_entropy += max_node.annot_ent_change
+
+        # Make one new tree:
+        max_tree = tree_ensmbl[max_tree_ind]
+        new_tree = Cluster_Tree()
+
+        # Remove ds node from original tree
+        us_node.childNodes = [child for child in us_node.childNodes if child.vert_ind != ds_node.vert_ind]
+
+        # Make ds-node the root of the new tree
+        new_tree.root = ds_node
+        ds_node.parentNode = None
+
+        # Update vert_ind_to_node
+        # TODO: Check at some point whether this can be done efficient by re-using information
+        max_tree.vert_ind_to_node, max_tree.nNodes = max_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
+        new_tree.vert_ind_to_node, new_tree.nNodes = new_tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
+        # Initialize the necessary information on the nodes of the full tree
+        # We don't have to do: new_tree.root.get_ds_annot_info(), because new_tree still has correct ds-info
+        # For cluster_tree, we just subtract the ds_info for everything upstream of new root
+        us_node.subtract_ds_info_us(ds_node)
+
+        # Store on each node their contribution to the clade and annot-entropy.
+        # Ideally, this is done only for us-ent-contribs for nodes downstream of change, and for ds-ent-contribs for
+        # nodes upstream of change. But it's a bit of work for little gain (only a factor 2, I think)
+        max_tree.root.get_ent_contribs(total_n=max_tree.root.ds_n_annots,
+                                       total_annot_counts=max_tree.root.ds_annot_counts, num_annots=n_labels)
+        new_tree.root.get_ent_contribs(total_n=new_tree.root.ds_n_annots,
+                                       total_annot_counts=new_tree.root.ds_annot_counts, num_annots=n_labels)
+
+        # Store on each node how clade- and joint-entropy would change when edge to this node was cut
+        max_tree.get_ent_changes()
+        new_tree.get_ent_changes()
+
+        # Add tree to ensemble, and make space for the new tree in the lists
+        tree_ensmbl.append(new_tree)
+        # max_scores[max_tree_ind] = None  # This will make sure the score is recalculated
+        # max_nodes[max_tree_ind] = None
+        clusters[max_tree_ind] = None
+        # max_scores.append(None)  # This will give a place for the new tree to store
+        # max_nodes.append(None)
+        clusters.append(None)
+
+        if verbose:
+            print("\nCreating two clusters with {} and {} labeled-cells. "
+                  "Norm. mut. info. now: {}".format(max_tree.root.ds_n_annots, new_tree.root.ds_n_annots,
+                                                    max_new_mut_info))
+            print("Cluster 1, annot_counts: {}".format(','.join(map(str, max_tree.root.ds_annot_counts))))
+            print("Cluster 2, annot_counts: {}".format(','.join(map(str, new_tree.root.ds_annot_counts))))
+
+        # TODO: Write independent norm. mut. info. check and eventually comment that out.
+        joint_entropy_test = 0.0
+        clade_sizes_test = []
+        joint_counts = []
+        annot_counts_test = np.zeros(n_labels)
+        for ind_tree, tree in enumerate(tree_ensmbl):
+            clade_sizes_test.append(tree.root.ds_n_annots)
+            joint_entropy_test += entropy_non_norm(tree.root.ds_annot_counts / n_cells)
+            joint_counts.append(tree.root.ds_annot_counts)
+            annot_counts_test += tree.root.ds_annot_counts
+
+        joint_counts = np.hstack(joint_counts)
+        joint_entropy_test2 = entropy_non_norm(joint_counts / n_cells)
+        clade_entropy_test = entropy_non_norm(np.array(clade_sizes_test) / n_cells)
+        annot_entropy_test = entropy_non_norm(annot_counts_test / n_cells)
+
+        norm_mut_inf_test = (clade_entropy_test + annot_entropy_test - joint_entropy_test) / np.sqrt(
+            clade_entropy_test * annot_entropy_test)
+        # print("label_counts is equal to annot_counts_test: {}".format(annot_counts_test == label_counts))
+        # print("n_cells is equal to sum(clade_sizes_test): {}".format(n_cells == np.sum(clade_sizes_test)))
+
+        print("Predicted mutual information is {}, and independent test gives {}".format(max_new_mut_info,
+                                                                                         norm_mut_inf_test))
+
+        # Should produce a list of lists with the node-IDs of the various clusters
+        for ind_tree, tree in enumerate(tree_ensmbl):
+            if clusters[ind_tree] is not None:
+                continue
+            leaf_ids_tree = []
+            for vert_ind, node in tree.vert_ind_to_node.items():
+                if cell_ids is None:
+                    if node.isLeaf:
+                        leaf_ids_tree.append(node.nodeId)
+                else:
+                    if node.nodeId in cell_ids_set:
+                        leaf_ids_tree.append(node.nodeId)
+            clusters[ind_tree] = leaf_ids_tree
+        # Store current clustering in dictionary of clusterings
+        clustering_name = 'annot_cluster_n{}'.format(len(tree_ensmbl))
+        all_clusterings[clustering_name] = clusters.copy()
+
+    if verbose:
+        print("Clustering done")
+    return all_clusterings, cut_edges
+
+
 def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True,
-                                  footfall=False):
+                              footfall=False):
     # if get_cell_ids_all_splits:
     #     cell_ids_splits = {}
     if cell_ids is not None:
@@ -401,7 +667,7 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
         all_clusterings[clustering_name] = clusters.copy()
 
     if verbose:
-        print("clustering done")
+        print("Clustering done")
     return all_clusterings, footfall_edges
 
 
@@ -495,7 +761,7 @@ def get_max_diam_clustering(cluster_tree, max_diam_threshold, cell_ids=None):
     # at the end get the rest of the cluster
     cluster = cluster_tree.cut(subtree_root=node, cell_ids=cell_ids)
     clusters.append(cluster)
-    print("clustering done")
+    print("Clustering done")
     return clusters
 
 
@@ -529,8 +795,8 @@ if __name__ == "__main__":
     nwk_file = '/Users/Daan/Documents/postdoc/bonsai-development/results/simulated_datasets/simulated_binary_6_gens_samplingnoise_seed_1231/final_bonsai_zscore1.0/tree.nwk'
     with open(nwk_file, "r") as f:
         nwk_str = f.readline()
-    clusters_list, cut_edges = get_footfall_clustering_from_nwk_str(tree_nwk_str=nwk_str,
-                                                                    n_clusters=8)
+    clusters_list, cut_edges_main = get_footfall_clustering_from_nwk_str(tree_nwk_str=nwk_str,
+                                                                         n_clusters=8)
     clusters_list_min_pd, cut_edges_min_pd = get_min_pdists_clustering_from_nwk_str(tree_nwk_str=nwk_str,
                                                                                     n_clusters=8)
 
