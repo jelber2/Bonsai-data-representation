@@ -362,7 +362,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
     label_counts = np.zeros(n_labels, dtype=int)
     for cell_id, annot in annotation_dict.items():
         if cell_id_to_node_id is not None:
-            node_id = cell_id_to_node_id[node_id]
+            node_id = cell_id_to_node_id[cell_id]
         else:
             node_id = cell_id
         if node_id not in node_id_to_node:

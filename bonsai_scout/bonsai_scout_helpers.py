@@ -28,7 +28,7 @@ from bonsai_scout.my_tree_layout import Layout_Tree
 from downstream_analyses.calc_marker_genes_helpers import calc_marker_genes_single, calc_marker_genes_double, \
     calc_marker_genes_error_bars, calc_marker_genes_error_bars_approx2
 from downstream_analyses.get_clusters_max_diameter import get_max_diam_clustering_from_nwk_str, \
-    get_footfall_clustering_from_nwk_str, get_cluster_assignments, get_min_pdists_clustering_from_nwk_str
+    get_footfall_clustering_from_nwk_str_deprecated, get_cluster_assignments, get_min_pdists_clustering_from_nwk_str
 
 gray = cm.get_cmap('gray')(0.75)
 blackish = (0.08578431372549018, 0.08578428015768168, 0.11935208866155156, 1.0)
@@ -68,6 +68,12 @@ class Celltype_info:
         n_cells = len(cell_info_dict[next(iter(cell_info_dict))])
         bottom_quantile = np.minimum(10 / n_cells, 0.01)
         top_quantile = 1 - bottom_quantile
+
+        # Replace the info_dicts by empty dictionaries if None
+        cluster_info_dict = cluster_info_dict or {}
+        cs_info_dict = cs_info_dict or {}
+        cell_info_dict = cell_info_dict or {}
+
         for info_key in list(cell_info_dict.keys()) + list(cs_info_dict.keys()) + list(cluster_info_dict.keys()):
             if info_key in cs_info_dict.keys():
                 annot_type = 'cellstates'

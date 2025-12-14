@@ -8,12 +8,13 @@ import pandas as pd
 from argparse import ArgumentTypeError
 
 import logging
+
 FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
 logging.basicConfig(format=FORMAT,
                     datefmt='%m-%d %H:%M:%S',
-                    level=logging.WARNING)   # silence all libraries
+                    level=logging.WARNING)  # silence all libraries
 
 # Create your app logger
 logger = logging.getLogger("myapp")
@@ -26,7 +27,7 @@ os.chdir(parent_dir)
 
 from bonsai.bonsai_helpers import str2bool, Run_Configs, find_latest_tree_folder
 from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str, \
-    get_cluster_assignments
+    get_cluster_assignments, get_annotation_based_clustering_from_nwk_str
 
 parser = ArgumentParser(
     description='Starts from a reconstructed tree output by Bonsai and creates a data-object necessary for further '
@@ -101,7 +102,7 @@ tree_folder = os.path.abspath(os.path.join(args.results_folder, rel_tree_folder)
 
 from bonsai.bonsai_dataprocessing import loadReconstructedTreeAndData
 from bonsai_scout.bonsai_scout_helpers import get_edge_coords, Bonvis_figure, Bonvis_settings, merge_cells_at_zero_dist, \
-    Bonvis_metadata
+    Bonvis_metadata, Celltype_info
 from bonsai_scout.my_tree_layout import my_tree_layout
 from bonsai_scout.change_gene_ids import change_json_file
 
@@ -459,9 +460,55 @@ for ind, node_id in enumerate(node_ids):
         node_ids_with_cells.append(node_id)
 # node_id_to_n_cells = {node_id: vert_n_cells[ind] for ind, node_id in enumerate(node_ids)}
 all_clusterings, cut_edges = get_min_pdists_clustering_from_nwk_str(tree_nwk_str=nwk_str, n_clusters=100,
-                                                                        cell_ids=node_ids_with_cells,
-                                                                        node_id_to_n_cells=node_id_to_n_cells,
-                                                                        footfall=False)
+                                                                    cell_ids=node_ids_with_cells,
+                                                                    node_id_to_n_cells=node_id_to_n_cells,
+                                                                    footfall=False)
+
+# TODO: REMOVE THIS! AND TEST THIS EXTENSIVELY
+#  Test if it works with nan
+#  Test if it works with cellstates
+#  Check whether we like it, if it's not cutting off too many small clades. Maybe deal with that by annotating these
+#  as NaNs
+#  Give nice names to clusters, maybe first couple of types with percentages
+# First get all possible categorical annotations
+cell_info_dict = cell_info_df.to_dict(orient='list')
+cs_info_dict = cs_info_df.to_dict(orient='list')
+celltype_info = Celltype_info(cell_info_dict=cell_info_dict,
+                              cs_info_dict=cs_info_dict)
+cell_id_to_node_id = {scData.metadata.cellIds[cell_ind]: node_ids[vert_ind] for cell_ind, vert_ind in
+                      scData.cellIndToVertInd.items()}
+cs_id_to_node_id = {scData.metadata.csIds[cell_ind]: node_ids[vert_ind] for cell_ind, vert_ind in
+                      scData.cellIndToVertInd.items()}
+for annot_id, annot_info in celltype_info.annot_infos.items():
+    if annot_info.color_type != 'categorical':
+        continue
+
+    # TODO: REMOVE THIS FOR SURE!
+    if annot_id != 'annot_Celltype4':
+        continue
+
+    if annot_info.info_object == 'cell_info_dict':
+        cell_to_celltype = cell_info_dict[annot_id]
+        to_be_clst_ids = scData.metadata.cellIds
+        id_to_node_id = cell_id_to_node_id
+    elif annot_info.info_object == 'cs_info_dict':
+        cell_to_celltype = cs_info_dict[annot_id]
+        to_be_clst_ids = scData.metadata.csIds
+        id_to_node_id = cs_id_to_node_id
+    annotation_dict = dict(zip(to_be_clst_ids, cell_to_celltype))
+    if 'NaN' in annot_info.cats:
+        annotation_dict = {key: val for key, val in annotation_dict.items() if val != 'NaN'}
+
+    all_clusterings, cut_edges = get_annotation_based_clustering_from_nwk_str(tree_nwk_str=nwk_str,
+                                                                              annotation_dict=annotation_dict,
+                                                                              cell_ids=node_ids_with_cells,
+                                                                              cell_id_to_node_id=id_to_node_id,
+                                                                              verbose=True)
+
+# TODO: Extend the following to include the new clusterings
+#  Check out what happens with 1 cluster
+#  Only save one clustering per annotation-type
+#  Add button in app to do annotation-guided clustering
 # all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
 # We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
 node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
@@ -470,7 +517,7 @@ cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multip
 cl_df = cl_df.loc[metadata_dict['csIds']]
 
 cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='table',
-                  data_columns=True)
+             data_columns=True)
 
 bonvis_data_hdf.close()
 # test = pd.read_hdf(scData.result_path('bonsai_vis_data.dat'), key='cell_info')
