@@ -438,7 +438,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
             orig_mut_info = 0.
         else:
             orig_mut_info = orig_ent_diff / orig_normalization
-        max_tree_ind = None
+        max_tree = None
         max_node = None
         max_new_mut_info = -1e9
 
@@ -457,7 +457,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
                     new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
                     if new_mut_info > max_new_mut_info:
                         max_node = node
-                        max_tree_ind = ind_tree
+                        max_tree = tree
                         max_new_mut_info = new_mut_info
 
         # Determine which tree has the maximum score
@@ -476,7 +476,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
         joint_entropy += max_node.annot_ent_change
 
         # Make one new tree:
-        max_tree = tree_ensmbl[max_tree_ind]
+        # max_tree = tree_ensmbl[max_tree_ind]
         new_tree = Cluster_Tree()
 
         # Remove ds node from original tree
@@ -511,7 +511,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
         tree_ensmbl.append(new_tree)
         # max_scores[max_tree_ind] = None  # This will make sure the score is recalculated
         # max_nodes[max_tree_ind] = None
-        clusters[max_tree_ind] = None
+        # clusters[max_tree_ind] = None
         # max_scores.append(None)  # This will give a place for the new tree to store
         # max_nodes.append(None)
         clusters.append(None)
@@ -557,6 +557,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
                 exit()
 
         # Should produce a list of lists with the node-IDs of the various clusters
+        clusters = [None] * len(tree_ensmbl)
         for ind_tree, tree in enumerate(tree_ensmbl):
             if clusters[ind_tree] is not None:
                 continue
@@ -579,7 +580,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
 
 
 def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_id_to_node_id=None, verbose=True,
-                                           node_ids_to_clst=None, random_sampling=False):
+                                           node_ids_to_clst=None, random_sampling=False, seed=1231):
     """
     Greedily cuts tree into clades such that mutual information with some annotation is maximized.
     *NOTE:* We allow for partial annotation, such that some cells have an annotation, while others do not. The use case
@@ -598,6 +599,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     :param verbose:
     :return:
     """
+    np.random.seed(seed)
     n_moves = -1
     if node_ids_to_clst is not None:
         node_ids_to_clst_set = set(node_ids_to_clst)
@@ -605,6 +607,21 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     if cluster_tree.vert_ind_to_node is None:
         cluster_tree.vert_ind_to_node, cluster_tree.nNodes = cluster_tree.root.renumber_verts(vertIndToNode={},
                                                                                               vert_count=0)
+
+    if random_sampling:
+        # We will do random-sampling at each step, such that an option that is a factor <optimality_decrease> below the
+        # best option is picked with <prob_decrease> lower probability than the maximal option
+        # We start with optimality_decrease = .1, and may lower it when we move on.
+        # I think we can keep prob_decrease fixed at .5
+        prob_decrease = .1
+        optimality_decrease = .5
+        # exp(-beta * (1 - optimality_decrease)) = prob_decrease
+        # beta = -log(prob_decrease) / (NMI_max * (1 - optimality_decrease))
+        # So, if we set:
+        sampling_beta = - np.log(prob_decrease) / (1 - optimality_decrease)
+        # Then the function for the (unnormalized) probability becomes
+        # prob(NMI) = exp(-beta * (1 - (NMI/NMI_max) * optimality_decrease))
+
     # First, put the annotation-labels on the tree
     # cluster_tree.root.add_info_to_nodes(node_id_to_info=annotation_dict, info_key='annotation')
     # Get some statistics on the annotation-labels
@@ -692,20 +709,32 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             orig_mut_info = 0.
         else:
             orig_mut_info = orig_ent_diff / orig_normalization
-        max_tree_ind = None
+        # max_tree_ind = None
         max_node = None
         max_new_mut_info = -1e9
+        if random_sampling:
+            node_list = []
+            new_mut_info_list = []
 
         for ind_tree, tree in enumerate(tree_ensmbl):
             for vert_ind, node in tree.vert_ind_to_node.items():
-                if node.parentNode is not None:
-                    new_ent_diff = (orig_ent_diff + node.clade_ent_change - node.annot_ent_change)
-                    new_normalization = np.sqrt(annot_entropy * (clade_entropy + node.clade_ent_change))
-                    new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
-                    if new_mut_info > max_new_mut_info:
-                        max_node = node
-                        max_tree_ind = ind_tree
-                        max_new_mut_info = new_mut_info
+                if (node.ds_n_annots == 0) or (tree.root.ds_n_annots == node.ds_n_annots):
+                    continue
+                if node.parentNode is None:
+                    print("I should never get here. What's wrong?")
+                    exit()
+                    continue
+                new_ent_diff = (orig_ent_diff + node.clade_ent_change - node.annot_ent_change)
+                new_normalization = np.sqrt(annot_entropy * (clade_entropy + node.clade_ent_change))
+                new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
+
+                if random_sampling:
+                    new_mut_info_list.append(new_mut_info)
+                    node_list.append(node)
+                if new_mut_info > max_new_mut_info:
+                    max_node = node
+                    max_tree = tree
+                    max_new_mut_info = new_mut_info
 
             # Also ask whether the sub-tree root wants to go back to its daddy
             if tree.root.old_parent_node is not None:
@@ -722,16 +751,31 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 new_ent_diff = (orig_ent_diff + tree.root.revert_clade_ent_change - tree.root.revert_annot_ent_change)
                 new_normalization = np.sqrt(annot_entropy * (clade_entropy + tree.root.revert_clade_ent_change))
                 new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
+
+                if random_sampling:
+                    new_mut_info_list.append(new_mut_info)
+                    node_list.append(node)
                 if new_mut_info > max_new_mut_info:
                     max_node = tree.root
-                    max_tree_ind = ind_tree
+                    max_tree = tree
                     max_new_mut_info = new_mut_info
 
         # Determine which tree has the maximum score
-        if max_new_mut_info < orig_mut_info + 1e-9:
+        if (not random_sampling) and (max_new_mut_info < orig_mut_info + 1e-9):
             mp_print("\nAfter making {} clusters, norm. mutual information only goes down. "
                      "Stopping here.".format(n_trees))
             break
+
+        if random_sampling:
+            max_new_mut_info = max(orig_mut_info, max_new_mut_info)
+            # Then the function for the (unnormalized) probability becomes
+            # prob(NMI) = exp(-beta * (1 - (NMI/NMI_max) * optimality_decrease))
+            sampling_probs = np.exp(
+                -sampling_beta * (1 - np.array(new_mut_info_list) / max_new_mut_info) * optimality_decrease)
+            sampled_ind = np.random.choice(len(sampling_probs), p=sampling_probs / sampling_probs.sum())
+            max_node = node_list[sampled_ind]
+            max_tree = max_node.belongs_to_tree
+            max_new_mut_info = new_mut_info_list[sampled_ind]
 
         # Cut the tree into two pieces at the edge that maximizes the norm. mut. info.
         ds_node = max_node
@@ -749,7 +793,8 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             joint_entropy += max_node.revert_annot_ent_change
 
             # Delete the tree
-            del tree_ensmbl[max_tree_ind]
+            tree_ensmbl = [tree_inst for tree_inst in tree_ensmbl if tree.root.nodeId != max_tree.root.nodeId]
+            # del tree_ensmbl[max_tree_ind]
 
             # Add node to original tree
             us_node.childNodes.append(ds_node)
@@ -782,7 +827,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                                                            max_new_mut_info),
                          DEBUG=True)
                 mp_print("Cluster 1, annot_counts: {}".format(','.join(map(str,
-                                                              new_tree.root.ds_annot_counts - ds_node.ds_annot_counts))),
+                                                                           new_tree.root.ds_annot_counts - ds_node.ds_annot_counts))),
                          DEBUG=True)
                 mp_print("Cluster 2, annot_counts: {}".format(','.join(map(str, ds_node.ds_annot_counts))),
                          DEBUG=True)
@@ -795,7 +840,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             joint_entropy += max_node.annot_ent_change
 
             # Make one new tree:
-            max_tree = tree_ensmbl[max_tree_ind]
+            # max_tree = tree_ensmbl[max_tree_ind]
             new_tree = Cluster_Tree()
 
             # Remove ds node from original tree
@@ -826,7 +871,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # Store on each node how clade- and joint-entropy would change when edge to this node was cut
             max_tree.get_ent_changes()
             new_tree.get_ent_changes()
-            
+
             new_tree.root.add_info_to_nodes(info_key='belongs_to_tree', const_val=new_tree)
 
             # Add tree to ensemble, and make space for the new tree in the lists
