@@ -1031,6 +1031,10 @@ class SCData:
                             except:
                                 print("Could not convert nans in column {}.".format(col))
                             annotation_df[col] = pd.Categorical(annotation_df[col])
+
+                            if col.startswith("num_"):
+                                col = col.replace("num_", "usernum_")
+
                             new_colnames.append(
                                 'annot_{}'.format(col.replace(' ', '_').replace('-', '_').replace('.', '_')))
                     annotation_df.columns = new_colnames
