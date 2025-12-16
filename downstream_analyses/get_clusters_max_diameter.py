@@ -426,6 +426,7 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
     n_clusters = n_cells
 
     print_i = 2
+    manual_cuts_ids = ['internal_1709']
     while len(tree_ensmbl) < n_clusters:
         n_trees = len(tree_ensmbl)
         if verbose and (n_trees == print_i):
@@ -462,9 +463,25 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
 
         # Determine which tree has the maximum score
         if max_new_mut_info < orig_mut_info + 1e-9:
-            mp_print("\nAfter making {} clusters, norm. mutual information only goes down. "
-                     "Stopping here.".format(n_trees))
-            break
+            if len(manual_cuts_ids):
+                mp_print("\nAfter making {} clusters, norm. mutual information only goes down. "
+                         "Now performing manual cuts at {}.".format(n_trees, manual_cuts_ids))
+                manual_cut_id = manual_cuts_ids.pop(0)
+                max_node = None
+                max_tree_ind = None
+                for ind_tree, tree in enumerate(tree_ensmbl):
+                    nodeOI = [node for vert_ind, node in tree.vert_ind_to_node.items() if node.nodeId == manual_cut_id]
+                    if len(nodeOI) > 0:
+                        max_node = nodeOI[0]
+                        max_tree_ind = ind_tree
+                        new_ent_diff = (orig_ent_diff + max_node.clade_ent_change - max_node.annot_ent_change)
+                        new_normalization = np.sqrt(annot_entropy * (clade_entropy + max_node.clade_ent_change))
+                        max_new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
+                        break
+            else:
+                mp_print("\nAfter making {} clusters, norm. mutual information only goes down. "
+                      "Stopping here.".format(n_trees))
+                break
 
         # Cut the tree into two pieces at the edge that maximizes the norm. mut. info.
         ds_node = max_node

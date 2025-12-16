@@ -484,7 +484,7 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
         continue
 
     # TODO: REMOVE THIS FOR SURE!
-    if annot_id != 'annot_rna_annotations':
+    if annot_id != 'annot_cell_type_v2':
         continue
 
     if annot_info.info_object == 'cell_info_dict':
@@ -517,7 +517,7 @@ cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multip
 cl_df = cl_df.loc[metadata_dict['csIds']]
 
 # Process annot-based clustering results
-cl_df = process_annot_based_clsts(cl_df, cell2annot=annotation_dict, cutoff=.01 * len(to_be_clst_ids))
+cl_df = process_annot_based_clsts(cl_df, cell2annot=annotation_dict, cutoff=7)
 
 cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='table',
              data_columns=True)
