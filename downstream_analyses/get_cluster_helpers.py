@@ -437,18 +437,18 @@ class Cluster_TreeNode:
         return vertIndToNode, vert_count
 
     def add_info_to_nodes(self, node_id_to_info=None, info_key=None, const_val=None):
-        if node_id_to_info is None:
+        if node_id_to_info is not None:
             if self.nodeId in node_id_to_info:
                 setattr(self, info_key, node_id_to_info[self.nodeId])
             else:
                 setattr(self, info_key, None)
-        elif const_val:
+        elif const_val is not None:
             setattr(self, info_key, const_val)
         else:
             print("WARNING: Don't know what information to add in 'add_info_to_nodes()'")
             return
         for child in self.childNodes:
-            child.add_info_to_nodes(node_id_to_info=node_id_to_info, info_key=info_key)
+            child.add_info_to_nodes(node_id_to_info=node_id_to_info, info_key=info_key, const_val=const_val)
 
     def getDsLeafs_DForder(self):
         """
@@ -737,7 +737,7 @@ class Cluster_TreeNode:
             self.ds_annot_counts += ds_node.ds_annot_counts
             self.ds_n_annots += ds_node.ds_n_annots
         if self.parentNode is not None:
-            self.parentNode.subtract_ds_info_us(ds_node, add=add)
+            self.parentNode.subtract_or_add_ds_info_us(ds_node, add=add)
 
     def get_ent_contribs(self, total_n, total_annot_counts, num_annots=None):
         if num_annots is None:

@@ -598,6 +598,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     :param verbose:
     :return:
     """
+    n_moves = -1
     if node_ids_to_clst is not None:
         node_ids_to_clst_set = set(node_ids_to_clst)
 
@@ -679,6 +680,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
 
     print_i = 2
     while len(tree_ensmbl) < n_clusters:
+        n_moves += 1
         n_trees = len(tree_ensmbl)
         if verbose and (n_trees == print_i):
             print("Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
@@ -721,7 +723,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 new_normalization = np.sqrt(annot_entropy * (clade_entropy + tree.root.revert_clade_ent_change))
                 new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
                 if new_mut_info > max_new_mut_info:
-                    max_node = node
+                    max_node = tree.root
                     max_tree_ind = ind_tree
                     max_new_mut_info = new_mut_info
 
@@ -747,7 +749,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             joint_entropy += max_node.revert_annot_ent_change
 
             # Delete the tree
-            del tree_ensmbl[ind_tree]
+            del tree_ensmbl[max_tree_ind]
 
             # Add node to original tree
             us_node.childNodes.append(ds_node)
@@ -780,7 +782,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                                                            max_new_mut_info),
                          DEBUG=True)
                 mp_print("Cluster 1, annot_counts: {}".format(','.join(map(str,
-                                                              new_tree.root.ds_annot_counts - ds_node.ds_n_annots))),
+                                                              new_tree.root.ds_annot_counts - ds_node.ds_annot_counts))),
                          DEBUG=True)
                 mp_print("Cluster 2, annot_counts: {}".format(','.join(map(str, ds_node.ds_annot_counts))),
                          DEBUG=True)
@@ -802,6 +804,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # Make ds-node the root of the new tree
             new_tree.root = ds_node
             ds_node.parentNode = None
+            ds_node.old_parent_node = us_node
 
             # Update vert_ind_to_node
             # TODO: Check at some point whether this can be done efficient by re-using information
@@ -823,8 +826,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # Store on each node how clade- and joint-entropy would change when edge to this node was cut
             max_tree.get_ent_changes()
             new_tree.get_ent_changes()
-
-            max_tree.root.add_info_to_nodes(info_key='belongs_to_tree', const_val=new_tree)
+            
             new_tree.root.add_info_to_nodes(info_key='belongs_to_tree', const_val=new_tree)
 
             # Add tree to ensemble, and make space for the new tree in the lists
@@ -889,6 +891,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 if node.nodeId in node_ids_to_clst_set:
                     leaf_ids_tree.append(node.nodeId)
         clusters[ind_tree] = leaf_ids_tree
+
     # Store current clustering in dictionary of clusterings
     clustering_name = 'annot_cluster_n{}'.format(len(tree_ensmbl))
     all_clusterings[clustering_name] = clusters.copy()
