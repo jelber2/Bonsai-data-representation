@@ -102,7 +102,7 @@ tree_folder = os.path.abspath(os.path.join(args.results_folder, rel_tree_folder)
 
 from bonsai.bonsai_dataprocessing import loadReconstructedTreeAndData
 from bonsai_scout.bonsai_scout_helpers import get_edge_coords, Bonvis_figure, Bonvis_settings, merge_cells_at_zero_dist, \
-    Bonvis_metadata, Celltype_info
+    Bonvis_metadata, Celltype_info, process_annot_based_clsts
 from bonsai_scout.my_tree_layout import my_tree_layout
 from bonsai_scout.change_gene_ids import change_json_file
 
@@ -484,7 +484,7 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
         continue
 
     # TODO: REMOVE THIS FOR SURE!
-    if annot_id != 'annot_Celltype4':
+    if annot_id != 'annot_rna_annotations':
         continue
 
     if annot_info.info_object == 'cell_info_dict':
@@ -501,7 +501,7 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
 
     all_clusterings, cut_edges = get_annotation_based_clustering_from_nwk_str(tree_nwk_str=nwk_str,
                                                                               annotation_dict=annotation_dict,
-                                                                              cell_ids=node_ids_with_cells,
+                                                                              node_ids_to_clst=node_ids_with_cells,
                                                                               cell_id_to_node_id=id_to_node_id,
                                                                               verbose=True)
 
@@ -515,6 +515,9 @@ node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csId
                             vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}
 cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
 cl_df = cl_df.loc[metadata_dict['csIds']]
+
+# Process annot-based clustering results
+cl_df = process_annot_based_clsts(cl_df, cell2annot=annotation_dict, cutoff=.01 * len(to_be_clst_ids))
 
 cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='table',
              data_columns=True)

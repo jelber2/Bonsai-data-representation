@@ -2757,3 +2757,93 @@ def get_placeholder_fig():
     "For large datasets, this can take a while. Please be patient."
     ax.text(0, 0, text, ha='center', va='center', fontsize=16)
     return fig
+
+
+def rename_clusters(series, annotations):
+    tmp = pd.DataFrame({
+        "cluster": series,
+        "annotation": annotations
+    })
+
+    new_cluster_names = {}
+
+    for clust, sub in tmp.groupby("cluster"):
+        n_cells = len(sub)
+
+        # Singlets
+        if n_cells == 1:
+            new_cluster_names[clust] = "singlets"
+            continue
+
+        counts = sub["annotation"].value_counts(normalize=True) * 100
+
+        annot1, perc1 = counts.index[0], int(round(counts.iloc[0]))
+        if len(counts) > 1:
+            annot2, perc2 = counts.index[1], int(round(counts.iloc[1]))
+            new_name = f"{clust}_{annot1}_{perc1}%_{annot2}_{perc2}perc"
+        else:
+            new_name = f"{clust}_{annot1}_{perc1}perc"
+
+        new_cluster_names[clust] = new_name
+
+    return series.map(new_cluster_names)
+
+
+def rename_clusters_fast(cluster_series, annot_series, cutoff=1):
+    tmp = pd.DataFrame({
+        "cluster": cluster_series,
+        "annot": annot_series
+    })
+
+    # cluster sizes
+    cluster_sizes = tmp.groupby("cluster").size()
+
+    # annotation frequencies per cluster
+    freq = (
+        tmp
+        .groupby("cluster")["annot"]
+        .value_counts(normalize=True)
+        .mul(100)
+        .round()
+        .astype(int)
+        .rename("perc")
+        .reset_index()
+    )
+
+    # take top 2 annotations per cluster
+    top2 = freq.sort_values(["cluster", "perc"], ascending=[True, False])
+    top2 = top2.groupby("cluster").head(2)
+
+    # build cluster → name mapping
+    def build_name(sub):
+        cl = sub.name
+
+        # singlets
+        if cluster_sizes[cl] <= cutoff:
+            return "Clusters smaller than 1% of data"
+
+        parts = []
+        for _, r in sub.iterrows():
+            parts.append(f"{r['perc']}%={r['annot']}")
+
+        return f"{cl} Size={cluster_sizes[cl]} " + " ".join(parts)
+
+    new_names = top2.groupby("cluster").apply(build_name)
+
+    # map back
+    return cluster_series.map(new_names)
+
+
+import time
+
+
+def process_annot_based_clsts(cl_df, cell2annot, cutoff=1):
+    start = time.time()
+    df = cl_df.copy()
+    df["annotation"] = cl_df.index.map(cell2annot)
+
+    cluster_cols = df.columns.drop("annotation")
+    for col in cluster_cols:
+        df[col] = rename_clusters_fast(df[col], df["annotation"], cutoff=cutoff)
+    print("THIS TOOK {} seconds.".format(time.time() - start))
+    return df.drop(columns="annotation")
