@@ -349,6 +349,10 @@ class Cluster_TreeNode:
     annot_ent_contrib_us = None
     clade_ent_change = None
     annot_ent_change = None
+    old_parent_node = None
+    belongs_to_tree = None
+    revert_clade_ent_change = None
+    revert_annot_ent_change = None
 
     # Variables necessary for the min-dist clustering
     ds_leafs_weighted = None # not used so far
@@ -364,7 +368,6 @@ class Cluster_TreeNode:
     len_to_most_distant_leaf = 0 # For a cut set C of the tree, we define B(C,u) = the length of the path from u to the most distance connected leaf in U. U is the tree rooted at u
     edge_to_parent = True # set to false when we cut the tree
     is_deleted = False # check if it has already been processed
-
 
     # Coordinate information
     coords = None
@@ -433,13 +436,19 @@ class Cluster_TreeNode:
             vertIndToNode, vert_count = child.renumber_verts(vertIndToNode, vert_count)
         return vertIndToNode, vert_count
 
-    def add_info_to_nodes(self, node_id_to_info, info_key):
-        if self.nodeId in node_id_to_info:
-            setattr(self, info_key, node_id_to_info[self.nodeId])
+    def add_info_to_nodes(self, node_id_to_info=None, info_key=None, const_val=None):
+        if node_id_to_info is None:
+            if self.nodeId in node_id_to_info:
+                setattr(self, info_key, node_id_to_info[self.nodeId])
+            else:
+                setattr(self, info_key, None)
+        elif const_val:
+            setattr(self, info_key, const_val)
         else:
-            setattr(self, info_key, None)
+            print("WARNING: Don't know what information to add in 'add_info_to_nodes()'")
+            return
         for child in self.childNodes:
-            child.add_info_to_nodes(node_id_to_info, info_key)
+            child.add_info_to_nodes(node_id_to_info=node_id_to_info, info_key=info_key)
 
     def getDsLeafs_DForder(self):
         """
@@ -720,11 +729,15 @@ class Cluster_TreeNode:
             self.ds_annot_counts += child.ds_annot_counts
             self.ds_n_annots += child.ds_n_annots
 
-    def subtract_ds_info_us(self, ds_node):
-        self.ds_annot_counts -= ds_node.ds_annot_counts
-        self.ds_n_annots -= ds_node.ds_n_annots
+    def subtract_or_add_ds_info_us(self, ds_node, add=False):
+        if not add:
+            self.ds_annot_counts -= ds_node.ds_annot_counts
+            self.ds_n_annots -= ds_node.ds_n_annots
+        else:
+            self.ds_annot_counts += ds_node.ds_annot_counts
+            self.ds_n_annots += ds_node.ds_n_annots
         if self.parentNode is not None:
-            self.parentNode.subtract_ds_info_us(ds_node)
+            self.parentNode.subtract_ds_info_us(ds_node, add=add)
 
     def get_ent_contribs(self, total_n, total_annot_counts, num_annots=None):
         if num_annots is None:

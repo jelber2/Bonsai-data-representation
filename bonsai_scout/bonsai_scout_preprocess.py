@@ -503,7 +503,7 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
                                                                               annotation_dict=annotation_dict,
                                                                               node_ids_to_clst=node_ids_with_cells,
                                                                               cell_id_to_node_id=id_to_node_id,
-                                                                              verbose=True)
+                                                                              verbose=True, random_sampling=True)
 
 # TODO: Extend the following to include the new clusterings
 #  Check out what happens with 1 cluster
