@@ -2820,7 +2820,7 @@ def rename_clusters_fast(cluster_series, annot_series, cutoff=1):
 
         # singlets
         if cluster_sizes[cl] <= cutoff:
-            return "Clusters smaller than 1% of data"
+            return "Clusters with less than {} cells.".format(int(cutoff) + 1)
 
         parts = []
         for _, r in sub.iterrows():
