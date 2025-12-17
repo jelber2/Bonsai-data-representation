@@ -1177,12 +1177,19 @@ def print_memory(location=None):
     mp_print(message, ALL_RANKS=True)
 
 
-def store_scdata_and_communicate_path(scData, folder):
+def store_scdata_and_communicate_path(scData, specific_results_folder, general_results_folder=None, prefix=None):
     mpi_info = mpi_wrapper.get_mpi_info()
     if mpi_info.rank == 0:
         no_scdata_path = True
         while no_scdata_path:
-            scdata_path = scData.result_path(os.path.join(folder, 'scdata_state_{}'.format(np.random.randint(1e6))))
+            if prefix is None:
+                subfoldername = 'scdata_state_{}'.format(np.random.randint(1e6))
+            else:
+                subfoldername = prefix + '_' + 'scdata_state_{}'.format(np.random.randint(1e6))
+            if general_results_folder is None:
+                scdata_path = scData.result_path(os.path.join(specific_results_folder, subfoldername))
+            else:
+                scdata_path = os.path.join(general_results_folder, specific_results_folder, subfoldername)
             if not os.path.exists(scdata_path):
                 no_scdata_path = False
         # We store the tree to make sure we have the data of all vertices
@@ -1196,3 +1203,23 @@ def store_scdata_and_communicate_path(scData, folder):
         # Other processes receive the path to scData
         scdata_path = mpi_wrapper.bcast(scdata_path, root=0)
     return scdata_path
+
+
+def look_for_output_folder(specific_results_folder, general_results_folder=None, prefix=None):
+    if general_results_folder is not None:
+        full_path = os.path.join(general_results_folder, specific_results_folder)
+    else:
+        full_path = specific_results_folder
+
+    full_path = Path(full_path)
+
+    if not full_path.exists() or not full_path.is_dir():
+        return False, None
+
+    subfolders = [p for p in full_path.iterdir() if p.is_dir() and (prefix is None or p.name.startswith(prefix))]
+    if len(subfolders) == 0:
+        return False, None
+
+    # Return the folder that was last modified
+    scdata_path = max(subfolders, key=lambda p: p.stat().st_mtime)
+    return True, scdata_path

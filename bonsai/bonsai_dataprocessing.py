@@ -1279,7 +1279,7 @@ class SCData:
         self.tree.root.renumberNodes(change_node_inds=True)
 
 
-def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
+def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_intermediate=False):
     """
 
     :param strategy: Current options are 'determ_random_determ', 'deterministic', 'deterministic_exhaustive'.
@@ -1293,17 +1293,33 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
     #     orig_loglik = scData.tree.calcLogLComplete(mem_friendly=True)
     #     orig_time = time.time()
 
-    if strategy == 'large_tree':
-        scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                  select_cand='long_branches_first',
-                                                  select_target='cluster_centers',
-                                                  max_moves=None,
-                                                  min_branch_length=1e-2,
-                                                  large_tree=True)
+    output_prefixes = ['after_sprmoveset{}'.format(ind) for ind in range(1, 3)]
+    output_present = [False] * len(output_prefixes)
+    if pickup_intermediate:
+        for ind, prefix in enumerate(output_prefixes):
+            # Check whether one of the intermediate paths is already there
+            output_present[ind], scdata_path_new = look_for_output_folder('spr_intermediates',
+                                                                     general_results_folder=args.results_folder,
+                                                                     prefix=prefix)
+            if output_present[ind]:
+                scdata_path = scdata_path_new
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
-        scData = None
-        gc.collect()
+    if strategy == 'large_tree':
+        if output_present[0]:
+            mp_print("Found results for first SPR moveset in {}. Skipping first moveset.".format(scdata_path))
+        else:
+            scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
+                                                      select_cand='long_branches_first',
+                                                      select_target='cluster_centers',
+                                                      max_moves=None,
+                                                      min_branch_length=1e-2,
+                                                      large_tree=True)
+
+            scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+                                                            general_results_folder=args.results_folder,
+                                                            prefix=output_prefixes[0])
+            scData = None
+            gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1319,26 +1335,38 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
             return
 
     if strategy == 'determ_random_determ':
-        scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                  select_cand='long_branches_first',
-                                                  select_target='cluster_centers',
-                                                  max_moves=None,
-                                                  min_branch_length=1e-2)
+        if output_present[0]:
+            mp_print("Found results for first SPR moveset in {}. Skipping first moveset.".format(scdata_path))
+        else:
+            scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
+                                                      select_cand='long_branches_first',
+                                                      select_target='cluster_centers',
+                                                      max_moves=None,
+                                                      min_branch_length=1e-2)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
-        scData = None
-        gc.collect()
+            scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+                                                            general_results_folder=args.results_folder,
+                                                            prefix=output_prefixes[0])
+            scData = None
+            gc.collect()
 
         # TODO: REVERT THIS?
-        # scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-        #                                                   select_cand='random',
-        #                                                   select_target='random',
-        #                                                   max_moves=None,
-        #                                                   moves_id='C_random_T_random',
-        #                                                   tracking=tracking, info_dict=info_dict)
-        # scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
-        # scData = None
-        # gc.collect()
+        # if output_present[1]:
+        #     mp_print("Found results for second SPR moveset in {}. Skipping first moveset.".format(scdata_path))
+        # else:
+            # scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
+            #                                                   select_cand='random',
+            #                                                   select_target='random',
+            #                                                   max_moves=None,
+            #                                                   moves_id='C_random_T_random',
+            #                                                   tracking=tracking, info_dict=info_dict)
+            # scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+            #                                                 general_results_folder=args.results_folder,
+            #                                                 prefix=output_prefixes[1])
+            # scData = None
+            # gc.collect()
+            # scData = None
+            # gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1347,23 +1375,33 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
                                                   min_branch_length=1e-2)
 
     elif strategy == 'super_sure':
-        scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                  select_cand='long_branches_first',
-                                                  select_target='cluster_centers',
-                                                  max_moves=None)
+        if output_present[0]:
+            mp_print("Found results for first SPR moveset in {}. Skipping first moveset.".format(scdata_path))
+        else:
+            scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
+                                                      select_cand='long_branches_first',
+                                                      select_target='cluster_centers',
+                                                      max_moves=None)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
-        scData = None
-        gc.collect()
+            scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+                                                            general_results_folder=args.results_folder,
+                                                            prefix=output_prefixes[0])
+            scData = None
+            gc.collect()
 
-        scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                  select_cand='long_branches_first',
-                                                  select_target='all',
-                                                  max_moves=1000)
+        if output_present[1]:
+            mp_print("Found results for second SPR moveset in {}. Skipping first moveset.".format(scdata_path))
+        else:
+            scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
+                                                      select_cand='long_branches_first',
+                                                      select_target='all',
+                                                      max_moves=1000)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
-        scData = None
-        gc.collect()
+            scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+                                                            general_results_folder=args.results_folder,
+                                                            prefix=output_prefixes[1])
+            scData = None
+            gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1383,14 +1421,19 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ'):
                                                   max_moves=10000)
 
     elif strategy == 'deterministic':
-        scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                  select_cand='long_branches_first',
-                                                  select_target='cluster_centers',
-                                                  max_moves=10000)
+        if output_present[0]:
+            mp_print("Found results for first SPR moveset in {}. Skipping first moveset.".format(scdata_path))
+        else:
+            scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
+                                                      select_cand='long_branches_first',
+                                                      select_target='cluster_centers',
+                                                      max_moves=10000)
 
-        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
-        scData = None
-        gc.collect()
+            scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+                                                            general_results_folder=args.results_folder,
+                                                            prefix=output_prefixes[0])
+            scData = None
+            gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
@@ -1465,7 +1508,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
             scData = None
 
         # Store tree again, and communicate tree-folder with all processes.
-        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
+        scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates')
         scData = None
         gc.collect()
 
@@ -1509,7 +1552,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
             # Then they read the tree that was stored from process 0
 
         scdata_path_parallelphase = store_scdata_and_communicate_path(scData,
-                                                                      folder='spr_intermediates')
+                                                                      specific_results_folder='spr_intermediates')
 
         print_memory("Stored the tree before parallel-phase of SPR moves")
         scData = None
@@ -1580,9 +1623,6 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
                                                                                cand_list=my_tasks, only_scan=False,
                                                                                mem_friendly=True,
                                                                                skip_prepare_tree=True)
-
-        if mpi_info.rank == 0:
-            remove_tree_folders(scData.result_path('spr_intermediates'), removeDir=True)
 
     # Just some tracking
     # if tracking:

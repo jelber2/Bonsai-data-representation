@@ -4020,7 +4020,7 @@ class Tree:
         self.root.renumberNodes(change_node_inds=change_node_inds)
         self.nNodes = bs_glob.nNodes
 
-    def do_spr_moves(self, max_moves=None, seed=42, select_cand='random', select_target='random', do_local_search=True,
+    def do_spr_moves(self, max_moves=None, select_cand='random', select_target='random', do_local_search=True,
                      do_postprocessing=True, min_branch_length=-1, verbose=False, freq_cutoff=None, cand_list=None,
                      only_scan=False, mem_friendly=False, skip_prepare_tree=False):
         """
@@ -4050,7 +4050,6 @@ class Tree:
         unsuccessful_moves = 0
         remain_cands = []
         returned_moves = 0
-        np.random.seed(seed)
         as_if_root_version = 0
         spr_target_version = 0
 

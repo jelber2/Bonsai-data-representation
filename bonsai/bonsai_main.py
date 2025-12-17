@@ -38,8 +38,9 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
 # TODO: To be moved to config file
 parser.add_argument('--spr_strategy', type=str, default='determ_random_determ',
                     help="Move to general config-file later. This will determine what strategy we follow for the "
-                         "spr-moves. Current options are 'determ_random_determ', 'deterministic', "
-                         "'deterministic_exhaustive', 'super_sure'.")
+                         "spr-moves. Current options are 'large_tree', 'determ_random_determ', 'deterministic', "
+                         "'deterministic_exhaustive', 'super_sure'."
+                         "NOTE: Only large_tree allows for parallelization, the rest will only use 1 CPU.")
 
 # TODO: To be removed
 parser.add_argument('--store_all_nwk_folder', type=str, default='',
@@ -165,6 +166,11 @@ STORED_GREEDY_RESULT = False
 
 start_all = time.time()
 print_memory("Start")
+
+# Make sure that args.results_folder is set:
+sc_data = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
+args.results_folder = sc_data.result_path()
+del sc_data
 
 """-----------------Greedily maximizing tree likelihood starting from star-tree------"""
 if args.step in ['preprocess', 'all']:
@@ -427,13 +433,14 @@ if args.step in ['core_calc', 'all']:
 
         # For memory usage reasons, it's best to here delete scData, then read it in using memmap in the SPR-moves
         # function
-        scdata_path = store_scdata_and_communicate_path(scData, folder='spr_intermediates')
+        scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+                                                        general_results_folder=args.results_folder)
         scData = None
         gc.collect()
         print_memory("Ready to start SPR moves")
 
         # Do the actual moves here:
-        scData = do_spr_moveset(scdata_path, args, strategy=spr_strategy)
+        scData = do_spr_moveset(scdata_path, args, strategy=spr_strategy, pickup_intermediate=args.pickup_intermediate)
         print_memory("Done with SPR moves")
         if (scData is not None) and (scData.tree is not None):
             scData.tree.root.clear_memory()
