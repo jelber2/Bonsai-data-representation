@@ -484,7 +484,8 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
         continue
 
     # TODO: REMOVE THIS FOR SURE!
-    if annot_id != 'annot_cell_type_v2':
+    # if annot_id != 'annot_cell_type_v2':
+    if annot_id != 'annot_rna_annotations':
         continue
 
     if annot_info.info_object == 'cell_info_dict':

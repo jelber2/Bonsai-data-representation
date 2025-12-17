@@ -2826,7 +2826,7 @@ def rename_clusters_fast(cluster_series, annot_series, cutoff=1):
         for _, r in sub.iterrows():
             parts.append(f"{r['perc']}%={r['annot']}")
 
-        return f"{cl} Size={cluster_sizes[cl]} " + " ".join(parts)
+        return f"{cl}, Size={cluster_sizes[cl]}, " + ", ".join(parts)
 
     new_names = top2.groupby("cluster").apply(build_name)
 
@@ -2845,5 +2845,5 @@ def process_annot_based_clsts(cl_df, cell2annot, cutoff=1):
     cluster_cols = df.columns.drop("annotation")
     for col in cluster_cols:
         df[col] = rename_clusters_fast(df[col], df["annotation"], cutoff=cutoff)
-    print("THIS TOOK {} seconds.".format(time.time() - start))
+    print("Processing cluster names took {} seconds.".format(time.time() - start))
     return df.drop(columns="annotation")
