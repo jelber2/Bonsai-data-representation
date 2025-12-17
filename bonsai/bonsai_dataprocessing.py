@@ -1597,7 +1597,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
     # start = time.time()
     # start_logl = new_logl
     mp_print("Start round of postprocessing after SPR-moves.", ALL_RANKS=True)
-    scData.tree.do_spr_postprocessing()
+    scData.tree.do_spr_postprocessing(verbose=large_tree)
     print_memory("After round of postprocessing after SPR-moves.")
 
     # Just some tracking
