@@ -5107,8 +5107,7 @@ def estimateDerBasedDLogLUB(rootInfo, tOpt, ltqs_gi=None, ltqsVars_gi=None, wir_
             newLogLik, tOpt, converged = optimiseT3LeafStar(ltqs_gi, ltqsVars_gi, tOpt, verbose=False)
         if not converged:
             # Now exiting. If this happens often, I can also just say that these pairs get very low likelihood.
-            mp_print("Times cannot be optimized for this pair, probably too many noisy genes are taken into account. "
-                     "Try running Bonsai with higher zscore-cutoff.", WARNING=True)
+            mp_print("Times cannot be optimized for this pair.", WARNING=True)
             newLogLik = -np.inf
 
         wbar_gi = np.column_stack((wbar1_g, wbar2_g, 1 / ltqsVarsR))
@@ -5335,8 +5334,7 @@ def calcSingleDLogL(xrAsIfRoot_g, WAsIfRoot_g, ltqs1, ltqsVars1, wbar1_g, tOld1,
 
     if not converged:
         # Now exiting. If this happens often, I can also just say that these pairs get very low likelihood.
-        mp_print("Times cannot be optimized for this pair, probably too many noisy genes are taken into account. "
-                 "Try running Bonsai with higher zscore-cutoff.", WARNING=True)
+        mp_print("Times cannot be optimized for this pair.", WARNING=True)
         newLogLik = -np.inf
         optTimes = calcTInit(tOld1, tOld2, False)
     if onlyTimes:
