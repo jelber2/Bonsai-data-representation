@@ -430,7 +430,8 @@ def get_annotation_based_clustering(cluster_tree, annotation_dict, cell_id_to_no
     while len(tree_ensmbl) < n_clusters:
         n_trees = len(tree_ensmbl)
         if verbose and (n_trees == print_i):
-            print("Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
+            mp_print("Clustering has created {} subtrees, "
+                     "{} branches still to cut.".format(n_trees, n_clusters - n_trees))
             print_i *= 2
         # Loop over all edges to find which increases mutual information most
         orig_ent_diff = annot_entropy + clade_entropy - joint_entropy
@@ -628,16 +629,20 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     if random_sampling:
         # We will do random-sampling at each step, such that an option that is a factor <optimality_decrease> below the
         # best option is picked with <prob_decrease> lower probability than the maximal option
-        # We start with optimality_decrease = .1, and may lower it when we move on.
+        # We start with optimality_decrease = .9, and may lower it when we move on.
         # I think we can keep prob_decrease fixed at .5
-        prob_decrease = .1
-        optimality_decrease = .5
-        # exp(-beta * (1 - optimality_decrease)) = prob_decrease
-        # beta = -log(prob_decrease) / (NMI_max * (1 - optimality_decrease))
+        prob_decrease = .5
+        optimality_decrease = .99
+        # We want a formula like exp(-beta * (1 - (NMI/NMI_max)^2)), so we want
+        # exp(-beta * (1 - optimality_decrease^2)) = prob_decrease
+        # beta = -log(prob_decrease) / (1 - optimality_decrease ^ 2)
         # So, if we set:
-        sampling_beta = - np.log(prob_decrease) / (1 - optimality_decrease)
+        sampling_beta = - np.log(prob_decrease) / (1 - optimality_decrease ** 2)
         # Then the function for the (unnormalized) probability becomes
         # prob(NMI) = exp(-beta * (1 - (NMI/NMI_max) * optimality_decrease))
+
+        # We first do a burn-in phase though, where we just pick greedily
+        burn_in = True
 
     # First, put the annotation-labels on the tree
     # cluster_tree.root.add_info_to_nodes(node_id_to_info=annotation_dict, info_key='annotation')
@@ -717,7 +722,8 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
         n_moves += 1
         n_trees = len(tree_ensmbl)
         if verbose and (n_trees == print_i):
-            print("Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
+            print("Clustering has created {} subtrees, "
+                  "{} branches still to cut.".format(n_trees, n_clusters - n_trees))
             print_i *= 2
         # Loop over all edges to find which increases mutual information most
         orig_ent_diff = annot_entropy + clade_entropy - joint_entropy
@@ -729,7 +735,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
         # max_tree_ind = None
         max_node = None
         max_new_mut_info = -1e9
-        if random_sampling:
+        if random_sampling and (not burn_in):
             node_list = []
             new_mut_info_list = []
 
@@ -745,7 +751,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 new_normalization = np.sqrt(annot_entropy * (clade_entropy + node.clade_ent_change))
                 new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
 
-                if random_sampling:
+                if random_sampling and (not burn_in):
                     new_mut_info_list.append(new_mut_info)
                     node_list.append(node)
                 if new_mut_info > max_new_mut_info:
@@ -769,7 +775,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 new_normalization = np.sqrt(annot_entropy * (clade_entropy + tree.root.revert_clade_ent_change))
                 new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
 
-                if random_sampling:
+                if random_sampling and (not burn_in):
                     new_mut_info_list.append(new_mut_info)
                     node_list.append(node)
                 if new_mut_info > max_new_mut_info:
@@ -783,16 +789,21 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                      "Stopping here.".format(n_trees))
             break
 
-        if random_sampling:
+        if random_sampling and (not burn_in):
             max_new_mut_info = max(orig_mut_info, max_new_mut_info)
             # Then the function for the (unnormalized) probability becomes
             # prob(NMI) = exp(-beta * (1 - (NMI/NMI_max) * optimality_decrease))
             sampling_probs = np.exp(
-                -sampling_beta * (1 - np.array(new_mut_info_list) / max_new_mut_info) * optimality_decrease)
+                -sampling_beta * (1 - (np.array(new_mut_info_list) / max_new_mut_info) ** 2))
             sampled_ind = np.random.choice(len(sampling_probs), p=sampling_probs / sampling_probs.sum())
             max_node = node_list[sampled_ind]
             max_tree = max_node.belongs_to_tree
             max_new_mut_info = new_mut_info_list[sampled_ind]
+
+        if random_sampling and burn_in:
+            if (max_new_mut_info/(orig_mut_info+1e-9)) < 1.01:
+                mp_print("Progress is stalling, stopping the greedy burn-in phase, starting the random phase")
+                burn_in = False
 
         # Cut the tree into two pieces at the edge that maximizes the norm. mut. info.
         ds_node = max_node
@@ -989,7 +1000,7 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
     while len(tree_ensmbl) < n_clusters:
         n_trees = len(tree_ensmbl)
         if verbose and (n_trees == print_i):
-            print("Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
+            mp_print("Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
             print_i *= 2
         # Loop over all edges to find max footfall one
         for ind_tree, tree in enumerate(tree_ensmbl):
