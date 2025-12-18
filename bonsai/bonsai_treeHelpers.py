@@ -4343,7 +4343,7 @@ class Tree:
 
         self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=verbose,
                                          ellipsoidSize=1.0, single_process=True, mergeDownstream=True, tree=self,
-                                         nChildNN=-1, kNN=-1)
+                                         nChildNN=50, kNN=10)
         self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes
         self.nNodes = bs_glob.nNodes
         self.root.storeParent()
