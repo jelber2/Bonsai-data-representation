@@ -74,7 +74,7 @@ def get_footfall_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, ce
 
 def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, cell_id_to_node_id=None,
                                                  verbose=True, node_ids_to_clst=None, random_sampling=False,
-                                                 tracking_output_folder=None):
+                                                 tracking_path=None):
     """
 
     :param tree_nwk_str: String read from a .nwk-file
@@ -87,7 +87,7 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
     :param random_sampling: Boolean, default=False. If False, then we do a pure greedy hierarchical clustering that
     maximizes the Normalized Mutual Information at each clustering step. If True, we randomly sample clustering-steps
     weighted by their NMI. In addition, we allow for reverting a cut.
-    :param tracking_output_folder: Just for debugging purposes, we can give a folder where we will store some stats.
+    :param tracking_path: Just for debugging purposes, we can give a folder where we will store some stats.
     :param verbose:
     :return:
     """
@@ -101,13 +101,14 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
     #                                                                  annotation_dict=annotation_dict,
     #                                                                  verbose=verbose, node_ids_to_clst=node_ids_to_clst)
     # else:
-    all_clusterings, cut_edges = get_annotation_based_clustering_random(cluster_tree,
-                                                                        cell_id_to_node_id=cell_id_to_node_id,
-                                                                        annotation_dict=annotation_dict,
-                                                                        verbose=verbose,
-                                                                        node_ids_to_clst=node_ids_to_clst,
-                                                                        random_sampling=random_sampling)
-    return all_clusterings, cut_edges
+    all_clusterings, cut_edges, mut_info = get_annotation_based_clustering_random(cluster_tree,
+                                                                                  cell_id_to_node_id=cell_id_to_node_id,
+                                                                                  annotation_dict=annotation_dict,
+                                                                                  verbose=verbose,
+                                                                                  node_ids_to_clst=node_ids_to_clst,
+                                                                                  random_sampling=random_sampling,
+                                                                                  tracking_path=tracking_path)
+    return all_clusterings, cut_edges, mut_info
 
 
 def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
@@ -368,7 +369,8 @@ def test_move_acceptance(sampling_beta, orig_mut_info, new_mut_info):
 
 
 def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_id_to_node_id=None, verbose=True,
-                                           node_ids_to_clst=None, random_sampling=False, seed=1231):
+                                           node_ids_to_clst=None, random_sampling=False, seed=1231,
+                                           tracking_path=None):
     """
     Greedily cuts tree into clades such that mutual information with some annotation is maximized.
     *NOTE:* We allow for partial annotation, such that some cells have an annotation, while others do not. The use case
@@ -385,8 +387,13 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     maximizes the Normalized Mutual Information at each clustering step. If True, we randomly sample clustering-steps
     weighted by their NMI. In addition, we allow for reverting a cut.
     :param verbose:
+    :param tracking_folder: Just a path where I can store some stats for performance tracking.
     :return:
     """
+    if tracking_path is not None:
+        tracking_path, _ = os.path.splitext(tracking_path)
+        tracking_path += '_random.tsv' if random_sampling else '.tsv'
+        stats = []
     np.random.seed(seed)
     random.seed(np.random.randint(1e6))
     n_moves = -1
@@ -473,8 +480,6 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                                        num_annots=n_labels)
     # Store on each node how clade- and joint-entropy would change when edge to this node was cut
     cluster_tree.get_ent_changes()
-
-    all_clusterings = {}
     tree_ensmbl = [cluster_tree]
 
     # TODO: Maybe remove
@@ -591,11 +596,6 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                             new_mut_info = get_new_mut_info(orig_ent_diff, annot_entropy, clade_entropy,
                                                             node.revert_clade_ent_change,
                                                             node.revert_annot_ent_change)
-                            # new_ent_diff = (orig_ent_diff + tree.root.revert_clade_ent_change -
-                            #                 tree.root.revert_annot_ent_change)
-                            # new_normalization = np.sqrt(
-                            #     annot_entropy * (clade_entropy + tree.root.revert_clade_ent_change))
-                            # new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
                     else:
                         if node.annot_ent_change == 0:
                             # if (node.ds_n_annots == 0) or (tree.root.ds_n_annots == node.ds_n_annots):
@@ -604,9 +604,6 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                         new_mut_info = get_new_mut_info(orig_ent_diff, annot_entropy, clade_entropy,
                                                         node.clade_ent_change,
                                                         node.annot_ent_change)
-                        # new_ent_diff = (orig_ent_diff + node.clade_ent_change - node.annot_ent_change)
-                        # new_normalization = np.sqrt(annot_entropy * (clade_entropy + node.clade_ent_change))
-                        # new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
                     if new_mut_info > max_new_mut_info:
                         max_node = node
                         max_tree = tree
@@ -618,19 +615,8 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                      "Stopping here.".format(n_trees))
             break
 
-        # if random_sampling and (not greedy):
-        #     max_new_mut_info = max(orig_mut_info, max_new_mut_info)
-        #     # Then the function for the (unnormalized) probability becomes
-        #     # prob(NMI) = exp(-beta * (1 - (NMI/NMI_max) * optimality_decrease))
-        #     sampling_probs = np.exp(
-        #         -sampling_beta * (1 - np.array(new_mut_info_list) / max_new_mut_info))
-        #     sampled_ind = np.random.choice(len(sampling_probs), p=sampling_probs / sampling_probs.sum())
-        #     max_node = node_list[sampled_ind]
-        #     max_tree = max_node.belongs_to_tree
-        #     max_new_mut_info = new_mut_info_list[sampled_ind]
-
         if random_sampling and greedy:
-            if (max_new_mut_info/(orig_mut_info+1e-9)) < 1.01:
+            if (max_new_mut_info / (orig_mut_info + 1e-9)) < 1.01:
                 mp_print("Progress is stalling, stopping the greedy burn-in phase, starting the random phase")
                 greedy = False
 
@@ -734,11 +720,6 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # Add tree to ensemble, and make space for the new tree in the lists
             tree_ensmbl.append(new_tree)
 
-            # clusters[max_tree_ind] = None
-            # max_scores.append(None)  # This will give a place for the new tree to store
-            # max_nodes.append(None)
-            # clusters.append(None)
-
             if verbose:
                 mp_print("\nCreating two clusters with {} and {} labeled-cells. "
                          "Norm. mut. info. now: {}".format(max_tree.root.ds_n_annots, new_tree.root.ds_n_annots,
@@ -749,35 +730,47 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 mp_print("Cluster 2, annot_counts: {}".format(','.join(map(str, new_tree.root.ds_annot_counts))),
                          DEBUG=True)
 
+        if tracking_path is not None:
+            if not random_sampling:
+                greedy = optimality_decrease = None
+            stats.append({
+                "n_moves": n_moves,
+                "norm_mut_info": max_new_mut_info,
+                "n_clusters": len(tree_ensmbl),
+                "random_sampling": random_sampling,
+                "greedy": greedy,
+                "optimality_decrease": optimality_decrease,
+            })
+
         # TODO: Write independent norm. mut. info. check and eventually comment that out.
-        DO_TEST = False
-        if DO_TEST:
-            joint_entropy_test = 0.0
-            clade_sizes_test = []
-            joint_counts = []
-            annot_counts_test = np.zeros(n_labels)
-            for ind_tree, tree in enumerate(tree_ensmbl):
-                clade_sizes_test.append(tree.root.ds_n_annots)
-                joint_entropy_test += entropy_non_norm(tree.root.ds_annot_counts / n_cells)
-                joint_counts.append(tree.root.ds_annot_counts)
-                annot_counts_test += tree.root.ds_annot_counts
-
-            joint_counts = np.hstack(joint_counts)
-            # joint_entropy_test2 = entropy_non_norm(joint_counts / n_cells)
-            clade_entropy_test = entropy_non_norm(np.array(clade_sizes_test) / n_cells)
-            annot_entropy_test = entropy_non_norm(annot_counts_test / n_cells)
-
-            norm_mut_inf_test = (clade_entropy_test + annot_entropy_test - joint_entropy_test) / np.sqrt(
-                clade_entropy_test * annot_entropy_test)
-            # print("label_counts is equal to annot_counts_test: {}".format(annot_counts_test == label_counts))
-            # print("n_cells is equal to sum(clade_sizes_test): {}".format(n_cells == np.sum(clade_sizes_test)))
-
-            mp_print("Predicted mutual information is {}, and independent test gives {}".format(max_new_mut_info,
-                                                                                                norm_mut_inf_test))
-            if abs(max_new_mut_info - norm_mut_inf_test) > 1e-9:
-                mp_print("Predicted mutual information deviates from independently calculated mut.info."
-                         "Check this!", ERROR=True)
-                exit()
+        # DO_TEST = False
+        # if DO_TEST:
+        #     joint_entropy_test = 0.0
+        #     clade_sizes_test = []
+        #     joint_counts = []
+        #     annot_counts_test = np.zeros(n_labels)
+        #     for ind_tree, tree in enumerate(tree_ensmbl):
+        #         clade_sizes_test.append(tree.root.ds_n_annots)
+        #         joint_entropy_test += entropy_non_norm(tree.root.ds_annot_counts / n_cells)
+        #         joint_counts.append(tree.root.ds_annot_counts)
+        #         annot_counts_test += tree.root.ds_annot_counts
+        #
+        #     joint_counts = np.hstack(joint_counts)
+        #     # joint_entropy_test2 = entropy_non_norm(joint_counts / n_cells)
+        #     clade_entropy_test = entropy_non_norm(np.array(clade_sizes_test) / n_cells)
+        #     annot_entropy_test = entropy_non_norm(annot_counts_test / n_cells)
+        #
+        #     norm_mut_inf_test = (clade_entropy_test + annot_entropy_test - joint_entropy_test) / np.sqrt(
+        #         clade_entropy_test * annot_entropy_test)
+        #     # print("label_counts is equal to annot_counts_test: {}".format(annot_counts_test == label_counts))
+        #     # print("n_cells is equal to sum(clade_sizes_test): {}".format(n_cells == np.sum(clade_sizes_test)))
+        #
+        #     mp_print("Predicted mutual information is {}, and independent test gives {}".format(max_new_mut_info,
+        #                                                                                         norm_mut_inf_test))
+        #     if abs(max_new_mut_info - norm_mut_inf_test) > 1e-9:
+        #         mp_print("Predicted mutual information deviates from independently calculated mut.info."
+        #                  "Check this!", ERROR=True)
+        #         exit()
 
     # Should produce a list of lists with the node-IDs of the various clusters
     clusters = [None] * len(tree_ensmbl)
@@ -794,13 +787,14 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                     leaf_ids_tree.append(node.nodeId)
         clusters[ind_tree] = leaf_ids_tree
 
-    # Store current clustering in dictionary of clusterings
-    clustering_name = 'annot_cluster_n{}'.format(len(tree_ensmbl))
-    all_clusterings[clustering_name] = clusters.copy()
+    if tracking_path is not None:
+        df = pd.DataFrame(stats)
+        df.to_csv(tracking_path, index=False, sep='\t')
 
+    # Store current clustering in dictionary of clusterings
     if verbose:
         mp_print("Clustering done")
-    return all_clusterings, cut_edges
+    return clusters, cut_edges, max_new_mut_info
 
 
 def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True,
@@ -829,7 +823,8 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
     while len(tree_ensmbl) < n_clusters:
         n_trees = len(tree_ensmbl)
         if verbose and (n_trees == print_i):
-            mp_print("Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
+            mp_print(
+                "Clustering has created {} subtrees, {} branches still to cut.".format(n_trees, n_clusters - n_trees))
             print_i *= 2
         # Loop over all edges to find max footfall one
         for ind_tree, tree in enumerate(tree_ensmbl):

@@ -6,6 +6,7 @@ import h5py
 import json
 import pandas as pd
 from argparse import ArgumentTypeError
+from pathlib import Path
 
 import logging
 
@@ -280,9 +281,9 @@ for cs_ind, vert_ind in scData.csIndToVertInd.items():
 cs_info_df['cs_ind_to_vert_ind'] = cs_ind_to_vert_ind
 cs_info_df['n_cells_per_cs'] = scData.metadata.nCellsPerCs
 
-cell_info_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cell_info/cell_info_dict', mode='a', format='fixed',
+cell_info_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cell_info/cell_info_dict', mode='a', format='table',
                     data_columns=True)
-cs_info_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cs_info_dict', mode='a', format='fixed',
+cs_info_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cs_info_dict', mode='a', format='table',
                   data_columns=True)
 
 bonvis_data_hdf = h5py.File(scData.result_path('bonsai_vis_data.hdf'), 'a')
@@ -478,14 +479,27 @@ celltype_info = Celltype_info(cell_info_dict=cell_info_dict,
 cell_id_to_node_id = {scData.metadata.cellIds[cell_ind]: node_ids[vert_ind] for cell_ind, vert_ind in
                       scData.cellIndToVertInd.items()}
 cs_id_to_node_id = {scData.metadata.csIds[cell_ind]: node_ids[vert_ind] for cell_ind, vert_ind in
-                      scData.cellIndToVertInd.items()}
+                    scData.cellIndToVertInd.items()}
+
+# TODO: Extend the following to include the new clusterings
+# all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
+# We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
+node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
+                            vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}
+cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
+cl_df = cl_df.loc[metadata_dict['csIds']]
+
+all_cl_dfs = [cl_df]
 for annot_id, annot_info in celltype_info.annot_infos.items():
     if annot_info.color_type != 'categorical':
         continue
 
     # TODO: REMOVE THIS FOR SURE!
-    if annot_id not in ['annot_rna_annotations', 'annot_cell_type_v2']:
+    if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
         continue
+    # if annot_id:
+    #     if annot_id.startswith('annot_num'):
+    #         continue
 
     if annot_info.info_object == 'cell_info_dict':
         cell_to_celltype = cell_info_dict[annot_id]
@@ -499,26 +513,28 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
     if 'NaN' in annot_info.cats:
         annotation_dict = {key: val for key, val in annotation_dict.items() if val != 'NaN'}
 
-    all_clusterings, cut_edges = get_annotation_based_clustering_from_nwk_str(tree_nwk_str=nwk_str,
-                                                                              annotation_dict=annotation_dict,
-                                                                              node_ids_to_clst=node_ids_with_cells,
-                                                                              cell_id_to_node_id=id_to_node_id,
-                                                                              verbose=True, random_sampling=True)
+    tracking_folder = scData.result_path('annot_based_clustering_stats')
+    tracking_path = os.path.join(tracking_folder, annot_id + '_clustering_stats.tsv')
+    Path(tracking_folder).mkdir(parents=True, exist_ok=True)
 
-# TODO: Extend the following to include the new clusterings
-#  Check out what happens with 1 cluster
-#  Only save one clustering per annotation-type
-#  Add button in app to do annotation-guided clustering
-# all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
-# We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
-node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
-                            vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}
-cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
-cl_df = cl_df.loc[metadata_dict['csIds']]
+    clusters, cut_edges, mut_info = get_annotation_based_clustering_from_nwk_str(tree_nwk_str=nwk_str,
+                                                                                 annotation_dict=annotation_dict,
+                                                                                 node_ids_to_clst=node_ids_with_cells,
+                                                                                 cell_id_to_node_id=id_to_node_id,
+                                                                                 verbose=True,
+                                                                                 random_sampling=False,
+                                                                                 tracking_path=tracking_path)
 
-# Process annot-based clustering results
-cl_df = process_annot_based_clsts(cl_df, cell2annot=annotation_dict, cutoff=7)
+    clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
+    cl_df_annot = get_cluster_assignments(all_clusterings={annot_id: clusters},
+                                          node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
+    cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]
+    # Process annot-based clustering results
+    # TODO: Do this only in the app, eventually
+    cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict, cutoff=7)
+    all_cl_dfs.append(cl_df_annot)
 
+cl_df = pd.concat(all_cl_dfs, axis=1)
 cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='fixed',
              data_columns=True)
 
