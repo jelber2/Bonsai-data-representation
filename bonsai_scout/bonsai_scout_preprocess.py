@@ -514,7 +514,9 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
         annotation_dict = {key: val for key, val in annotation_dict.items() if val != 'NaN'}
 
     tracking_folder = scData.result_path('annot_based_clustering_stats')
-    tracking_path = os.path.join(tracking_folder, annot_id + '_clustering_stats.tsv')
+    random_sampling = True
+    suffix = '_random.tsv' if random_sampling else '.tsv'
+    tracking_path = os.path.join(tracking_folder, annot_id + '_clustering_stats' + suffix)
     Path(tracking_folder).mkdir(parents=True, exist_ok=True)
 
     clusters, cut_edges, mut_info = get_annotation_based_clustering_from_nwk_str(tree_nwk_str=nwk_str,
@@ -522,11 +524,13 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
                                                                                  node_ids_to_clst=node_ids_with_cells,
                                                                                  cell_id_to_node_id=id_to_node_id,
                                                                                  verbose=True,
-                                                                                 random_sampling=False,
+                                                                                 random_sampling=True,
                                                                                  tracking_path=tracking_path)
 
     clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
-    cl_df_annot = get_cluster_assignments(all_clusterings={annot_id: clusters},
+    # TODO: REMOVE THIS!
+    clustering_name = 'annot_cluster_n101'
+    cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
                                           node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
     cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]
     # Process annot-based clustering results

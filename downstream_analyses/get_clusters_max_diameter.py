@@ -7,6 +7,7 @@ from downstream_analyses.get_cluster_helpers import Cluster_Tree, entropy_non_no
 from bonsai.bonsai_helpers import mp_print
 from itertools import combinations
 import random
+from collections import defaultdict
 import csv
 import time
 from scipy.stats import entropy
@@ -41,7 +42,9 @@ from scipy.stats import entropy
 #     return cl_dict
 
 
-def get_cluster_assignments(all_clusterings, node_ids_multiple_cs_ids={}):
+def get_cluster_assignments(all_clusterings, node_ids_multiple_cs_ids=None):
+    if node_ids_multiple_cs_ids is None:
+        node_ids_multiple_cs_ids = {}
     cluster_assignments = {}
     # Create dictionary with dictionaries for each cs-ID, containing for each clustering in which cluster it falls
     for label, clusters in all_clusterings.items():
@@ -82,7 +85,7 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
     :param cell_id_to_node_id: (Optional) Annotation is given for each cell, but multiple cells may have been mapped to
     the same node. This optional dictionary allows the user to give the mapping. If left to None, we assume that
     annotated IDs coincide with node-IDs.
-    :param node_ids_to_clst: Node Ids of nodes that should be in reported clustering (otherwise leaf-nodes are reurned)
+    :param node_ids_to_clst: Node Ids of nodes that should be in reported clustering (otherwise leaf-nodes are returned)
     then we assume that we should cluster the leaves of the given newick string
     :param random_sampling: Boolean, default=False. If False, then we do a pure greedy hierarchical clustering that
     maximizes the Normalized Mutual Information at each clustering step. If True, we randomly sample clustering-steps
@@ -101,14 +104,14 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
     #                                                                  annotation_dict=annotation_dict,
     #                                                                  verbose=verbose, node_ids_to_clst=node_ids_to_clst)
     # else:
-    all_clusterings, cut_edges, mut_info = get_annotation_based_clustering_random(cluster_tree,
-                                                                                  cell_id_to_node_id=cell_id_to_node_id,
-                                                                                  annotation_dict=annotation_dict,
-                                                                                  verbose=verbose,
-                                                                                  node_ids_to_clst=node_ids_to_clst,
-                                                                                  random_sampling=random_sampling,
-                                                                                  tracking_path=tracking_path)
-    return all_clusterings, cut_edges, mut_info
+    clusters, cut_edges, mut_info = get_annotation_based_clustering_random(cluster_tree,
+                                                                           cell_id_to_node_id=cell_id_to_node_id,
+                                                                           annotation_dict=annotation_dict,
+                                                                           verbose=verbose,
+                                                                           node_ids_to_clst=node_ids_to_clst,
+                                                                           random_sampling=random_sampling,
+                                                                           tracking_path=tracking_path)
+    return clusters, cut_edges, mut_info
 
 
 def get_min_pdists_clustering_from_nwk_str(tree_nwk_str, n_clusters, cell_ids=None, get_cell_ids_all_splits=False,
@@ -390,9 +393,11 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     :param tracking_folder: Just a path where I can store some stats for performance tracking.
     :return:
     """
+    very_verbose = False
+
     if tracking_path is not None:
-        tracking_path, _ = os.path.splitext(tracking_path)
-        tracking_path += '_random.tsv' if random_sampling else '.tsv'
+        # tracking_path, _ = os.path.splitext(tracking_path)
+        # tracking_path += '_random.tsv' if random_sampling else '.tsv'
         stats = []
     np.random.seed(seed)
     random.seed(np.random.randint(1e6))
@@ -443,6 +448,15 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     cluster_tree.root.add_info_to_nodes(info_key='belongs_to_tree', const_val=cluster_tree)
 
     label_counts = np.zeros(n_labels, dtype=int)
+
+    # TODO: Remove when sklearn test is no longer necessary
+    # labels_true = np.zeros(len(annotation_dict), dtype=int)
+    # labels_pred = np.zeros(len(annotation_dict), dtype=int)
+    # node_id_to_cell_ids = defaultdict(list)
+    # cell_id_to_ind = {cell_id: ind for ind, cell_id in enumerate(annotation_dict)}
+    # for cell_id, node_id in cell_id_to_node_id.items():
+    #     node_id_to_cell_ids[node_id].append(cell_id)
+
     for cell_id, annot in annotation_dict.items():
         if cell_id_to_node_id is not None:
             node_id = cell_id_to_node_id[cell_id]
@@ -501,9 +515,10 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     while len(tree_ensmbl) < n_clusters:
         n_moves += 1
         n_trees = len(tree_ensmbl)
-        if verbose and (n_trees == print_i):
-            print("Clustering has created {} subtrees, "
-                  "{} branches still to cut.".format(n_trees, n_clusters - n_trees))
+        if verbose and (n_moves == print_i):
+            mp_print("Annotation-based clustering has done {} moves, "
+                     "currently {} clusters, "
+                     "and Normalized Mutual Information of {}.".format(n_moves, n_trees, max_new_mut_info))
             print_i *= 2
         # Loop over all edges to find which increases mutual information most
         orig_ent_diff = annot_entropy + clade_entropy - joint_entropy
@@ -663,7 +678,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # Add for all downstream nodes to which tree it belongs
             ds_node.add_info_to_nodes(info_key='belongs_to_tree', const_val=new_tree)
 
-            if verbose:
+            if very_verbose:
                 mp_print("\nMerging two clusters with {} and {} labeled-cells. "
                          "Norm. mut. info. now: {}".format(new_tree.root.ds_n_annots - ds_node.ds_n_annots,
                                                            ds_node.ds_n_annots,
@@ -720,7 +735,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # Add tree to ensemble, and make space for the new tree in the lists
             tree_ensmbl.append(new_tree)
 
-            if verbose:
+            if very_verbose:
                 mp_print("\nCreating two clusters with {} and {} labeled-cells. "
                          "Norm. mut. info. now: {}".format(max_tree.root.ds_n_annots, new_tree.root.ds_n_annots,
                                                            max_new_mut_info),
@@ -739,11 +754,42 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 "n_clusters": len(tree_ensmbl),
                 "random_sampling": random_sampling,
                 "greedy": greedy,
-                "optimality_decrease": optimality_decrease,
+                "optimality_decrease": optimality_decrease
             })
 
         # TODO: Write independent norm. mut. info. check and eventually comment that out.
-        # DO_TEST = False
+        DO_TEST = False
+        if DO_TEST:
+            contingency = np.zeros((n_labels, len(tree_ensmbl)), dtype=int)
+            for ind_tree, tree in enumerate(tree_ensmbl):
+                contingency[:, ind_tree] = tree.root.ds_annot_counts
+
+            labels_true = []
+            labels_pred = []
+            for i, row in enumerate(contingency):
+                for j, count in enumerate(row):
+                    labels_true.extend([i] * count)
+                    labels_pred.extend([j] * count)
+            from sklearn.metrics import adjusted_mutual_info_score, normalized_mutual_info_score, rand_score, \
+                adjusted_rand_score
+
+            nmi_test = normalized_mutual_info_score(np.array(labels_true), np.array(labels_pred),
+                                                    average_method='geometric')
+            adjusted_mut_info = adjusted_mutual_info_score(np.array(labels_true), np.array(labels_pred),
+                                                           average_method='geometric')
+            rand_index = rand_score(np.array(labels_true), np.array(labels_pred))
+            adjusted_rand_index = adjusted_rand_score(np.array(labels_true), np.array(labels_pred))
+            print(nmi_test, max_new_mut_info)
+            if abs(max_new_mut_info - nmi_test) > 1e-9:
+                mp_print("Predicted mutual information deviates from independently calculated mut.info."
+                         "Check this!", ERROR=True)
+                exit()
+
+            if tracking_path is not None:
+                stats[-1].update({"adjusted_mut_info": adjusted_mut_info,
+                                  "rand_index": rand_index,
+                                  "adjusted_rand_index": adjusted_rand_index})
+
         # if DO_TEST:
         #     joint_entropy_test = 0.0
         #     clade_sizes_test = []
@@ -771,6 +817,10 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
         #         mp_print("Predicted mutual information deviates from independently calculated mut.info."
         #                  "Check this!", ERROR=True)
         #         exit()
+
+    mp_print("Final annotation-based clustering did {} moves, "
+             "created {} clusters, "
+             "with a Normalized Mutual Information of {}.".format(n_moves + 1, n_trees, max_new_mut_info))
 
     # Should produce a list of lists with the node-IDs of the various clusters
     clusters = [None] * len(tree_ensmbl)
