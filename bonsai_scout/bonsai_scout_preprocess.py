@@ -54,6 +54,11 @@ parser.add_argument('--take_all_genes', type=str2bool, default=False,
                          'reconstruction was based. Loading all gene expression values will make this preprocessing'
                          'a lot slower for large datasets, and will require much more memory.')
 
+parser.add_argument('--take_no_genes', type=str2bool, default=False,
+                    help='For very large datasets, it can be too memory-intensive to load all gene expresion values'
+                         'into memory. This mode allows to explore the tree, but prohibits plotting gene expression'
+                         'or finding marker genes.')
+
 parser.add_argument('--cell_id_to_cs_id_file', type=str, default='',
                     help='Should point towards csv-file with two columns: 1) cell-IDs, 2) the corresponding '
                          'cellstates-id'
@@ -109,8 +114,9 @@ else:
     reprocess_data = False
     all_genes = False
 
+get_data = not args.take_no_genes
 scData, _ = loadReconstructedTreeAndData(run_configs, tree_folder, reprocess_data=reprocess_data,
-                                         get_cell_info=True, all_ranks=False, all_genes=all_genes, get_data=True,
+                                         get_cell_info=True, all_ranks=False, all_genes=all_genes, get_data=get_data,
                                          rel_to_results=False, no_data_needed=True, calc_loglik=False,
                                          get_posterior_ltqs=True)
 
@@ -224,6 +230,15 @@ if ltqs is not None:
         normalized_hdf.create_dataset('vars', data=ltqs_vars)
         zscores = np.sqrt(np.mean((ltqs - np.mean(ltqs, axis=1, keepdims=True)) ** 2 / ltqs_vars, axis=1))
         normalized_hdf.create_dataset('zscores', data=zscores)
+else:
+    normalized_hdf = data_hdf.create_group('dummy_gene')
+    normalized_hdf.create_dataset('means', data=np.linspace(.9, 1.1, len(node_ids))[None, :])
+    feature_paths.append('data/dummy_gene')
+    normalized_hdf.attrs['node_ids'] = json.dumps(node_ids)
+    normalized_hdf.attrs['gene_ids'] = json.dumps(['dummy_gene'])
+    no_variation_genes = np.array([])
+    normalized_hdf.create_dataset('no_variation_features', data=no_variation_genes)
+    normalized_hdf.create_dataset('variances', data=np.array([1.0]))
 
 # Get z-scores of genes
 # if ltqs_vars is not None:
