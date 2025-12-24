@@ -935,6 +935,7 @@ class SCData:
         for ind_file, filename in enumerate(file_list):
             filepath = os.path.join(annotation_folder, filename)
             ext = os.path.splitext(filepath)[1]
+            annotation_df = None
             if ext == '.tsv':
                 delim = '\t'
             elif ext == '.csv':
@@ -957,7 +958,7 @@ class SCData:
                 except KeyError as e:
                     mp_print("The cell-ID {} was present in the data but not in annotation-file '{}'. "
                              "Please check this. "
-                             "For now, we are discarding this annotation-file.".format(e, filename), WARNING=True)
+                             "For now, we are trying to save this annotation-file.".format(e, filename), WARNING=True)
                     annotation_df = None
             elif annot_input.shape[0] in [self.metadata.nCells - 1, self.metadata.nCells]:
                 if annot_input.shape[0] == (self.metadata.nCells - 1):
@@ -972,12 +973,38 @@ class SCData:
                 except KeyError as e:
                     mp_print("The cell-ID {} was present in the data but not in annotation-file '{}'. "
                              "Please check this. "
-                             "For now, we are discarding this annotation-file.".format(e, filename), WARNING=True)
+                             "For now, we are trying to save this annotation-file.".format(e, filename), WARNING=True)
             else:
-                mp_print("Annotation-file '{}' has a number of rows that is not equal to the number of cells (or "
-                         "cellstates) in the dataset. Please check this. For now, we are discarding this "
+                mp_print("Annotation-file '{}' has a number of rows that is not equal to the number of cells "
+                         "(or cellstates) in the dataset. Please check this. For now, we are trying to save this "
                          "annotation-file".format(filename), WARNING=True)
-                annotation_df = None
+            if annotation_df is None:
+                try:
+                    # Try to find out if we can save this annotation-file even though it doesn't have the correct number
+                    # of rows
+                    saved_df = False
+                    annotation_df = annot_input.reindex(self.metadata.csIds)
+                    if annotation_df.shape[0]:
+                        cell_or_cs = 'cs'
+                        mp_print("Managed to save the annotation in {}. "
+                                 "Do check if results are correct.".format(filename), WARNING=True)
+                        saved_df = True
+                    if not saved_df:
+                        annotation_df = annot_input.reindex(self.metadata.cellIds)
+                        if annotation_df.shape[0]:
+                            cell_or_cs = 'cell'
+                            mp_print("Managed to save the annotation in {}. "
+                                     "Do check if results are correct.".format(filename), WARNING=True)
+                            saved_df = True
+                    if not saved_df:
+                        mp_print("Annotation-file '{}' has a number of rows that is not equal to the number of cells "
+                                 "(or cellstates) in the dataset. Please check this. For now, we are discarding this "
+                                 "annotation-file".format(filename), WARNING=True)
+                        annotation_df = None
+                except:
+                    mp_print("Annotation-file '{}' can somehow not be mapped to any annotation of the cells or "
+                             "cellstates in the dataset.".format(filename), WARNING=True)
+                    annotation_df = None
             if annotation_df is not None:
                 if filename[:4] == 'mat_':
                     mat_label = ''.join(filename[4:].split('.')[:-1])
@@ -1299,8 +1326,8 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_in
         for ind, prefix in enumerate(output_prefixes):
             # Check whether one of the intermediate paths is already there
             output_present[ind], scdata_path_new = look_for_output_folder('spr_intermediates',
-                                                                     general_results_folder=args.results_folder,
-                                                                     prefix=prefix)
+                                                                          general_results_folder=args.results_folder,
+                                                                          prefix=prefix)
             if output_present[ind]:
                 scdata_path = scdata_path_new
 
@@ -1354,19 +1381,19 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_in
         # if output_present[1]:
         #     mp_print("Found results for second SPR moveset in {}. Skipping first moveset.".format(scdata_path))
         # else:
-            # scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-            #                                                   select_cand='random',
-            #                                                   select_target='random',
-            #                                                   max_moves=None,
-            #                                                   moves_id='C_random_T_random',
-            #                                                   tracking=tracking, info_dict=info_dict)
-            # scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
-            #                                                 general_results_folder=args.results_folder,
-            #                                                 prefix=output_prefixes[1])
-            # scData = None
-            # gc.collect()
-            # scData = None
-            # gc.collect()
+        # scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
+        #                                                   select_cand='random',
+        #                                                   select_target='random',
+        #                                                   max_moves=None,
+        #                                                   moves_id='C_random_T_random',
+        #                                                   tracking=tracking, info_dict=info_dict)
+        # scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+        #                                                 general_results_folder=args.results_folder,
+        #                                                 prefix=output_prefixes[1])
+        # scData = None
+        # gc.collect()
+        # scData = None
+        # gc.collect()
 
         scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
                                                   select_cand='long_branches_first',
