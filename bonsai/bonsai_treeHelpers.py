@@ -4347,7 +4347,7 @@ class Tree:
         self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes
         self.nNodes = bs_glob.nNodes
         self.root.storeParent()
-        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100)
+        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-4)
 
     def select_spr_candidate(self, select_cand='random', cands_list=None, n_moves=None,
                              get_remainder=False):

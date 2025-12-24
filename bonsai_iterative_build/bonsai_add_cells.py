@@ -70,9 +70,9 @@ args = parser.parse_args()
 np.random.seed(args.seed)
 
 select_target = args.select_target
-cells_to_be_added = args.cells_to_be_added
 guide_tree_folder = args.guide_tree_folder
 growth_before_cleanup = args.growth_before_cleanup
+cells_to_be_added = args.cells_to_be_added
 resolve_polytomies_immediately = args.resolve_polytomies_immediately
 preprocessed_data_folder = args.preprocessed_data_folder
 pickup_intermediate = args.pickup_intermediate
@@ -81,6 +81,7 @@ args = Run_Configs(args.config_filepath)
 args.preprocessed_data_folder = preprocessed_data_folder
 args.select_target = select_target
 args.growth_before_cleanup = growth_before_cleanup
+args.cells_to_be_added = cells_to_be_added
 args.resolve_polytomies_immediately = resolve_polytomies_immediately
 args.search_tol = search_tol
 args.pickup_intermediate = pickup_intermediate
@@ -170,7 +171,7 @@ scdata_guide.metadata.geneVariances = scdata_all_cells.metadata.geneVariances
 scdata_guide.metadata.loglikVarCorr = scdata_all_cells.metadata.loglikVarCorr
 scdata_guide.metadata.pathToOrigData = scdata_all_cells.metadata.pathToOrigData
 scdata_guide.metadata.processedDatafolder = scdata_all_cells.metadata.processedDatafolder
-scdata_guide.metadata.results_folder = scdata_all_cells.metadata.results_folder
+scdata_guide.metadata.results_folder = args.results_folder
 
 # Add data to guide-tree, take signal-to-noise genes based on all cells
 guide_cell_inds = []
