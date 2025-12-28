@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 import os, sys, csv
 import subprocess
+import pandas as pd
 
 # TODO: REMOVE THIS EVENTUALLY
 import tracemalloc
@@ -150,6 +151,15 @@ subsets = [None] * len(guide_tree_sizes)
 subsets[-1] = np.arange(scdata.metadata.nCells)
 for subset_ind in range(len(guide_tree_sizes) - 2, -1, -1):
     subsets[subset_ind] = np.random.choice(subsets[subset_ind + 1], size=guide_tree_sizes[subset_ind], replace=False)
+
+# Create annotation file that stores which cell belongs to which subset
+which_subset = [None] * scdata.metadata.nCells
+for subset_ind, subset in enumerate(subsets):
+    for cell_ind in subset:
+        if which_subset[cell_ind] is None:
+            which_subset[cell_ind] = "subset_{}".format(subset_ind)
+annotation_df = pd.DataFrame({'iteration_subset': which_subset}, index=scdata.metadata.cellIds)
+annotation_df.to_csv(os.path.join(scdata.result_path(), 'iteration_subset_annotation.tsv'), sep='\t')
 
 scdata_subsets = []
 for subset_ind, subset in enumerate(subsets):
