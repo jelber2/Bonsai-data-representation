@@ -525,7 +525,8 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
                                                                                  cell_id_to_node_id=id_to_node_id,
                                                                                  verbose=True,
                                                                                  random_sampling=True,
-                                                                                 tracking_path=tracking_path)
+                                                                                 tracking_path=tracking_path,
+                                                                                 max_moves=1000)
 
     clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
     # TODO: REMOVE THIS!

@@ -77,7 +77,7 @@ def get_footfall_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, ce
 
 def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, cell_id_to_node_id=None,
                                                  verbose=True, node_ids_to_clst=None, random_sampling=False,
-                                                 tracking_path=None):
+                                                 tracking_path=None, max_moves=1e6):
     """
 
     :param tree_nwk_str: String read from a .nwk-file
@@ -98,19 +98,14 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
         mp_print("\nInit min-dist clustering-tree")
     cluster_tree = Cluster_Tree()
     cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
-    # if not random_sampling:
-    #     all_clusterings, cut_edges = get_annotation_based_clustering(cluster_tree,
-    #                                                                  cell_id_to_node_id=cell_id_to_node_id,
-    #                                                                  annotation_dict=annotation_dict,
-    #                                                                  verbose=verbose, node_ids_to_clst=node_ids_to_clst)
-    # else:
     clusters, cut_edges, mut_info = get_annotation_based_clustering_random(cluster_tree,
                                                                            cell_id_to_node_id=cell_id_to_node_id,
                                                                            annotation_dict=annotation_dict,
                                                                            verbose=verbose,
                                                                            node_ids_to_clst=node_ids_to_clst,
                                                                            random_sampling=random_sampling,
-                                                                           tracking_path=tracking_path)
+                                                                           tracking_path=tracking_path,
+                                                                           max_moves=max_moves)
     return clusters, cut_edges, mut_info
 
 
@@ -373,7 +368,7 @@ def test_move_acceptance(sampling_beta, orig_mut_info, new_mut_info):
 
 def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_id_to_node_id=None, verbose=True,
                                            node_ids_to_clst=None, random_sampling=False, seed=1231,
-                                           tracking_path=None):
+                                           tracking_path=None, max_moves=1e6):
     """
     Greedily cuts tree into clades such that mutual information with some annotation is maximized.
     *NOTE:* We allow for partial annotation, such that some cells have an annotation, while others do not. The use case
@@ -421,11 +416,15 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
         # beta = -log(prob_decrease) / (1 - optimality_decrease ^ 2)
         # So, if we set:
         sampling_beta = - np.log(prob_decrease) / (1 - optimality_decrease)
-        n_annealing = 100
+        # n_annealing = 100
+        n_annealing = min(max(10, cluster_tree.nNodes / 1000), 200)
         optimality_decrease_lb = .999
         annealing_factor = 5
         # Then the function for the (unnormalized) probability becomes
         # prob(NMI) = exp(-beta * (1 - (NMI/NMI_max) * optimality_decrease))
+
+        # Add these random moves to the max_moves. With the current settings these are 3 annealing phases
+        max_moves += 3 * n_annealing
 
         # We first do a burn-in phase though, where we just pick greedily
         greedy = True
@@ -512,7 +511,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
 
     print_i = 2
     n_random_moves = 0
-    while len(tree_ensmbl) < n_clusters:
+    while (len(tree_ensmbl) < n_clusters) and (n_moves < max_moves):
         n_moves += 1
         n_trees = len(tree_ensmbl)
         if verbose and (n_moves == print_i):
