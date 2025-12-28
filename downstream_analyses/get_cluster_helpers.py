@@ -1,6 +1,7 @@
 import numpy as np
 from pathlib import Path
 import os
+from bonsai.bonsai_helpers import set_recursion_limits
 
 
 class Cluster_Tree:
@@ -58,6 +59,7 @@ class Cluster_Tree:
         self.from_newick(nwk_str=nwk_str, node_id_to_vert_ind=node_id_to_vert_ind)
 
         # Renumber vert_inds on tree such that they are in line with a depth-first search
+        set_recursion_limits(int(self.nNodes))
         vertIndToNode, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0)
         self.vert_ind_to_node = vertIndToNode
         self.root.storeParent()
