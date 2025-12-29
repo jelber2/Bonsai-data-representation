@@ -495,8 +495,8 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
         continue
 
     # TODO: REMOVE THIS FOR SURE!
-    if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
-        continue
+    # if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
+    #     continue
     # if annot_id:
     #     if annot_id.startswith('annot_num'):
     #         continue

@@ -38,12 +38,12 @@ sys.path.append(parent_dir)
 
 # TODO: REMOVE THIS LATER. Just for debugging.
 # results_folder = '/Users/Daan/Documents/postdoc/collaborations/westendorp_CHKi/bonsai_cellstates_clustered_new'
-# results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021_paper_figure/cs_summed/bonsai'
 # results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021_paper_figure/mergedgenes_no_TMono_hao_satija/cs_summed/bonsai'
 # results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021_paper_figure/spr_super_sure/bonsai_scicore_run'
-# settings_filename = 'bonsai_vis_settings.json'
-# os.environ['BONSAI_DATA_PATH'] = os.path.abspath(os.path.join(results_folder, 'bonsai_vis_data.hdf'))
-# os.environ['BONSAI_SETTINGS_PATH'] = os.path.abspath(os.path.join(results_folder, settings_filename))
+results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021-immune_cells_all/hao_satija_rounded'
+settings_filename = 'bonsai_vis_settings.json'
+os.environ['BONSAI_DATA_PATH'] = os.path.abspath(os.path.join(results_folder, 'bonsai_vis_data.hdf'))
+os.environ['BONSAI_SETTINGS_PATH'] = os.path.abspath(os.path.join(results_folder, settings_filename))
 
 from bonsai_scout.bonsai_scout_app_helpers import store_current_settings, \
     get_feature_info_display, BonvisObjects, TEMP_MASK_SECS, TEMP_MASK_STEPS
@@ -303,25 +303,23 @@ app_ui = ui.page_sidebar(
                     ui.output_ui('legend_content'),
                     max_height="50%", full_screen=True, fill=False
                 ),
-                  ui.accordion(
-                      ui.accordion_panel("Annotation",
-                                         ui.input_selectize('node_style', "Node color:", {},
-                                                            selected=None),
-                                         ui.input_selectize('size_style', "Node size:", {},
-                                                            selected=None),
-                                         ui.accordion(
-                                             ui.accordion_panel('Color only subset.',
-                                                ui.output_ui('selecting_annotation_cat_annot'),
-                                                    ui.row(
-                                                        ui.column(3, ui.input_action_button("reset_subset_annot", ICONS['house'])),
-                                                        ui.column(9, ui.input_switch('switch_mask_annot', "Show only subset!",
-                                                                              value=None, width=None)),
-                                                    ),
-                                                open=False,
-                                                ),
-                                             open=False, id='annot_subset'
-                                        ),
-                                         ),
+            ui.accordion(
+                ui.accordion_panel("Annotation",
+                    ui.input_selectize('node_style', "Node color:", {}, selected=None),
+                    ui.input_selectize('size_style', "Node size:", {}, selected=None),
+                    ui.accordion(
+                        ui.accordion_panel('Color only subset.',
+                            ui.output_ui('selecting_annotation_cat_annot'),
+                                ui.row(
+                                    ui.column(3, ui.input_action_button("reset_subset_annot", ICONS['house'])),
+                                    ui.column(9, ui.input_switch('switch_mask_annot', "Show only subset!",
+                                        value=None, width=None)),
+                                ),
+                            open=False,
+                        ),
+                        open=False, id='annot_subset'
+                    ),
+                    ),
                       ui.accordion_panel("Gene expression",
                                          ui.input_selectize('feature_path_expr', "Feature type:", {},
                                                             selected=None),
@@ -401,34 +399,55 @@ app_ui = ui.page_sidebar(
                     ui.accordion_panel("Cluster cells",
                         ui.input_action_button("open_cluster_info", "ℹ️ Clustering instructions", class_="btn-info"),
                         ui.p(height='1em'),
-                        ui.div(
-                            # ui.tooltip(
-                            #     ui.span("Get minimal-distance clusters:", ICONS['info'], style='font-weight:bold'),
-                            #     ui.div(
-                            #         ui.p("To cluster the leafs in groups\n"
-                            #             "we iteratively cut the tree into\n"
-                            #             "subtrees, such that the sum of pairwise\n"
-                            #             "distances between leafs on subtrees\n"
-                            #             "is minimized."),
-                            #         ), placement='right', id='info_max_diam_clustering',
-                            #     ),
-                            # ui.input_slider("cluster_diam", "Logarithm of max diameter", min=np.round(np.log(0.01), 2), max=np.log(1), value=0, step=0.01), # TODO: maybe infer this max value from dataset
+
+                        # --- Choose clustering method ---
+                        ui.input_radio_buttons("clustering_method", "Clustering method:",
+                            choices={"distance": "Minimal-distance", "annotation": "Annotation-guided"},
+                            selected="distance", inline=True),
+                        ui.p(height="0.5em"),
+
+                        # --- Method-specific parameters ---
+                        ui.panel_conditional("input.clustering_method === 'distance'",
                             ui.input_slider("n_clusters", "Number of clusters:", min=2, max=100, value=10),
-                            # ui.p("Number of clusters found: {}".format(None)),
-                            # ui.output_ui('number_of_clusters_found'),
-                            ui.input_action_button("go_clustering", "Cluster!",
-                                                                    class_="btn-success"),
-                            ui.p(),
-                            ui.row(
-                                ui.column(6, ui.input_action_button("save_clustering", 'Add as annotation', class_='btn-dark')),
-                                ui.column(6, ui.download_button("cluster_download", "Download clustering", class_="btn-primary")),
-                                ),
+                        ),
+
+                        ui.panel_conditional("input.clustering_method === 'annotation'",
+                            ui.input_select( "annot_for_clustering", "Annotation to guide clustering:", choices=[]),
+                            ui.p(height="0.5em"),
+                            ui.input_slider("small_cluster_cutoff", "Group clusters smaller than:", min=1, max=20, value=1, step=0),
+                        ),
+                        ui.p(),
+
+                        # --- Shared cluster button ---
+                        ui.input_action_button("go_clustering", "Cluster!", class_="btn-success"),
+                        ui.p(),
+
+                        # --- Shared post-clustering actions ---
+                        ui.row(
+                            ui.column(6, ui.input_action_button( "save_clustering", "Add as annotation", class_="btn-dark")),
+                            ui.column(6, ui.download_button( "cluster_download", "Download clustering", class_="btn-primary")),
                         ),
                     ),
-                      open="Annotation",
-                      multiple=False,
-                      id='options_accordion',
-                      max_height='50%',),
+                    # """OLD VERSION!!!"""
+                    # ui.accordion_panel("Cluster cells",
+                    #     ui.input_action_button("open_cluster_info", "ℹ️ Clustering instructions", class_="btn-info"),
+                    #     ui.p(height='1em'),
+                    #     ui.div(
+                    #         ui.input_slider("n_clusters", "Number of clusters:", min=2, max=100, value=10),
+                    #         ui.input_action_button("go_clustering", "Cluster!",
+                    #                                                 class_="btn-success"),
+                    #         ui.p(),
+                    #         ui.row(
+                    #             ui.column(6, ui.input_action_button("save_clustering", 'Add as annotation', class_='btn-dark')),
+                    #             ui.column(6, ui.download_button("cluster_download", "Download clustering", class_="btn-primary")),
+                    #             ),
+                    #     ),
+                    # ),
+                    # """OLD VERSION ENDS"""
+                    open="Annotation",
+                    multiple=False,
+                    id='options_accordion',
+                    max_height='50%',),
                   style='height:100%;overflow:auto'
                   ),
         style='height: 100%'),
@@ -463,6 +482,7 @@ def server(input, output, session: Session):
     update_figure_kwargs = reactive.value(None)
 
     first_tree_plot = reactive.value(True)
+    cluster_result = reactive.Value(None)
 
     # When subset of cells is selected, we update the following. mask_is_on tracks whether only subset is shown in color
     selected_subset_annot = reactive.value({'type': None, 'info': None, 'mask_is_on': False})
@@ -701,7 +721,7 @@ def server(input, output, session: Session):
             ui.h5(ui.HTML("Adding the clustering as a new annotation")),
             ui.HTML("With the 'Add as annotation'-button, the current clustering " \
                 "can be added as annotation. By subsequently selecting the clustering in the 'Annotation'-tab, the 'Marker genes'-tab"
-                "can now be used to detect marker features for the different clusters."),
+                " can now be used to detect marker features for the different clusters."),
             ui.p(),
             ui.h5(ui.HTML("Downloading the clustering:")),
             ui.HTML("By clicking the download button, one can download a '.tsv'-file with a mapping from object-ID to cluster-ID."),
@@ -725,16 +745,18 @@ def server(input, output, session: Session):
             choices=bv_objct.layout_types_dict,
             selected=bv_objct.init_layout,
         )
-        ui.update_selectize(
-            "node_style",
+        ui.update_selectize("node_style",
             choices=bv_objct.annotation_dict,
             selected=bv_objct.init_node_style,
         )
         ui.update_slider("n_clusters", label="Number of clusters:", min=2, max=bv_objct.max_n_clusters, value=10)
-        ui.update_selectize(
-            "size_style",
+        ui.update_selectize("size_style",
             choices=bv_objct.size_annotation_dict,
             selected=bv_objct.init_size_style,
+        )
+        ui.update_selectize("annot_for_clustering",
+            choices=bv_objct.clustering_annotation_dict,
+            selected=bv_objct.init_node_style,
         )
         ui.update_selectize(
             "feature_path_expr",
@@ -801,22 +823,17 @@ def server(input, output, session: Session):
     @reactive.effect
     @reactive.event(input.go_clustering)
     def _():
-        cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+        small_cluster_cutoff = None
+        if input.clustering_method() == 'distance':
+            cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+            small_cluster_cutoff = None
+        elif input.clustering_method() == 'annotation':
+            cluster_node_style = "Cluster_" + input.annot_for_clustering()
+            bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
+            annot_info = get_clustering_annot_info(bv_objct)
+            annot_info.small_type_cutoff = input.small_cluster_cutoff()
+
         node_style.set(cluster_node_style)
-
-    # @reactive.effect
-    # @reactive.event(input.go_clustering)
-    # def _():
-    #     bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
-    #     n_clusters.set(bv_objct.bonvis_fig.number_of_clusters_found)
-        # n_clusters.set(10) # this works#
-
-    # @render.text
-    # def number_of_clusters_found():
-    #     return "Number of clusters found: {}".format(n_clusters.get())
-        # global num_clusters
-        # n_clusters.set(num_clusters)
-        # return ui.p("hi: {}".format(n_clusters))
 
     # --------------------------------------------------------
     # Outputs
@@ -1173,19 +1190,6 @@ def server(input, output, session: Session):
             # Double click was not used yet, so input undefined
             origin = None
 
-        # # Determine if clustering should be performed
-        # input.go_clustering()
-        # # cluster_diam = None
-        # n_clusters = None
-        # # Take a reactive dependency on the clustering-action button...
-        #     # ...but don't take a reactive dependency on the n_clusters-slider
-        # with reactive.isolate():
-        #     # new_cluster_diam = np.exp(input.cluster_diam())
-        #     if input.go_clustering() != bv_objct.click_counters['cluster']:
-        #         bv_objct.click_counters['cluster'] = input.go_clustering()
-        #         n_clusters = input.n_clusters()
-        #         # ui.update_slider("curvature", value=0)
-
         kwarg_list = [geometry, zoom, scale_nodes, scale_edges, origin, node_style_upd,
                       size_style_upd, ly_type, tweak_inds, new_flip_id, scale_node_edges,
                       multip_angle, ax_lims, zoom_ax_lims, reset_now, renew_mask_fig]
@@ -1251,14 +1255,6 @@ def server(input, output, session: Session):
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
         return 'bonsai_tree_{}.{}'.format(bv_objct.click_counters['fig'], input.fig_format())
 
-    # @reactive.effect
-    # @reactive.event(input.go_clustering)
-    # def _():
-    #     # download_cluster_diam = np.exp(input.cluster_diam())
-    #     download_n_clsts = input.n_clusters()
-    #     cluster_filename = "clustering_{}.tsv".format(download_n_clsts)
-    #     logger.debug("go clustering, change filename: {}".format(cluster_filename))
-
     def make_cluster_filename():
         download_n_clsts = input.n_clusters()
         cluster_filename = "clustering_{}.tsv".format(download_n_clsts)
@@ -1270,10 +1266,10 @@ def server(input, output, session: Session):
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
 
         # Add clustering annotation to downloadable node styles
-        add_clustering_to_nodestyles(bv_objct)
+        annot_info = add_clustering_to_nodestyles(bv_objct)
 
         cluster_labels = bv_objct.bonvis_metadata.cs_info['cluster_info_dict'].keys()
-        info_key = "annot_cluster_n{}".format(input.n_clusters())
+        info_key = annot_info.info_key
         if info_key not in cluster_labels:
             logger.error("Could not find the clustering you want to download. Did you perform the clustering already?")
             return
@@ -1283,14 +1279,6 @@ def server(input, output, session: Session):
         annot_list = bv_objct.bonvis_metadata.cs_info['cluster_info_dict'][info_key]
         dfout = pd.DataFrame({"node-ID": bv_objct.bonvis_metadata.cs_ids, "cluster": annot_list})
         yield dfout.to_csv(index=False, sep='\t')
-
-        # test
-        # this works
-        # df = pd.DataFrame({"test":[0,1,2,3,4]})
-        # print(df.shape)
-        # print(df)
-        # yield df.to_string(index=False)
-
 
     @render.download(filename=lambda:make_user_specific_marker_name())
     async def marker_info_download():
@@ -1317,7 +1305,10 @@ def server(input, output, session: Session):
     @reactive.event(input.save_clustering)
     def _():
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
-        cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+        if input.clustering_method() == 'distance':
+            cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+        elif input.clustering_method() == 'annotation':
+            cluster_node_style = "Cluster_" + input.annot_for_clustering()
 
         # Set nodestyle to cluster-node style
         node_style.set(cluster_node_style)
@@ -1326,15 +1317,27 @@ def server(input, output, session: Session):
         add_clustering_to_nodestyles(bv_objct)
 
 
-    def add_clustering_to_nodestyles(bv_objct):
+    def get_clustering_annot_info(bv_objct):
         # Get annot-info object 
         celltype_info = bv_objct.bonvis_fig.bonvis_settings.celltype_info
-        cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+        if input.clustering_method() == 'distance':
+            cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+        elif input.clustering_method() == 'annotation':
+            cluster_node_style = "Cluster_" + input.annot_for_clustering()
         annot_info = [annot_info for annot, annot_info in celltype_info.annot_infos.items() if
-                      annot_info.label == cluster_node_style]
+                      annot_info.label.lower() == cluster_node_style.lower()]
         if len(annot_info) == 1:
-            # If found, stop hiding the annotation from view
             annot_info = annot_info[0]
+        else:
+            annot_info = None
+        return annot_info
+
+
+    def add_clustering_to_nodestyles(bv_objct):
+        # Get annot-info object 
+        annot_info = get_clustering_annot_info(bv_objct)
+        if annot_info is not None:
+            # If found, stop hiding the annotation from view
             annot_info.hidden = False
             if annot_info.color_type == 'categorical':
                 # Update some reactive values that we need elsewhere
@@ -1343,12 +1346,16 @@ def server(input, output, session: Session):
 
         # Update annotation dict for showing in the node-style
         bv_objct.annotation_dict = {}
-        for annot, annot_info in bv_objct.annot_infos.items():
-            if hasattr(annot_info, 'hidden') and annot_info.hidden:
+        for annot_key, annot_info_iter in bv_objct.annot_infos.items():
+            if hasattr(annot_info_iter, 'hidden') and annot_info_iter.hidden:
                 continue
-            bv_objct.annotation_dict[annot_info.label] = annot_info.label
+            bv_objct.annotation_dict[annot_info_iter.label] = annot_info_iter.label
         ui.update_selectize("node_style", choices=bv_objct.annotation_dict,
                             selected=bv_objct.bonvis_fig.bonvis_settings.node_style['annot_info'].label)
+        
+        return annot_info
+        
+
 
 
 

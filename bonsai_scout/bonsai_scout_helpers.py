@@ -277,6 +277,7 @@ class Annotation_info:
     info_object = None
     info_key = None
     hidden = False
+    small_type_cutoff = 1
 
     def __init__(self, cats=None, annot_to_color=None, label=None, cbar_info=None, annot_type=None, color_type=None,
                  info_object=None, info_key=None, hidden=False):
@@ -2583,7 +2584,7 @@ def color_code_to_color(dummy, color_codes=None):
 def find_annot(new_annot_label, bonvis_settings, bonvis_data, bonvis_metadata):
     celltype_info = bonvis_settings.celltype_info
     annot_objs = [annot_info for annot, annot_info in celltype_info.annot_infos.items() if
-                  annot_info.label == new_annot_label]
+                  annot_info.label.lower() == new_annot_label.lower()]
     found_it = False
     if len(annot_objs) == 1:
         found_it = True
@@ -2591,7 +2592,7 @@ def find_annot(new_annot_label, bonvis_settings, bonvis_data, bonvis_metadata):
     if not found_it:
         verttype_info = bonvis_settings.verttype_info
         annot_objs = [annot_info for annot, annot_info in verttype_info.annot_infos.items() if
-                      annot_info.label == new_annot_label]
+                      annot_info.label.lower() == new_annot_label.lower()]
         if len(annot_objs) == 1:
             found_it = True
             return annot_objs[0]
@@ -2602,7 +2603,7 @@ def find_annot(new_annot_label, bonvis_settings, bonvis_data, bonvis_metadata):
             feature_hdf = bonvis_data[feature_path]
             feature_ids = json.loads(feature_hdf.attrs['gene_ids'])
             feature_tuples = [(feature_ind, feature_name) for feature_ind, feature_name in
-                              enumerate(feature_ids) if feature_name == new_annot_label]
+                              enumerate(feature_ids) if feature_name.lower() == new_annot_label.lower()]
         else:
             feature_tuples = []
         if len(feature_tuples) == 1:

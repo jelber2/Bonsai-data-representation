@@ -162,10 +162,15 @@ class BonvisObject:
         self.annot_infos = dict(self.bonvis_fig.bonvis_settings.celltype_info.annot_infos,
                                 **self.bonvis_fig.bonvis_settings.verttype_info.annot_infos)
         self.annotation_dict = {}
+        self.clustering_annotation_dict = {}
+        annot_alts_set = set(self.bonvis_fig.bonvis_settings.celltype_info.annot_alts + 
+                             self.bonvis_fig.bonvis_settings.verttype_info.annot_alts)
         for annot, annot_info in self.annot_infos.items():
             if hasattr(annot_info, 'hidden') and annot_info.hidden:
                 continue
             self.annotation_dict[annot_info.label] = annot_info.label
+            if (annot_info.cats is not None) and (annot_info.info_key in annot_alts_set):
+                    self.clustering_annotation_dict[annot_info.label] = annot_info.label
 
         self.size_annotation_dict = {}
         for annot, annot_info in self.annot_infos.items():
