@@ -826,12 +826,14 @@ def server(input, output, session: Session):
         small_cluster_cutoff = None
         if input.clustering_method() == 'distance':
             cluster_node_style = "Cluster_n{}".format(input.n_clusters())
-            small_cluster_cutoff = None
         elif input.clustering_method() == 'annotation':
             cluster_node_style = "Cluster_" + input.annot_for_clustering()
             bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
             annot_info = get_clustering_annot_info(bv_objct)
-            annot_info.small_type_cutoff = input.small_cluster_cutoff()
+            if (not hasattr(annot_info, 'small_type_cutoff')) or (input.small_cluster_cutoff() != annot_info.small_type_cutoff):
+                bv_objct.bonvis_fig.set_small_type_cutoff(annot_info, input.small_cluster_cutoff())
+                # Invalidate old node style to re-draw the figure
+                bv_objct.old_node_style += '_old'
 
         node_style.set(cluster_node_style)
 

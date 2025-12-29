@@ -26,7 +26,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
-from bonsai.bonsai_helpers import str2bool, Run_Configs, find_latest_tree_folder
+from bonsai.bonsai_helpers import str2bool, Run_Configs, find_latest_tree_folder, mp_print
 from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str, \
     get_cluster_assignments, get_annotation_based_clustering_from_nwk_str
 
@@ -493,6 +493,7 @@ all_cl_dfs = [cl_df]
 for annot_id, annot_info in celltype_info.annot_infos.items():
     if annot_info.color_type != 'categorical':
         continue
+    mp_print("Starting clustering guided by Annotation: {}".format(annot_id))
 
     # TODO: REMOVE THIS FOR SURE!
     # if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:

@@ -94,8 +94,6 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
     :param verbose:
     :return:
     """
-    if verbose:
-        mp_print("\nInit min-dist clustering-tree")
     cluster_tree = Cluster_Tree()
     cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
     clusters, cut_edges, mut_info = get_annotation_based_clustering_random(cluster_tree,
@@ -355,8 +353,11 @@ def get_ent_change_merge_move(node, n_labels=None):
 
 def get_new_mut_info(orig_ent_diff, annot_entropy, clade_entropy, clade_ent_change, annot_ent_change):
     new_ent_diff = (orig_ent_diff + clade_ent_change - annot_ent_change)
-    new_normalization = np.sqrt(annot_entropy * (clade_entropy + clade_ent_change))
-    new_mut_info = new_ent_diff / new_normalization if new_normalization > 0 else 0.0
+    new_normalization_sq = annot_entropy * (clade_entropy + clade_ent_change)
+    if new_normalization_sq > 0.:
+        new_mut_info = new_ent_diff / np.sqrt(new_normalization_sq)
+    else:
+        new_mut_info = 0.0
     return new_mut_info
 
 
@@ -399,6 +400,8 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     n_moves = -1
     if node_ids_to_clst is not None:
         node_ids_to_clst_set = set(node_ids_to_clst)
+    else:
+        node_ids_to_clst_set = None
 
     if cluster_tree.vert_ind_to_node is None:
         cluster_tree.vert_ind_to_node, cluster_tree.nNodes = cluster_tree.root.renumber_verts(vertIndToNode={},
@@ -434,6 +437,12 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     # Get some statistics on the annotation-labels
     annot_labels = np.unique(list(annotation_dict.values()))
     n_labels = len(annot_labels)
+    if n_labels == 1:
+        mp_print("Only one annotation-label, nothing to cluster.")
+        tree_ensmbl = [cluster_tree]
+        clusters = get_clustering_lists(tree_ensmbl, node_ids_to_clst_set)
+        return clusters, [], 1.0
+
     label_to_ind = {annot: ind for ind, annot in enumerate(annot_labels)}
 
     # Store the downstream annotation-counts on each node
@@ -821,20 +830,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
              "created {} clusters, "
              "with a Normalized Mutual Information of {}.".format(n_moves + 1, n_trees, max_new_mut_info))
 
-    # Should produce a list of lists with the node-IDs of the various clusters
-    clusters = [None] * len(tree_ensmbl)
-    for ind_tree, tree in enumerate(tree_ensmbl):
-        if clusters[ind_tree] is not None:
-            continue
-        leaf_ids_tree = []
-        for vert_ind, node in tree.vert_ind_to_node.items():
-            if node_ids_to_clst is None:
-                if node.isLeaf:
-                    leaf_ids_tree.append(node.nodeId)
-            else:
-                if node.nodeId in node_ids_to_clst_set:
-                    leaf_ids_tree.append(node.nodeId)
-        clusters[ind_tree] = leaf_ids_tree
+    clusters = get_clustering_lists(tree_ensmbl, node_ids_to_clst_set)
 
     if tracking_path is not None:
         df = pd.DataFrame(stats)
@@ -844,6 +840,24 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     if verbose:
         mp_print("Clustering done")
     return clusters, cut_edges, max_new_mut_info
+
+
+def get_clustering_lists(tree_ensmbl, node_ids_to_clst_set):
+    # Should produce a list of lists with the node-IDs of the various clusters
+    clusters = [None] * len(tree_ensmbl)
+    for ind_tree, tree in enumerate(tree_ensmbl):
+        if clusters[ind_tree] is not None:
+            continue
+        leaf_ids_tree = []
+        for vert_ind, node in tree.vert_ind_to_node.items():
+            if node_ids_to_clst_set is None:
+                if node.isLeaf:
+                    leaf_ids_tree.append(node.nodeId)
+            else:
+                if node.nodeId in node_ids_to_clst_set:
+                    leaf_ids_tree.append(node.nodeId)
+        clusters[ind_tree] = leaf_ids_tree
+    return clusters
 
 
 def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_ids_all_splits=False, verbose=True,
