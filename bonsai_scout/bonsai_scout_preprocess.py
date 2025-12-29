@@ -529,8 +529,6 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
                                                                                  max_moves=1000)
 
     clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
-    # TODO: REMOVE THIS!
-    clustering_name = 'annot_cluster_n101'
     cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
                                           node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
     cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]

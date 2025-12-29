@@ -378,22 +378,20 @@ class Bonvis_settings:
         #     possible_init_annots = [annot for annot in self.celltype_info.annot_alts if annot != 'annot_default']
         possible_init_annots = []
         if len(self.celltype_info.annot_alts) > 1:
-            possible_init_annots = [annot for annot in self.celltype_info.annot_alts if annot != 'annot_default']
+            possible_init_annots = [annot_key for annot_key, annot_info in self.celltype_info.annot_infos.items()
+                                    if not annot_info.hidden]
             annot_tuples = []
-            for annot_alt in self.celltype_info.annot_alts:
-                if annot_alt == 'annot_default':
+            for annot_key, annot_info in self.celltype_info.annot_infos.items():
+                if annot_info.hidden:
                     continue
-                if annot_alt[:15] == 'annot_cluster_n':
+                if annot_info.cats is None:
                     continue
-                annot_info_alt = self.celltype_info.annot_infos[annot_alt]
-                if annot_info_alt.cats is None:
-                    continue
-                annot_tuples.append((annot_alt, len(annot_info_alt.cats)))
+                annot_tuples.append((annot_key, len(annot_info.cats)))
             if len(annot_tuples) > 0:
                 # Select "cellTypeName" first, if not present, "Celltype", then the one with fewest categories
                 sorted_annots = sorted(annot_tuples, key=lambda x: (not x[0].lower().startswith("annot_celltypename"),
                                                                     not x[0].lower().startswith("annot_celltype"),
-                                                                    x[1]))
+                                                                    abs(x[1]-10)))
                 possible_init_annots = [sorted_annots[0][0]]
         init_annot = possible_init_annots[0] if len(possible_init_annots) else self.celltype_info.annot_alts[0]
         self.set_annot(annot_label=init_annot)
