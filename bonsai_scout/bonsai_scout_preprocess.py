@@ -528,15 +528,15 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
                                                                                  random_sampling=True,
                                                                                  tracking_path=tracking_path,
                                                                                  max_moves=1000)
-
-    clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
-    cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
-                                          node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
-    cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]
-    # Process annot-based clustering results
-    # TODO: Do this only in the app, eventually
-    cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict, cutoff=7)
-    all_cl_dfs.append(cl_df_annot)
+    if len(cut_edges):  # i.e. we discard the trivial clusterings
+        clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
+        cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
+                                              node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
+        cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]
+        # Process annot-based clustering results
+        # TODO: Do this only in the app, eventually
+        cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict, cutoff=7)
+        all_cl_dfs.append(cl_df_annot)
 
 cl_df = pd.concat(all_cl_dfs, axis=1)
 cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='fixed',

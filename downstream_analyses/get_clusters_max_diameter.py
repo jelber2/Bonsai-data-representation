@@ -389,7 +389,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     :param tracking_folder: Just a path where I can store some stats for performance tracking.
     :return:
     """
-    very_verbose = False
+    very_verbose = True
 
     if tracking_path is not None:
         # tracking_path, _ = os.path.splitext(tracking_path)
@@ -437,8 +437,11 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     # Get some statistics on the annotation-labels
     annot_labels = np.unique(list(annotation_dict.values()))
     n_labels = len(annot_labels)
-    if n_labels == 1:
-        mp_print("Only one annotation-label, nothing to cluster.")
+    if n_labels in [1, len(annotation_dict)]:
+        if n_labels == 1:
+            mp_print("Only one annotation-label, nothing to cluster.")
+        elif n_labels == len(annotation_dict):
+            mp_print("All annotation-labels are different, no point in trying to match this with clustering.")
         tree_ensmbl = [cluster_tree]
         clusters = get_clustering_lists(tree_ensmbl, node_ids_to_clst_set)
         return clusters, [], 1.0
@@ -627,21 +630,35 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                         new_mut_info = get_new_mut_info(orig_ent_diff, annot_entropy, clade_entropy,
                                                         node.clade_ent_change,
                                                         node.annot_ent_change)
-                    if new_mut_info > max_new_mut_info:
+                    # if we're grouping clusters, we always accept moves that improve the NMI, if we're cutting we only accept
+                    # if they're improving to a reasonable extent
+                    tol = -1e-5 if (node.parentNode is None) else 1e-4
+                    if new_mut_info > max(max_new_mut_info, orig_mut_info + tol):
                         max_node = node
                         max_tree = tree
                         max_new_mut_info = new_mut_info
 
         # Determine which tree has the maximum score
-        if (not random_sampling) and (max_new_mut_info < orig_mut_info + 1e-9):
-            mp_print("\nAfter making {} clusters, norm. mutual information only goes down. "
-                     "Stopping here.".format(n_trees))
-            break
+        if not random_sampling:
+            # if we're grouping clusters, we always accept moves that improve the NMI, if we're cutting we only accept
+            # if they're improving to a reasonable extent
+            quitting = False
+            if max_node is None:
+                quitting = True
+            else:
+                tol = -1e-5 if (max_node.parentNode is None) else 1e-4
+                if max_new_mut_info < orig_mut_info + tol:
+                    quitting = True
+            if quitting:
+                mp_print("\nAfter making {} clusters, norm. mutual information doesn't significantly increase. "
+                         "Stopping here.".format(n_trees))
+                break
 
         if random_sampling and greedy:
             if (max_new_mut_info / (orig_mut_info + 1e-9)) < 1.01:
                 mp_print("Progress is stalling, stopping the greedy burn-in phase, starting the random phase")
                 greedy = False
+                continue
 
         # Cut the tree into two pieces at the edge that maximizes the norm. mut. info.
         ds_node = max_node
@@ -828,7 +845,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
 
     mp_print("Final annotation-based clustering did {} moves, "
              "created {} clusters, "
-             "with a Normalized Mutual Information of {}.".format(n_moves + 1, n_trees, max_new_mut_info))
+             "with a Normalized Mutual Information of {}.".format(n_moves + 1, n_trees, orig_mut_info))
 
     clusters = get_clustering_lists(tree_ensmbl, node_ids_to_clst_set)
 

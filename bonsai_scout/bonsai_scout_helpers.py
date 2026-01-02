@@ -1029,26 +1029,30 @@ class Bonvis_figure:
         annot_info.small_type_cutoff = small_type_cutoff
 
     def get_correct_cell_to_celltype(self, annot_info):
-        cell_info_dict = self.bonvis_metadata.cell_info['cell_info_dict']
-        cs_info_dict = self.bonvis_metadata.cs_info['cs_info_dict']
-        cluster_info_dict = self.bonvis_metadata.cs_info['cluster_info_dict']
-        annot = annot_info.info_key
-        # Get color information for all cells or all verts
-        if annot_info.info_object == 'cell_info_dict':
-            cell_to_celltype = cell_info_dict[annot]
-        elif annot_info.info_object == 'cs_info_dict':
-            cell_to_celltype = cs_info_dict[annot]
-        elif annot_info.info_object == 'cluster_info_dict':
-            cell_to_celltype = cluster_info_dict[annot]
-        elif annot_info.info_object == 'vert_info_dict':
-            vert_info_dict = self.bonvis_metadata.vert_info
-            cell_to_celltype = vert_info_dict[annot]
-        elif annot_info.info_object == 'new_cell_info_dict':
-            cell_to_celltype = self.bonvis_settings.verttype_info.new_cell_info_dict[annot]
-        elif annot_info.info_object[:5] == 'data/':
-            feature_ind = int(annot[8:])
-            cell_to_celltype = self.bonvis_data[annot_info.info_object]['means'][feature_ind, :]
-        else:
+        try:
+            cell_info_dict = self.bonvis_metadata.cell_info['cell_info_dict']
+            cs_info_dict = self.bonvis_metadata.cs_info['cs_info_dict']
+            cluster_info_dict = self.bonvis_metadata.cs_info['cluster_info_dict']
+            annot = annot_info.info_key
+            # Get color information for all cells or all verts
+            if annot_info.info_object == 'cell_info_dict':
+                cell_to_celltype = cell_info_dict[annot]
+            elif annot_info.info_object == 'cs_info_dict':
+                cell_to_celltype = cs_info_dict[annot]
+            elif annot_info.info_object == 'cluster_info_dict':
+                cell_to_celltype = cluster_info_dict[annot]
+            elif annot_info.info_object == 'vert_info_dict':
+                vert_info_dict = self.bonvis_metadata.vert_info
+                cell_to_celltype = vert_info_dict[annot]
+            elif annot_info.info_object == 'new_cell_info_dict':
+                cell_to_celltype = self.bonvis_settings.verttype_info.new_cell_info_dict[annot]
+            elif annot_info.info_object[:5] == 'data/':
+                feature_ind = int(annot[8:])
+                cell_to_celltype = self.bonvis_data[annot_info.info_object]['means'][feature_ind, :]
+            else:
+                logger.error("Could not find this cell-to-celltype mapping ({}) anywhere".format(annot))
+                return None
+        except KeyError:
             logger.error("Could not find this cell-to-celltype mapping ({}) anywhere".format(annot))
             return None
         cell_to_celltype = np.array(cell_to_celltype)
