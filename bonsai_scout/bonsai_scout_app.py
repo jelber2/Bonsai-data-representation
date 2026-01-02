@@ -40,7 +40,8 @@ sys.path.append(parent_dir)
 # results_folder = '/Users/Daan/Documents/postdoc/collaborations/westendorp_CHKi/bonsai_cellstates_clustered_new'
 # results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021_paper_figure/mergedgenes_no_TMono_hao_satija/cs_summed/bonsai'
 # results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021_paper_figure/spr_super_sure/bonsai_scicore_run'
-results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021-immune_cells_all/hao_satija_rounded'
+results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/buenrostro_scatac'
+# results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021-immune_cells_all/hao_satija_rounded'
 settings_filename = 'bonsai_vis_settings.json'
 os.environ['BONSAI_DATA_PATH'] = os.path.abspath(os.path.join(results_folder, 'bonsai_vis_data.hdf'))
 os.environ['BONSAI_SETTINGS_PATH'] = os.path.abspath(os.path.join(results_folder, settings_filename))
@@ -713,10 +714,22 @@ def server(input, output, session: Session):
         modal = ui.modal(
             ui.h3(ui.HTML("Clustering using <em>Bonsai-scout</em>:")),
             ui.p(),
-            ui.h5(ui.HTML("Minimal distance clustering:")),
-            ui.HTML("To cluster the leafs in groups, we iteratively cut branches to create subtrees. At each step, we cut the branch " \
-                "such that the sum of pairwise distances between leafs on the created subtrees is minimized. <br>" \
+            ui.h4(ui.HTML("Two ways of clustering:")),
+            ui.h6(ui.HTML("1. Minimal distance clustering:")),
+            ui.HTML("To cluster the leafs in groups, we iteratively cut branches to create subtrees. "
+                    "At each step, we cut the branch "
+                "such that the sum of pairwise distances between leafs on the created subtrees is minimized. <br>"
                 "Use the slider to set the number of clusters, and click the 'Cluster'-button to create the clusters."),
+            ui.p(),
+            ui.h6(ui.HTML("2. Annotation-guided clustering:")),
+            ui.HTML("To cluster the leafs in groups, we search a tree-consistent clustering "
+                    "that maximizes the Normalized Mutual Information of the clusters with a "
+                    "user-provided annotation. <br>"
+                    "Pick the desired annotation from the drop-down menu, and click the 'Cluster'-button. <br>"
+                    "Note 1: This procedure sometimes leads to many small clades. To aid visualization, use the slider "
+                    "to give all clusters below a certain size the same color. <br>"
+                    "Note 2: If the drop-down menu is empty, there were either no suitable annotations, "
+                    "or the Bonsai-scout preprocessing was done with an old code version. <br>"),
             ui.p(),
             ui.h5(ui.HTML("Adding the clustering as a new annotation")),
             ui.HTML("With the 'Add as annotation'-button, the current clustering " \
