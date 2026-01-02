@@ -8,6 +8,7 @@ import pandas as pd
 from ruamel.yaml import YAML
 from shiny import ui
 import sys
+import re
 
 import logging
 FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
@@ -206,9 +207,9 @@ class BonvisObject:
         self.init_feature_path = self.bonvis_fig.bonvis_settings.node_style['feature_path']
         self.feature_display = get_feature_info_display(self.bonvis_fig.bonvis_data,
                                                         self.bonvis_fig.bonvis_settings.node_style['feature_path'])
-        self.max_n_clusters = int(np.max([int(annot_alt.split('annot_cluster_n')[-1]) for 
-                                      annot_alt in self.bonvis_fig.bonvis_settings.celltype_info.annot_alts 
-                                      if annot_alt.startswith('annot_cluster_n')]))
+        pattern = re.compile(r"annot_cluster_n(\d+)")
+        self.max_n_clusters = max((int(m.group(1)) for s in annot_alts_set if (m := pattern.search(s))),
+                                  default=None)
 
         self.old_orig = np.array([0, 0])
         self.old_node_style = self.bonvis_fig.bonvis_settings.node_style['annot_info'].label
