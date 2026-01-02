@@ -999,9 +999,9 @@ class Bonvis_figure:
             cats = list(counts.keys())
         else:
             cats, counts = np.unique(cell_to_celltype, return_counts=True)
-            sorted_idx = np.argsort(-counts)
-            cats = cats[sorted_idx]
-            counts = counts[sorted_idx]
+            sorted = np.argsort(-counts)
+            cats = cats[sorted]
+            counts = counts[sorted]
             counts = {k: int(v) for k, v in zip(cats, counts)}
             annot_info.cat_counts_dict = counts
 
@@ -1017,12 +1017,14 @@ class Bonvis_figure:
         celltype_colors = get_celltype_colors_new(n_colors, colortype=None)
         annot_to_color = {}
         ind = 1
-        if 'NaN' in cats:
-            annot_to_color['NaN'] = cm.get_cmap('gray')(0.75)
-        for cat in low_freq_cats:
-            annot_to_color[cat] = celltype_colors(0)
-        for ind, cat in enumerate(kept_cats):
-            annot_to_color[cat] = celltype_colors(ind + 1)
+        for cat in cats:
+            if cat == 'NaN':
+                annot_to_color[cat] = cm.get_cmap('gray')(0.75)
+            if cat in low_freq_cats:
+                annot_to_color[cat] = celltype_colors(0)
+            if cat in kept_cats:
+                annot_to_color[cat] = celltype_colors(ind)
+                ind += 1
         annot_info.annot_to_color = annot_to_color
         annot_info.small_type_cutoff = small_type_cutoff
 
@@ -1617,7 +1619,8 @@ class Bonvis_figure:
         cbar_info = annot_info.cbar_info
         if celltype_to_color is not None:
             # colors.to_hex(color, keep_alpha=True)
-            celltype_to_hex = {ind: (" ", celltype) for ind, (celltype, color) in enumerate(celltype_to_color.items())}
+            # celltype_to_hex = {ind: (" ", celltype) for ind, (celltype, color) in enumerate(celltype_to_color.items())}
+            celltype_to_hex = {ind: (" ", cat) for ind, cat in enumerate(annot_info.cats)}
             leg_df = pd.DataFrame.from_dict(celltype_to_hex, orient='index', columns=["Color", 'Celltype'])
             color_codes = [colors.to_hex(celltype_to_color[celltype], keep_alpha=True) for celltype in
                            leg_df['Celltype']]
