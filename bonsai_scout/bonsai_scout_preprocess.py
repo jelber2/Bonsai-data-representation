@@ -488,6 +488,8 @@ node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csId
                             vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}
 cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
 cl_df = cl_df.loc[metadata_dict['csIds']]
+# Process distance-based clustering names
+cl_df = process_annot_based_clsts(cl_df, cell2annot=None)
 
 all_cl_dfs = [cl_df]
 for annot_id, annot_info in celltype_info.annot_infos.items():
@@ -534,8 +536,7 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
                                               node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
         cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]
         # Process annot-based clustering results
-        # TODO: Do this only in the app, eventually
-        cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict, cutoff=7)
+        cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict)
         all_cl_dfs.append(cl_df_annot)
 
 cl_df = pd.concat(all_cl_dfs, axis=1)

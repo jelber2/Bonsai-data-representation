@@ -170,8 +170,9 @@ class BonvisObject:
             if hasattr(annot_info, 'hidden') and annot_info.hidden:
                 continue
             self.annotation_dict[annot_info.label] = annot_info.label
-            if (annot_info.cats is not None) and (annot_info.info_key in annot_alts_set):
-                    self.clustering_annotation_dict[annot_info.label] = annot_info.label
+            clustering_name = 'annot_cluster_' + annot_info.info_key[6:] if annot_info.info_key.startswith('annot_') else annot_info.info_key
+            if (annot_info.cats is not None) and (clustering_name in annot_alts_set):
+                self.clustering_annotation_dict[annot_info.label] = annot_info.label
 
         self.size_annotation_dict = {}
         for annot, annot_info in self.annot_infos.items():

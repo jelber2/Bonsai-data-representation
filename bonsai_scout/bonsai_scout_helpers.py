@@ -8,6 +8,7 @@ plt.set_loglevel(level='warning')
 import matplotlib
 import re
 import itertools
+import time
 
 from matplotlib.collections import LineCollection, EllipseCollection
 from matplotlib import cm
@@ -2817,57 +2818,112 @@ def get_placeholder_fig():
     return fig
 
 
-def rename_clusters_fast(cluster_series, annot_series, cutoff=1):
-    tmp = pd.DataFrame({
-        "cluster": cluster_series,
-        "annot": annot_series
-    })
+# def rename_clusters_fast(cluster_series, annot_col=None):
+#     if annot_col is not None:
+#         tmp = pd.DataFrame({"cluster": cluster_series, "annot": annot_col})
+#     else:
+#         tmp = pd.DataFrame({'cluster': cluster_series})
+#
+#     # cluster sizes
+#     cluster_sizes = tmp.groupby("cluster").size()
+#
+#     if annot_col is not None:
+#         # annotation frequencies per cluster
+#         freq = (
+#             tmp
+#             .groupby("cluster")["annot"]
+#             .value_counts(normalize=True)
+#             .mul(100)
+#             .round()
+#             .astype(int)
+#             .rename("perc")
+#             .reset_index()
+#         )
+#
+#         # take top 2 annotations per cluster
+#         top2 = freq.sort_values(["cluster", "perc"], ascending=[True, False])
+#         top2 = top2.groupby("cluster").head(2)
+#
+#     # build cluster → name mapping
+#     def build_name(sub):
+#         cl = sub.name
+#
+#         parts = [cl, f"Size={cluster_sizes[cl]}"]
+#         if annot_col is not None:
+#             for _, r in sub.iterrows():
+#                 parts.append(f"{r['perc']}%={r['annot']}")
+#
+#         return ", ".join(parts)
+#
+#     new_names = top2.groupby("cluster").apply(build_name)
+#
+#     # map back
+#     return cluster_series.map(new_names)
+
+
+def rename_clusters_fast(cluster_series, annot_col=None):
+    if annot_col is not None:
+        tmp = pd.DataFrame({"cluster": cluster_series, "annot": annot_col})
+    else:
+        tmp = pd.DataFrame({"cluster": cluster_series})
 
     # cluster sizes
     cluster_sizes = tmp.groupby("cluster").size()
 
-    # annotation frequencies per cluster
-    freq = (
-        tmp
-        .groupby("cluster")["annot"]
-        .value_counts(normalize=True)
-        .mul(100)
-        .round()
-        .astype(int)
-        .rename("perc")
-        .reset_index()
-    )
+    if annot_col is not None:
+        # annotation frequencies per cluster
+        freq = (
+            tmp
+            .groupby("cluster")["annot"]
+            .value_counts(normalize=True)
+            .mul(100)
+            .round()
+            .astype(int)
+            .rename("perc")
+            .reset_index()
+        )
 
-    # take top 2 annotations per cluster
-    top2 = freq.sort_values(["cluster", "perc"], ascending=[True, False])
-    top2 = top2.groupby("cluster").head(2)
+        # take top 2 annotations per cluster
+        top2 = (
+            freq
+            .sort_values(["cluster", "perc"], ascending=[True, False])
+            .groupby("cluster")
+            .head(2)
+        )
 
-    # build cluster → name mapping
-    def build_name(sub):
-        cl = sub.name
+        # build cluster → name mapping (with annotations)
+        def build_name(sub):
+            cl = sub.name
+            parts = [str(cl), f"Size={cluster_sizes[cl]}"]
+            for _, r in sub.iterrows():
+                parts.append(f"{r['perc']}%={r['annot']}")
+            return ", ".join(parts)
 
-        parts = []
-        for _, r in sub.iterrows():
-            parts.append(f"{r['perc']}%={r['annot']}")
+        new_names = top2.groupby("cluster").apply(build_name)
 
-        return f"{cl}, Size={cluster_sizes[cl]}, " + ", ".join(parts)
+    else:
+        # build cluster → name mapping (no annotations)
+        new_names = cluster_sizes.index.to_series().apply(
+            lambda cl: f"{cl}, Size={cluster_sizes[cl]}"
+        )
 
-    new_names = top2.groupby("cluster").apply(build_name)
-
-    # map back
+    # map back to original series
     return cluster_series.map(new_names)
 
 
-import time
-
-
-def process_annot_based_clsts(cl_df, cell2annot, cutoff=1):
+def process_annot_based_clsts(cl_df, cell2annot=None):
     start = time.time()
     df = cl_df.copy()
-    df["annotation"] = cl_df.index.map(cell2annot)
-
-    cluster_cols = df.columns.drop("annotation")
+    if cell2annot is not None:
+        df["annotation"] = cl_df.index.map(cell2annot)
+        cluster_cols = df.columns.drop("annotation")
+        annot_col = df['annotation']
+    else:
+        cluster_cols = df.columns
+        annot_col = None
     for col in cluster_cols:
-        df[col] = rename_clusters_fast(df[col], df["annotation"], cutoff=cutoff)
+        df[col] = rename_clusters_fast(df[col], annot_col)
     print("Processing cluster names took {} seconds.".format(time.time() - start))
-    return df.drop(columns="annotation")
+    if cell2annot is not None:
+        df = df.drop(columns='annotation')
+    return df
