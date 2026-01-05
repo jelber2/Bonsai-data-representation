@@ -325,8 +325,9 @@ class Cluster_Tree:
         clade_ent_root = self.root.clade_ent_contrib_ds
         annot_ent_root = self.root.annot_ent_contrib_ds
         for vert_ind, node in self.vert_ind_to_node.items():
-            node.clade_ent_change = clade_ent_root - node.clade_ent_contrib_ds - node.clade_ent_contrib_us
-            node.annot_ent_change = annot_ent_root - node.annot_ent_contrib_ds - node.annot_ent_contrib_us
+            if node.include_as_cand:
+                node.clade_ent_change = clade_ent_root - node.clade_ent_contrib_ds - node.clade_ent_contrib_us
+                node.annot_ent_change = annot_ent_root - node.annot_ent_contrib_ds - node.annot_ent_contrib_us
 
 
 class Cluster_TreeNode:
@@ -355,6 +356,7 @@ class Cluster_TreeNode:
     belongs_to_tree = None
     revert_clade_ent_change = None
     revert_annot_ent_change = None
+    include_as_cand = True
 
     # Variables necessary for the min-dist clustering
     ds_leafs_weighted = None # not used so far
@@ -731,6 +733,21 @@ class Cluster_TreeNode:
             self.ds_annot_counts += child.ds_annot_counts
             self.ds_n_annots += child.ds_n_annots
 
+    def set_include_as_cand(self, total_n_annots, total_annot_counts, clst_size_lb, clst_cat_capture_lbs,
+                            clst_cat_capture_ubs):
+        smallest_clst = min(total_n_annots - self.ds_n_annots, self.ds_n_annots)
+        smallest_clst_counts = np.minimum(total_annot_counts - self.ds_annot_counts, self.ds_annot_counts)
+        if smallest_clst < clst_size_lb:
+            self.include_as_cand = False
+        elif np.all(smallest_clst_counts < clst_cat_capture_lbs):
+            self.include_as_cand = False
+        if np.any(smallest_clst_counts > clst_cat_capture_ubs):
+            self.include_as_cand = True
+
+        for child in self.childNodes:
+            child.set_include_as_cand(total_n_annots, total_annot_counts, clst_size_lb, clst_cat_capture_lbs,
+                                      clst_cat_capture_ubs)
+
     def subtract_or_add_ds_info_us(self, ds_node, add=False):
         if not add:
             self.ds_annot_counts -= ds_node.ds_annot_counts
@@ -742,15 +759,16 @@ class Cluster_TreeNode:
             self.parentNode.subtract_or_add_ds_info_us(ds_node, add=add)
 
     def get_ent_contribs(self, total_n, total_annot_counts, num_annots=None):
-        if num_annots is None:
-            num_annots = len(total_annot_counts)
-        # Store the contribution to the clade- and annotation-entropy given by the subtree downstream
-        # This has the form n_c log n_c (for the clade ent.), where n_c is the total number of labeled cells downstream
-        # or sum_r n_r log n_r (for the annot ent.) where n_r is the number of labeled cells of annotation r
-        self.clade_ent_contrib_ds = - entropy_non_norm(self.ds_n_annots, num_annots=1)
-        self.clade_ent_contrib_us = - entropy_non_norm(total_n - self.ds_n_annots, num_annots=1)
-        self.annot_ent_contrib_ds = - entropy_non_norm(self.ds_annot_counts, num_annots=num_annots)
-        self.annot_ent_contrib_us = - entropy_non_norm(total_annot_counts - self.ds_annot_counts, num_annots=num_annots)
+        if self.include_as_cand or (self.parentNode is None):
+            if num_annots is None:
+                num_annots = len(total_annot_counts)
+            # Store the contribution to the clade- and annotation-entropy given by the subtree downstream
+            # This has the form n_c log n_c (for the clade ent.), where n_c is the total number of labeled cells downstream
+            # or sum_r n_r log n_r (for the annot ent.) where n_r is the number of labeled cells of annotation r
+            self.clade_ent_contrib_ds = - entropy_non_norm(self.ds_n_annots, num_annots=1)
+            self.clade_ent_contrib_us = - entropy_non_norm(total_n - self.ds_n_annots, num_annots=1)
+            self.annot_ent_contrib_ds = - entropy_non_norm(self.ds_annot_counts, num_annots=num_annots)
+            self.annot_ent_contrib_us = - entropy_non_norm(total_annot_counts - self.ds_annot_counts, num_annots=num_annots)
 
         for child in self.childNodes:
             child.get_ent_contribs(total_n=total_n, total_annot_counts=total_annot_counts, num_annots=num_annots)

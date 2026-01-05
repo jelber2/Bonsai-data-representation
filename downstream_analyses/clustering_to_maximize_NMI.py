@@ -115,7 +115,7 @@ def make_mindist_stats_figure(tracking_path, figure_path):
 
 def annotbased_clustering_wrapper(nwk_str, annotation_dict, cell_ids,
                                   greedy=False, tracking_folder=None, annotation_id='author_provided_annotation',
-                                  verbose=True):
+                                  verbose=True, prohibit_small_clsts=False, cutting_tol=1e-4):
     tracking_path_annotbased = None
     if tracking_folder is not None:
         tracking_path_annotbased = os.path.join(tracking_folder,
@@ -126,7 +126,9 @@ def annotbased_clustering_wrapper(nwk_str, annotation_dict, cell_ids,
                                                                          verbose=verbose,
                                                                          random_sampling=not greedy,
                                                                          node_ids_to_clst=cell_ids,
-                                                                         tracking_path=tracking_path_annotbased)
+                                                                         tracking_path=tracking_path_annotbased,
+                                                                         prohibit_small_clsts=prohibit_small_clsts,
+                                                                         cutting_tol=cutting_tol)
     mut_info_dict = {clustering_name: mut_info}
     cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters}, node_ids_multiple_cs_ids=None)
     return cl_df_annot, mut_info_dict, tracking_path_annotbased
@@ -172,7 +174,8 @@ def mindist_clustering_wrapper(nwk_str, annotation_dict, cell_ids, tracking_fold
 
 def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, results_folder=None,
                                          greedy=False, tracking_folder=None, make_plots=True,
-                                         annotation_id='author_provided_annotation', verbose=True):
+                                         annotation_id='author_provided_annotation', verbose=True,
+                                         prohibit_small_clsts=False, cutting_tol=1e-4):
     """
     Takes a tree, defined through a newick-string, and clusters subtrees in two ways:
     - such that the normalized mutual information with a given annotation is optimized
@@ -193,16 +196,22 @@ def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, res
     norm_mut_infos = {}
 
     """Do annotation-based clustering"""
-    cl_df_annot, mut_info_dict, trackingpath_annotbased = annotbased_clustering_wrapper(nwk_str, annotation_dict, cell_ids,
-                                                               greedy=greedy, tracking_folder=tracking_folder,
-                                                               annotation_id=annotation_id, verbose=verbose)
+    cl_df_annot, mut_info_dict, trackingpath_annotbased = annotbased_clustering_wrapper(nwk_str, annotation_dict,
+                                                                                        cell_ids,
+                                                                                        greedy=greedy,
+                                                                                        tracking_folder=tracking_folder,
+                                                                                        annotation_id=annotation_id,
+                                                                                        verbose=verbose,
+                                                                            prohibit_small_clsts=prohibit_small_clsts,
+                                                                                        cutting_tol=cutting_tol)
     all_cl_dfs.append(cl_df_annot)
     norm_mut_infos.update(mut_info_dict)
 
     """Do minimal-distance based clustering"""
     cl_df_mindist, mut_info_dict, trackingpath_mindist = mindist_clustering_wrapper(nwk_str, annotation_dict, cell_ids,
-                                                              tracking_folder=tracking_folder,
-                                                              annotation_id=annotation_id, verbose=verbose)
+                                                                                    tracking_folder=tracking_folder,
+                                                                                    annotation_id=annotation_id,
+                                                                                    verbose=verbose)
     all_cl_dfs.append(cl_df_mindist)
     norm_mut_infos.update(mut_info_dict)
 
@@ -249,6 +258,10 @@ if __name__ == '__main__':
                         help='Absolute path to file where all cell-IDs are stored (one per line).')
     parser.add_argument('--results_folder', type=str, default=None,
                         help='Absolute path to where the clustering results should be stored.')
+    parser.add_argument('--prohibit_small_clsts', type=str2bool, default=False,
+                        help='Boolean determining whether we prohibit the making of many small clusters.')
+    parser.add_argument('--cutting_tol', type=float, default=1e-4,
+                        help='Determines how large the increase in NMI should be before a cluster is split into two.')
     parser.add_argument('--greedy', type=str2bool, default=False,
                         help='If False (default), we do an MCMC-like scheme to optimize clustering. If not, we just '
                              'greedily cut subtrees from the tree until no move improves the score.')
@@ -280,10 +293,12 @@ if __name__ == '__main__':
         annotation_dict[annot_row.Index] = getattr(annot_row, args.annotation_id)
     del annotation_df
 
-    cl_df_concat, norm_mut_info_dict = do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids,
-                                                                      results_folder=args.results_folder,
-                                                                      greedy=args.greedy, tracking_folder=None,
-                                                                      make_plots=True, verbose=True,
-                                                                      annotation_id=args.annotation_id)
+    cl_df_concat, NMI_dict = do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids,
+                                                                  results_folder=args.results_folder,
+                                                                  greedy=args.greedy, tracking_folder=None,
+                                                                  make_plots=True, verbose=True,
+                                                                  annotation_id=args.annotation_id,
+                                                                  prohibit_small_clsts=args.prohibit_small_clsts,
+                                                                  cutting_tol=args.cutting_tol)
     print(cl_df_concat)
-    print(norm_mut_info_dict)
+    print(NMI_dict)

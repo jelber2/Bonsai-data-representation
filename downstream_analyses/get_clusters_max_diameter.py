@@ -77,7 +77,8 @@ def get_footfall_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, ce
 
 def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, cell_id_to_node_id=None,
                                                  verbose=True, node_ids_to_clst=None, random_sampling=False,
-                                                 tracking_path=None, max_moves=1e6, cutting_tol=1e-4):
+                                                 tracking_path=None, max_moves=1e6, cutting_tol=1e-4,
+                                                 prohibit_small_clsts=False):
     """
 
     :param tree_nwk_str: String read from a .nwk-file
@@ -104,7 +105,8 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
                                                                            random_sampling=random_sampling,
                                                                            tracking_path=tracking_path,
                                                                            max_moves=max_moves,
-                                                                           cutting_tol=cutting_tol)
+                                                                           cutting_tol=cutting_tol,
+                                                                           prohibit_small_clsts=prohibit_small_clsts)
     return clusters, cut_edges, mut_info
 
 
@@ -370,7 +372,8 @@ def test_move_acceptance(sampling_beta, orig_mut_info, new_mut_info):
 
 def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_id_to_node_id=None, verbose=True,
                                            node_ids_to_clst=None, random_sampling=False, seed=1231,
-                                           tracking_path=None, max_moves=1e6, cutting_tol=1e-4):
+                                           tracking_path=None, max_moves=1e6, cutting_tol=1e-4,
+                                           prohibit_small_clsts=False):
     """
     Greedily cuts tree into clades such that mutual information with some annotation is maximized.
     *NOTE:* We allow for partial annotation, such that some cells have an annotation, while others do not. The use case
@@ -458,7 +461,6 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
 
     # Store on each node to which tree it belongs
     cluster_tree.root.add_info_to_nodes(info_key='belongs_to_tree', const_val=cluster_tree)
-
     label_counts = np.zeros(n_labels, dtype=int)
 
     # TODO: Remove when sklearn test is no longer necessary
@@ -486,6 +488,19 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
         label_counts[label_to_ind[annot]] += 1
 
     n_cells = np.sum(label_counts)
+
+    if prohibit_small_clsts:
+        # Here, we calculate based on the label-counts some cutoffs for how small clusters can be before we cut them
+        # Ad-hoc rule: Clusters should be at least .1 of the average category, or at least .01 of the entire dataset.
+        avg_cat = n_cells / n_labels
+        clst_size_lb = min(avg_cat / 10, n_cells / 200)
+        # Clusters cannot be cut if they contain only very small fractions of all categories.
+        clst_cat_capture_lb_factor = .05
+        clst_cat_capture_lbs = label_counts * clst_cat_capture_lb_factor
+        # However, clusters can always be cut if they contain a certain fraction of all cells of a certain category.
+        clst_cat_capture_ub_factor = .3
+        clst_cat_capture_ubs = label_counts * clst_cat_capture_ub_factor
+
     # Here, we can already calculate the entropy in the annotation. This is independent of the clustering
     annot_entropy = entropy_non_norm(label_counts / n_cells)
     # Initial clade entropy is 0, everyone is in the same cluster
@@ -500,6 +515,12 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
 
     # Initialize the necessary information on the nodes of the full tree
     cluster_tree.root.get_ds_annot_info()
+    if prohibit_small_clsts:
+        cluster_tree.root.set_include_as_cand(total_n_annots=cluster_tree.root.ds_n_annots,
+                                              total_annot_counts=cluster_tree.root.ds_annot_counts,
+                                              clst_size_lb=clst_size_lb,
+                                              clst_cat_capture_lbs=clst_cat_capture_lbs,
+                                              clst_cat_capture_ubs=clst_cat_capture_ubs)
     # Store on each node their contribution to the clade and annot-entropy
     cluster_tree.root.get_ent_contribs(total_n=cluster_tree.root.ds_n_annots,
                                        total_annot_counts=cluster_tree.root.ds_annot_counts,
@@ -568,6 +589,9 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                             sampling_probs_merge.append(node.revert_clade_ent_change)
                     else:
                         # In this case, this is a "split"-move
+                        if not node.include_as_cand:
+                            # We can skip this one because the created clusters would be too small
+                            continue
                         if node.annot_ent_change == 0:
                             # We can skip this node because it splits up all annotated labels from a cluster.
                             continue
@@ -624,6 +648,9 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                                                             node.revert_clade_ent_change,
                                                             node.revert_annot_ent_change)
                     else:
+                        if not node.include_as_cand:
+                            # We can skip this one because the created clusters would be too small
+                            continue
                         if node.annot_ent_change == 0:
                             # if (node.ds_n_annots == 0) or (tree.root.ds_n_annots == node.ds_n_annots):
                             # This node, we can skip because it splits up all annotated labels from a cluster.
@@ -695,7 +722,12 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # We don't have to do: new_tree.root.get_ds_annot_info(), because new_tree still has correct ds-info
             # For cluster_tree, we just subtract the ds_info for everything upstream of new root
             us_node.subtract_or_add_ds_info_us(ds_node, add=True)
-
+            if prohibit_small_clsts:
+                new_tree.root.set_include_as_cand(total_n_annots=new_tree.root.ds_n_annots,
+                                                  total_annot_counts=new_tree.root.ds_annot_counts,
+                                                  clst_size_lb=clst_size_lb,
+                                                  clst_cat_capture_lbs=clst_cat_capture_lbs,
+                                                  clst_cat_capture_ubs=clst_cat_capture_ubs)
             # Store on each node their contribution to the clade and annot-entropy.
             new_tree.root.get_ent_contribs(total_n=new_tree.root.ds_n_annots,
                                            total_annot_counts=new_tree.root.ds_annot_counts, num_annots=n_labels)
@@ -743,6 +775,18 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             # We don't have to do: new_tree.root.get_ds_annot_info(), because new_tree still has correct ds-info
             # For cluster_tree, we just subtract the ds_info for everything upstream of new root
             us_node.subtract_or_add_ds_info_us(ds_node, add=False)
+
+            if prohibit_small_clsts:
+                max_tree.root.set_include_as_cand(total_n_annots=max_tree.root.ds_n_annots,
+                                                  total_annot_counts=max_tree.root.ds_annot_counts,
+                                                  clst_size_lb=clst_size_lb,
+                                                  clst_cat_capture_lbs=clst_cat_capture_lbs,
+                                                  clst_cat_capture_ubs=clst_cat_capture_ubs)
+                new_tree.root.set_include_as_cand(total_n_annots=new_tree.root.ds_n_annots,
+                                                  total_annot_counts=new_tree.root.ds_annot_counts,
+                                                  clst_size_lb=clst_size_lb,
+                                                  clst_cat_capture_lbs=clst_cat_capture_lbs,
+                                                  clst_cat_capture_ubs=clst_cat_capture_ubs)
 
             # Store on each node their contribution to the clade and annot-entropy.
             # Ideally, this is done only for us-ent-contribs for nodes downstream of change, and for ds-ent-contribs for
@@ -857,7 +901,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     # Store current clustering in dictionary of clusterings
     if verbose:
         mp_print("Clustering done")
-    return clusters, cut_edges, max_new_mut_info
+    return clusters, cut_edges, orig_mut_info
 
 
 def get_clustering_lists(tree_ensmbl, node_ids_to_clst_set):
