@@ -55,6 +55,24 @@ bonvis_data_objects = {}
 # )
 
 
+def small_cluster_grouping_ui():
+    return ui.TagList(
+        ui.input_slider(
+            "small_cluster_cutoff_general",
+            ui.strong("Group clusters smaller than:"),
+            min=1,
+            max=20,
+            value=1,
+            step=1,
+        ),
+        ui.input_action_button(
+            "go_group_small_clusters",
+            "Group small clusters!",
+            class_="btn-success",
+        ),
+    )
+
+
 def get_feature_info_display(bonvis_data, feature_path):
     if feature_path is None or (len(feature_path) == 0):
         return None

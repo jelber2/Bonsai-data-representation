@@ -46,8 +46,13 @@ settings_filename = 'bonsai_vis_settings.json'
 os.environ['BONSAI_DATA_PATH'] = os.path.abspath(os.path.join(results_folder, 'bonsai_vis_data.hdf'))
 os.environ['BONSAI_SETTINGS_PATH'] = os.path.abspath(os.path.join(results_folder, settings_filename))
 
+"""--------------------------SOME GLOBAL SETTINGS OF THE APP--------------------------"""
+ALLOW_GROUPING_SMALL_CATEGORIES = True
+"""--------------------------END OF SOME GLOBAL SETTINGS OF THE APP--------------------------"""
+
 from bonsai_scout.bonsai_scout_app_helpers import store_current_settings, \
-    get_feature_info_display, BonvisObjects, TEMP_MASK_SECS, TEMP_MASK_STEPS
+    get_feature_info_display, BonvisObjects, TEMP_MASK_SECS, TEMP_MASK_STEPS, \
+    small_cluster_grouping_ui
 
 from bonsai_scout.bonsai_scout_helpers import Bonvis_figure, Bonvis_settings, Bonvis_metadata, update_marker_genes_df, \
     get_placeholder_fig, find_annot
@@ -316,11 +321,13 @@ app_ui = ui.page_sidebar(
                                 ui.column(9, ui.input_switch('switch_mask_annot', "Show only subset!",
                                           value=None, width=None)),
                             ),
-                            ui.input_slider(
-                                "small_cluster_cutoff_general", ui.strong("Group clusters smaller than:"),
-                                min=1, max=20, value=1, step=1,
-                            ),
-                            ui.input_action_button("go_group_small_clusters", "Group small clusters!", class_="btn-success"),
+                            small_cluster_grouping_ui() if ALLOW_GROUPING_SMALL_CATEGORIES else None,
+                            # group_small_clusters_ui,
+                            # ui.input_slider(
+                            #     "small_cluster_cutoff_general", ui.strong("Group clusters smaller than:"),
+                            #     min=1, max=20, value=1, step=1,
+                            # ),
+                            # ui.input_action_button("go_group_small_clusters", "Group small clusters!", class_="btn-success"),
                         open=False,
                         ),
                         open=False, id='annot_subset'
@@ -835,11 +842,12 @@ def server(input, output, session: Session):
             if annot_info.color_type == 'categorical':
                 curr_categorical_annot.set(annot_info.label)
                 curr_annotation_cats.set(annot_info.cats)
-                # We put the slider for grouping small clusters to its last value.
-                if hasattr(annot_info, 'small_type_cutoff'):   
-                    ui.update_slider("small_cluster_cutoff_general", value=annot_info.small_type_cutoff)
-                else:
-                    ui.update_slider("small_cluster_cutoff_general", value=1)
+                if ALLOW_GROUPING_SMALL_CATEGORIES:
+                    # We put the slider for grouping small clusters to its last value.
+                    if hasattr(annot_info, 'small_type_cutoff'):   
+                        ui.update_slider("small_cluster_cutoff_general", value=annot_info.small_type_cutoff)
+                    else:
+                        ui.update_slider("small_cluster_cutoff_general", value=1)
 
 
 
@@ -860,29 +868,29 @@ def server(input, output, session: Session):
 
         node_style.set(cluster_node_style)
 
-
     """Group small categories together"""
-    @reactive.effect
-    @reactive.event(input.go_group_small_clusters)
-    def _():
-        bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
-        if input.go_group_small_clusters() != bv_objct.click_counters['small_clusters']:
-            bv_objct.click_counters['small_clusters'] = input.go_group_small_clusters()
-        else:
-            return
-        curr_annot_label = curr_categorical_annot.get()
-        if curr_annot_label is None:
-            return
-        
-        annot_info = find_annot(curr_annot_label, bv_objct.bonvis_fig.bonvis_settings, 
-                                bv_objct.bonvis_fig.bonvis_data, bv_objct.bonvis_metadata)
-        if (not hasattr(annot_info, 'small_type_cutoff')) or (input.small_cluster_cutoff_general() != annot_info.small_type_cutoff):
-            cutoff = input.small_cluster_cutoff_general()
-            bv_objct.bonvis_fig.set_small_type_cutoff(annot_info, cutoff)
-            # Invalidate old node style to re-draw the figure
-            bv_objct.old_node_style += '_old'
+    if ALLOW_GROUPING_SMALL_CATEGORIES:
+        @reactive.effect
+        @reactive.event(input.go_group_small_clusters)
+        def _():
+            bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
+            if input.go_group_small_clusters() != bv_objct.click_counters['small_clusters']:
+                bv_objct.click_counters['small_clusters'] = input.go_group_small_clusters()
+            else:
+                return
+            curr_annot_label = curr_categorical_annot.get()
+            if curr_annot_label is None:
+                return
+            
+            annot_info = find_annot(curr_annot_label, bv_objct.bonvis_fig.bonvis_settings, 
+                                    bv_objct.bonvis_fig.bonvis_data, bv_objct.bonvis_metadata)
+            if (not hasattr(annot_info, 'small_type_cutoff')) or (input.small_cluster_cutoff_general() != annot_info.small_type_cutoff):
+                cutoff = input.small_cluster_cutoff_general()
+                bv_objct.bonvis_fig.set_small_type_cutoff(annot_info, cutoff)
+                # Invalidate old node style to re-draw the figure
+                bv_objct.old_node_style += '_old'
 
-        node_style.set(curr_annot_label)
+            node_style.set(curr_annot_label)
 
     # --------------------------------------------------------
     # Outputs
