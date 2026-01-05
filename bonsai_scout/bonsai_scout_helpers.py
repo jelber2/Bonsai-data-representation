@@ -103,7 +103,7 @@ class Celltype_info:
                 cats = None
                 color_type = 'sequential'
             elif info_key.startswith('annot_'):
-                if info_object == 'cluster_info_dict':
+                if (info_object == 'cluster_info_dict') and (not re.fullmatch(r'annot_cluster_n\d+', info_key)):
                     cats, counts = np.unique(info_dict_curr[info_key], return_counts=True)
                     order = np.argsort(-counts)
                     cats = list(cats[order])
@@ -1000,9 +1000,9 @@ class Bonvis_figure:
             cats = list(counts.keys())
         else:
             cats, counts = np.unique(cell_to_celltype, return_counts=True)
-            sorted = np.argsort(-counts)
-            cats = cats[sorted]
-            counts = counts[sorted]
+            sorted_idx = np.argsort(-counts)
+            cats = cats[sorted_idx]
+            counts = counts[sorted_idx]
             counts = {k: int(v) for k, v in zip(cats, counts)}
             annot_info.cat_counts_dict = counts
 
@@ -1018,7 +1018,8 @@ class Bonvis_figure:
         celltype_colors = get_celltype_colors_new(n_colors, colortype=None)
         annot_to_color = {}
         ind = 1
-        for cat in cats:
+        sorted_cats = annot_info.cats if hasattr(annot_info, 'cats') else cats
+        for cat in sorted_cats:
             if cat == 'NaN':
                 annot_to_color[cat] = cm.get_cmap('gray')(0.75)
             if cat in low_freq_cats:

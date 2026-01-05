@@ -77,7 +77,7 @@ def get_footfall_clustering_from_nwk_str_deprecated(tree_nwk_str, n_clusters, ce
 
 def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, cell_id_to_node_id=None,
                                                  verbose=True, node_ids_to_clst=None, random_sampling=False,
-                                                 tracking_path=None, max_moves=1e6):
+                                                 tracking_path=None, max_moves=1e6, cutting_tol=1e-4):
     """
 
     :param tree_nwk_str: String read from a .nwk-file
@@ -103,7 +103,8 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
                                                                            node_ids_to_clst=node_ids_to_clst,
                                                                            random_sampling=random_sampling,
                                                                            tracking_path=tracking_path,
-                                                                           max_moves=max_moves)
+                                                                           max_moves=max_moves,
+                                                                           cutting_tol=cutting_tol)
     return clusters, cut_edges, mut_info
 
 
@@ -369,7 +370,7 @@ def test_move_acceptance(sampling_beta, orig_mut_info, new_mut_info):
 
 def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_id_to_node_id=None, verbose=True,
                                            node_ids_to_clst=None, random_sampling=False, seed=1231,
-                                           tracking_path=None, max_moves=1e6):
+                                           tracking_path=None, max_moves=1e6, cutting_tol=1e-4):
     """
     Greedily cuts tree into clades such that mutual information with some annotation is maximized.
     *NOTE:* We allow for partial annotation, such that some cells have an annotation, while others do not. The use case
@@ -632,7 +633,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                                                         node.annot_ent_change)
                     # if we're grouping clusters, we always accept moves that improve the NMI, if we're cutting we only accept
                     # if they're improving to a reasonable extent
-                    tol = -1e-5 if (node.parentNode is None) else 1e-4
+                    tol = -1e-5 if (node.parentNode is None) else cutting_tol
                     if new_mut_info > max(max_new_mut_info, orig_mut_info + tol):
                         max_node = node
                         max_tree = tree
@@ -646,7 +647,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
             if max_node is None:
                 quitting = True
             else:
-                tol = -1e-5 if (max_node.parentNode is None) else 1e-4
+                tol = -1e-5 if (max_node.parentNode is None) else cutting_tol
                 if max_new_mut_info < orig_mut_info + tol:
                     quitting = True
             if quitting:

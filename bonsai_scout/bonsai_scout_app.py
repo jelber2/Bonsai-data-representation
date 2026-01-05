@@ -50,7 +50,7 @@ from bonsai_scout.bonsai_scout_app_helpers import store_current_settings, \
     get_feature_info_display, BonvisObjects, TEMP_MASK_SECS, TEMP_MASK_STEPS
 
 from bonsai_scout.bonsai_scout_helpers import Bonvis_figure, Bonvis_settings, Bonvis_metadata, update_marker_genes_df, \
-    get_placeholder_fig
+    get_placeholder_fig, find_annot
 
 from downstream_analyses.get_cluster_helpers import Cluster_Tree
 
@@ -309,14 +309,19 @@ app_ui = ui.page_sidebar(
                     ui.input_selectize('node_style', "Node color:", {}, selected=None),
                     ui.input_selectize('size_style', "Node size:", {}, selected=None),
                     ui.accordion(
-                        ui.accordion_panel('Color only subset.',
+                        ui.accordion_panel('Focus on fewer subsets.',
                             ui.output_ui('selecting_annotation_cat_annot'),
-                                ui.row(
-                                    ui.column(3, ui.input_action_button("reset_subset_annot", ICONS['house'])),
-                                    ui.column(9, ui.input_switch('switch_mask_annot', "Show only subset!",
-                                        value=None, width=None)),
-                                ),
-                            open=False,
+                            ui.row(
+                                ui.column(3, ui.input_action_button("reset_subset_annot", ICONS['house'])),
+                                ui.column(9, ui.input_switch('switch_mask_annot', "Show only subset!",
+                                          value=None, width=None)),
+                            ),
+                            ui.input_slider(
+                                "small_cluster_cutoff_general", ui.strong("Group clusters smaller than:"),
+                                min=1, max=20, value=1, step=1,
+                            ),
+                            ui.input_action_button("go_group_small_clusters", "Group small clusters!", class_="btn-success"),
+                        open=False,
                         ),
                         open=False, id='annot_subset'
                     ),
@@ -830,13 +835,18 @@ def server(input, output, session: Session):
             if annot_info.color_type == 'categorical':
                 curr_categorical_annot.set(annot_info.label)
                 curr_annotation_cats.set(annot_info.cats)
+                # We put the slider for grouping small clusters to its last value.
+                if hasattr(annot_info, 'small_type_cutoff'):   
+                    ui.update_slider("small_cluster_cutoff_general", value=annot_info.small_type_cutoff)
+                else:
+                    ui.update_slider("small_cluster_cutoff_general", value=1)
 
 
-    """Change node style"""
+
+    """Change clustering"""
     @reactive.effect
     @reactive.event(input.go_clustering)
     def _():
-        small_cluster_cutoff = None
         if input.clustering_method() == 'distance':
             cluster_node_style = "Cluster_n{}".format(input.n_clusters())
         elif input.clustering_method() == 'annotation':
@@ -849,6 +859,30 @@ def server(input, output, session: Session):
                 bv_objct.old_node_style += '_old'
 
         node_style.set(cluster_node_style)
+
+
+    """Group small categories together"""
+    @reactive.effect
+    @reactive.event(input.go_group_small_clusters)
+    def _():
+        bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
+        if input.go_group_small_clusters() != bv_objct.click_counters['small_clusters']:
+            bv_objct.click_counters['small_clusters'] = input.go_group_small_clusters()
+        else:
+            return
+        curr_annot_label = curr_categorical_annot.get()
+        if curr_annot_label is None:
+            return
+        
+        annot_info = find_annot(curr_annot_label, bv_objct.bonvis_fig.bonvis_settings, 
+                                bv_objct.bonvis_fig.bonvis_data, bv_objct.bonvis_metadata)
+        if (not hasattr(annot_info, 'small_type_cutoff')) or (input.small_cluster_cutoff_general() != annot_info.small_type_cutoff):
+            cutoff = input.small_cluster_cutoff_general()
+            bv_objct.bonvis_fig.set_small_type_cutoff(annot_info, cutoff)
+            # Invalidate old node style to re-draw the figure
+            bv_objct.old_node_style += '_old'
+
+        node_style.set(curr_annot_label)
 
     # --------------------------------------------------------
     # Outputs
@@ -1497,8 +1531,13 @@ def server(input, output, session: Session):
         if (bv_objct.bonvis_settings.node_style['annot_info'].color_type == 'categorical') and (curr_annotation_cats.get() is not None):
             selection_dict["Annotation"] = {cat: cat for cat in curr_annotation_cats.get()}
         # print(selection_dict)
-        return ui.input_selectize('selected_annot_annot', "Pick annotation", selection_dict, selected=bv_objct.init_selected_annot),
+        return ui.input_selectize('selected_annot_annot', ui.strong("Show single subset:"), selection_dict, selected=bv_objct.init_selected_annot),
 
+    @render.ui
+    def grouping_small_subsets():
+        bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
+        return ui.input_slider("small_cluster_cutoff_annot", "Group clusters smaller than:", min=1, max=20, value=1,
+                               step=0),
 
     """Three instances of dealing with the selected subset"""
     @reactive.effect

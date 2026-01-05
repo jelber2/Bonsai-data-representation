@@ -958,7 +958,7 @@ class SCData:
                 except KeyError as e:
                     mp_print("The cell-ID {} was present in the data but not in annotation-file '{}'. "
                              "Please check this. "
-                             "For now, we are trying to save this annotation-file.".format(e, filename), WARNING=True)
+                             "For now, we are trying to still use this annotation-file.".format(e, filename), WARNING=True)
                     annotation_df = None
             elif annot_input.shape[0] in [self.metadata.nCells - 1, self.metadata.nCells]:
                 if annot_input.shape[0] == (self.metadata.nCells - 1):
@@ -973,10 +973,10 @@ class SCData:
                 except KeyError as e:
                     mp_print("The cell-ID {} was present in the data but not in annotation-file '{}'. "
                              "Please check this. "
-                             "For now, we are trying to save this annotation-file.".format(e, filename), WARNING=True)
+                             "For now, we are trying to still use this annotation-file.".format(e, filename), WARNING=True)
             else:
                 mp_print("Annotation-file '{}' has a number of rows that is not equal to the number of cells "
-                         "(or cellstates) in the dataset. Please check this. For now, we are trying to save this "
+                         "(or cellstates) in the dataset. Please check this. For now, we are trying to still use this "
                          "annotation-file".format(filename), WARNING=True)
             if annotation_df is None:
                 try:

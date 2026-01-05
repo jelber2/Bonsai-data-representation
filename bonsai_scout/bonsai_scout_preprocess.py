@@ -498,8 +498,8 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
     mp_print("Starting clustering guided by Annotation: {}".format(annot_id))
 
     # TODO: REMOVE THIS FOR SURE!
-    # if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
-    #     continue
+    if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
+        continue
     # if annot_id:
     #     if annot_id.startswith('annot_num'):
     #         continue
@@ -529,7 +529,7 @@ for annot_id, annot_info in celltype_info.annot_infos.items():
                                                                                  verbose=True,
                                                                                  random_sampling=True,
                                                                                  tracking_path=tracking_path,
-                                                                                 max_moves=1000)
+                                                                                 max_moves=1000, cutting_tol=1e-4)
     if len(cut_edges):  # i.e. we discard the trivial clusterings
         clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
         cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
