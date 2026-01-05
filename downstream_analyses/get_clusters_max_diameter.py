@@ -424,7 +424,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
         # So, if we set:
         sampling_beta = - np.log(prob_decrease) / (1 - optimality_decrease)
         # n_annealing = 100
-        n_annealing = min(max(10, cluster_tree.nNodes / 1000), 200)
+        n_annealing = int(min(max(10, cluster_tree.nNodes / 1000), 200))
         optimality_decrease_lb = .999
         annealing_factor = 5
         # Then the function for the (unnormalized) probability becomes
