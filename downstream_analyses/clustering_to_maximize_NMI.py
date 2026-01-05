@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from sklearn.metrics import normalized_mutual_info_score
 import matplotlib.pyplot as plt
+import time
 
 import logging
 
@@ -193,9 +194,12 @@ def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, res
     :return:
     """
     all_cl_dfs = []
-    norm_mut_infos = {}
-
+    # norm_mut_infos = {}
+    timings = []
+    dataset_ids = []
+    NMIs = []
     """Do annotation-based clustering"""
+    start = time.time()
     cl_df_annot, mut_info_dict, trackingpath_annotbased = annotbased_clustering_wrapper(nwk_str, annotation_dict,
                                                                                         cell_ids,
                                                                                         greedy=greedy,
@@ -204,16 +208,26 @@ def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, res
                                                                                         verbose=verbose,
                                                                                         prohibit_small_clsts=prohibit_small_clsts,
                                                                                         cutting_tol=cutting_tol)
+    timings.append(time.time() - start)
+    print(time.time() - start)
     all_cl_dfs.append(cl_df_annot)
-    norm_mut_infos.update(mut_info_dict)
+    dataset_id = list(mut_info_dict.keys())[0]
+    dataset_ids.append(dataset_id)
+    NMIs.append(mut_info_dict[dataset_id])
+    # norm_mut_infos.update(mut_info_dict)
 
     """Do minimal-distance based clustering"""
+    start = time.time()
     cl_df_mindist, mut_info_dict, trackingpath_mindist = mindist_clustering_wrapper(nwk_str, annotation_dict, cell_ids,
                                                                                     tracking_folder=tracking_folder,
                                                                                     annotation_id=annotation_id,
                                                                                     verbose=verbose)
-    all_cl_dfs.append(cl_df_mindist)
-    norm_mut_infos.update(mut_info_dict)
+    timings.append(time.time() - start)
+    print(time.time() - start)
+    all_cl_dfs.append(cl_df_annot)
+    dataset_id = list(mut_info_dict.keys())[0]
+    dataset_ids.append(dataset_id)
+    NMIs.append(mut_info_dict[dataset_id])
 
     """Concatenate the results"""
     cl_df = pd.concat(all_cl_dfs, axis=1)
@@ -224,7 +238,7 @@ def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, res
         # test_nmis = calculate_NMI_for_clustering_df(cl_df, annotation_dict)
 
         norm_mut_infos_df = pd.DataFrame(
-            data={'clustering_method': norm_mut_infos.keys(), 'max NMI': norm_mut_infos.values()})
+            data={'clustering_method': dataset_ids, 'max NMI': NMIs, 'times': timings})
         norm_mut_infos_df.to_csv(os.path.join(results_folder, 'normalized_mutual_information_scores.tsv'), sep='\t',
                                  index=False, header=True)
 
@@ -238,7 +252,7 @@ def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, res
             stats_fig_path = os.path.join(tracking_folder, 'mindist_clustering_stats.png')
             make_mindist_stats_figure(tracking_path=trackingpath_mindist, figure_path=stats_fig_path)
 
-    return cl_df, norm_mut_infos
+    return cl_df, norm_mut_infos_df
 
 
 if __name__ == '__main__':
@@ -299,7 +313,7 @@ if __name__ == '__main__':
         annotation_dict[annot_row.Index] = getattr(annot_row, args.annotation_id)
     del annotation_df
 
-    cl_df_concat, NMI_dict = do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids,
+    cl_df_concat, NMI_df = do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids,
                                                                   results_folder=args.results_folder,
                                                                   greedy=args.greedy, tracking_folder=None,
                                                                   make_plots=True, verbose=True,
@@ -307,4 +321,4 @@ if __name__ == '__main__':
                                                                   prohibit_small_clsts=args.prohibit_small_clsts,
                                                                   cutting_tol=args.cutting_tol)
     print(cl_df_concat)
-    print(NMI_dict)
+    print(NMI_df)

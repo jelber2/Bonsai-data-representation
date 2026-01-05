@@ -495,7 +495,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
         avg_cat = n_cells / n_labels
         clst_size_lb = min(avg_cat / 10, n_cells / 200)
         # Clusters cannot be cut if they contain only very small fractions of all categories.
-        clst_cat_capture_lb_factor = .05
+        clst_cat_capture_lb_factor = .025
         clst_cat_capture_lbs = label_counts * clst_cat_capture_lb_factor
         # However, clusters can always be cut if they contain a certain fraction of all cells of a certain category.
         clst_cat_capture_ub_factor = .3

@@ -739,8 +739,8 @@ class Cluster_TreeNode:
         smallest_clst_counts = np.minimum(total_annot_counts - self.ds_annot_counts, self.ds_annot_counts)
         if smallest_clst < clst_size_lb:
             self.include_as_cand = False
-        elif np.all(smallest_clst_counts < clst_cat_capture_lbs):
-            self.include_as_cand = False
+        # elif np.all(smallest_clst_counts < clst_cat_capture_lbs):
+        #     self.include_as_cand = False
         if np.any(smallest_clst_counts > clst_cat_capture_ubs):
             self.include_as_cand = True
 
