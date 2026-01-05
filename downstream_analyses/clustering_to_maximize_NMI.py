@@ -202,7 +202,7 @@ def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, res
                                                                                         tracking_folder=tracking_folder,
                                                                                         annotation_id=annotation_id,
                                                                                         verbose=verbose,
-                                                                            prohibit_small_clsts=prohibit_small_clsts,
+                                                                                        prohibit_small_clsts=prohibit_small_clsts,
                                                                                         cutting_tol=cutting_tol)
     all_cl_dfs.append(cl_df_annot)
     norm_mut_infos.update(mut_info_dict)
@@ -287,7 +287,13 @@ if __name__ == '__main__':
     cell_ids = read_ids(args.cell_names_file)
 
     """Read in the annotation and create an annotation_dict"""
-    annotation_df = pd.read_csv(args.annotation_file, header=0, index_col=0)
+    if args.annotation_file.endswith('.tsv'):
+        sep = '\t'
+    elif args.annotation_file.endswith('.csv'):
+        sep = ','
+    else:
+        exit("Can't read this annotation-file, it's neither .tsv nor .csv.")
+    annotation_df = pd.read_csv(args.annotation_file, header=0, index_col=0, sep=sep)
     annotation_dict = {}
     for annot_row in annotation_df.itertuples():
         annotation_dict[annot_row.Index] = getattr(annot_row, args.annotation_id)

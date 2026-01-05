@@ -658,8 +658,8 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                         new_mut_info = get_new_mut_info(orig_ent_diff, annot_entropy, clade_entropy,
                                                         node.clade_ent_change,
                                                         node.annot_ent_change)
-                    # if we're grouping clusters, we always accept moves that improve the NMI, if we're cutting we only accept
-                    # if they're improving to a reasonable extent
+                    # if we're grouping clusters, we always accept moves that improve the NMI, if we're cutting
+                    # we only accept if they're improving to a reasonable extent
                     tol = -1e-5 if (node.parentNode is None) else cutting_tol
                     if new_mut_info > max(max_new_mut_info, orig_mut_info + tol):
                         max_node = node
