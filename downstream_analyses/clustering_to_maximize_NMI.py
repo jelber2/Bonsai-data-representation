@@ -224,7 +224,7 @@ def do_annotbased_and_mindist_clustering(nwk_str, annotation_dict, cell_ids, res
                                                                                     verbose=verbose)
     timings.append(time.time() - start)
     print(time.time() - start)
-    all_cl_dfs.append(cl_df_annot)
+    all_cl_dfs.append(cl_df_mindist)
     dataset_id = list(mut_info_dict.keys())[0]
     dataset_ids.append(dataset_id)
     NMIs.append(mut_info_dict[dataset_id])
