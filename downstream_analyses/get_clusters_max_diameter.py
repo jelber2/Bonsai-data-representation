@@ -393,7 +393,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
     :param tracking_folder: Just a path where I can store some stats for performance tracking.
     :return:
     """
-    very_verbose = True
+    very_verbose = False
 
     if tracking_path is not None:
         # tracking_path, _ = os.path.splitext(tracking_path)

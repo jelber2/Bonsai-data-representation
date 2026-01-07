@@ -73,6 +73,14 @@ class Metadata:
                         copied_attr = getattr(curr_metadata, attr)
                     setattr(self, attr, copied_attr)
 
+        # Check if the stored number-of-cells matches the number of stored cell-IDs
+        if hasattr(self, 'nCells') and (self.nCells is not None) and \
+                hasattr(self, 'cellIds') and (self.cellIds is not None):
+            if self.nCells != len(self.cellIds):
+                mp_print("Number of cell-IDs ({}) stored in metadata, is not equal to value of nCells ({}). "
+                         "Check this! Now exiting.".format(len(self.cellIds), self.nCells), ERROR=True)
+                exit()
+
     def to_dict(self):
         self_dict = self.__dict__
         new_dict = {}
@@ -2414,15 +2422,21 @@ def reconstructTreeFromEdgeVertInfo(scData, tree_folder, verbose=False):
         parentNode.isLeaf = False
         vertIndToNode[childVert] = childNode
         scData.tree.nNodes += 1
-    # Renumber vert_inds on tree such that they are in line with a depth-first search
     bs_glob.nNodes = scData.tree.nNodes
-    vertIndToNode, scData.tree.nNodes = scData.tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
-    scData.tree.vert_ind_to_node = vertIndToNode
-    vertIndToNodeId = {}
-    vertIndToNodeInd = {}
+    # Store vert_inds on nodes
     for vert_ind, node in vertIndToNode.items():
-        vertIndToNodeId[vert_ind] = node.nodeId
-        vertIndToNodeInd[vert_ind] = node.nodeInd
+        node.vert_ind = vert_ind
+    scData.tree.vert_ind_to_node = vertIndToNode
+    # Commented out the below on January 6, 2026. This was supposed to make vert-indices consistent with depth-first
+    # search, but this does not seem necessary, and it may mess up reading in the coordinates.
+
+    # vertIndToNode_test, scData.tree.nNodes = scData.tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
+    # vertIndToNodeId_test = {}
+    # vertIndToNodeInd_test = {}
+    # for vert_ind, node in vertIndToNode_test.items():
+    #     vertIndToNodeId_test[vert_ind] = node.nodeId
+    #     vertIndToNodeInd_test[vert_ind] = node.nodeInd
+
     tree_tuple = vertIndToNode, vertIndToNodeInd, vertIndToNodeId, edgeList, distList
     scData.tree.max_node_ind = scData.tree.root.get_max_node_ind(-np.inf)
     bs_glob.max_node_ind = scData.tree.max_node_ind
@@ -2631,26 +2645,34 @@ def get_cell_info_tree(scData, vertIndToNode):
     else:
         get_cs_info = False
     nodeIdToVertInd = {node.nodeId: vertInd for vertInd, node in vertIndToNode.items()}
+    cells_not_found = []
     for ind in range(scData.metadata.nCells):
         cellId = scData.metadata.cellIds[ind]
         if cellId in nodeIdToVertInd:
             vert_ind = nodeIdToVertInd[cellId]
         else:
-            vert_ind = -1
-        # Store in cell_assignment to which vertex the original cell was sent
-        scData.cellsToVerts[cellId] = scData.vertNames[vert_ind]
-        # Also store a map of which cellInd went to which vertInd
-        # TODO: Maybe eventually only store this.
-        scData.cellIndToVertInd[ind] = vert_ind
+            cells_not_found.append(cellId)
+            vert_ind = None
+        if vert_ind is not None:
+            # Store in cell_assignment to which vertex the original cell was sent
+            scData.cellsToVerts[cellId] = scData.vertNames[vert_ind]
+            # Also store a map of which cellInd went to which vertInd
+            # TODO: Maybe eventually only store this.
+            scData.cellIndToVertInd[ind] = vert_ind
+
+    if len(cells_not_found):
+        mp_print("{}\n\n Could not find the above cells in the tree. "
+                 "Check this! Now exiting!".format(cells_not_found), ERROR=True)
+        exit()
 
     scData.nCellsPerVert = np.zeros(scData.nVerts)
     scData.vertIndToCellInds = {ind: [] for ind in range(scData.nVerts)}
-    for ind in range(scData.metadata.nCells):
-        if scData.cellIndToVertInd[ind] == -1:
-            # TODO: Clean this up
-            continue
-        scData.vertIndToCellInds[scData.cellIndToVertInd[ind]].append(ind)
-        scData.nCellsPerVert[scData.cellIndToVertInd[ind]] += 1
+    # for ind in range(scData.metadata.nCells):
+    for cell_ind, vert_ind in scData.cellIndToVertInd.items():
+        # if scData.cellIndToVertInd[ind] == -1:
+        #     continue
+        scData.vertIndToCellInds[vert_ind].append(cell_ind)
+        scData.nCellsPerVert[vert_ind] += 1
 
 
 def infer_true_var_log(inferred_vals, inferred_vars):

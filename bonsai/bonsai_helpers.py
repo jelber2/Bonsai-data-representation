@@ -48,7 +48,7 @@ plt.set_loglevel(level='warning')
 class Run_Configs:
     config_yaml = None
 
-    def __init__(self, yaml_filepath=None, step=None):
+    def __init__(self, yaml_filepath=None, step=None, create_empty_configs=False):
 
         pars_defaults = {'step': 'all',
                          'dataset': 'new_dataset',
@@ -71,6 +71,11 @@ class Run_Configs:
                          'skip_reorder_edges': False,
                          'pickup_intermediate': False,
                          'tmp_folder': None}
+
+        if create_empty_configs:
+            for label in pars_defaults:
+                setattr(self, label, pars_defaults[label])
+            return
 
         if yaml_filepath is not None and os.path.exists(yaml_filepath):
             yaml = YAML()

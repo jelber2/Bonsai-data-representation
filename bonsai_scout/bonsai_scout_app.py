@@ -40,11 +40,11 @@ sys.path.append(parent_dir)
 # results_folder = '/Users/Daan/Documents/postdoc/collaborations/westendorp_CHKi/bonsai_cellstates_clustered_new'
 # results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021_paper_figure/mergedgenes_no_TMono_hao_satija/cs_summed/bonsai'
 # results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021_paper_figure/spr_super_sure/bonsai_scicore_run'
-results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/buenrostro_scatac'
+# results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/buenrostro_scatac'
 # results_folder = '/Users/Daan/Documents/postdoc/Private-bonsai/results/hao_satija_2021-immune_cells_all/hao_satija_rounded'
-settings_filename = 'bonsai_vis_settings.json'
-os.environ['BONSAI_DATA_PATH'] = os.path.abspath(os.path.join(results_folder, 'bonsai_vis_data.hdf'))
-os.environ['BONSAI_SETTINGS_PATH'] = os.path.abspath(os.path.join(results_folder, settings_filename))
+# settings_filename = 'bonsai_vis_settings.json'
+# os.environ['BONSAI_DATA_PATH'] = os.path.abspath(os.path.join(results_folder, 'bonsai_vis_data.hdf'))
+# os.environ['BONSAI_SETTINGS_PATH'] = os.path.abspath(os.path.join(results_folder, settings_filename))
 
 """--------------------------SOME GLOBAL SETTINGS OF THE APP--------------------------"""
 ALLOW_GROUPING_SMALL_CATEGORIES = True
