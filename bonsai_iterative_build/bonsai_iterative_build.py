@@ -67,6 +67,9 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
 parser.add_argument('--seed', type=int, default=1231,
                     help="Sets the random seed necessary for getting the subset of cells.")
 
+parser.add_argument('--debug_mode', type=str2bool, default=False,
+                    help='Print additional information that may sometimes slow down the calculations.')
+
 args = parser.parse_args()
 
 # TODO: Make sure that Run_configs initialization just copies all arguments that were originally in args
@@ -79,11 +82,13 @@ return_commands = args.return_commands
 config_filepath = args.config_filepath
 growth_factor_guide = args.growth_factor_guide
 seed = args.seed
+debug_mode = args.debug_mode
 search_tol = args.search_tol
 
 args = Run_Configs(args.config_filepath)
 
 args.search_tol = search_tol
+args.debug_mode = debug_mode
 args.select_target = select_target
 args.iterative_cell_lists = iterative_cell_lists
 args.growth_before_cleanup = growth_before_cleanup
@@ -94,12 +99,8 @@ args.growth_factor_guide = growth_factor_guide
 if pickup_intermediate:
     args.pickup_intermediate = True
 
-import bonsai.mpi_wrapper as mpi_wrapper
-from bonsai.bonsai_dataprocessing import initializeSCData, getMetadata, loadReconstructedTreeAndData, SCData, \
-    nnnReorder, nnnReorderRandom, Metadata, storeData
-from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder, get_latest_intermediate, \
-    clean_up_redundant_data_files, str2bool
-from bonsai.bonsai_treeHelpers import Tree
+from bonsai.bonsai_dataprocessing import SCData, Metadata
+from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder
 import bonsai.bonsai_globals as bs_glob
 
 # Some of the code can be run in parallel, parallelization is done via mpi4py
@@ -194,10 +195,12 @@ for subset_ind, subset in enumerate(subsets):
     scdata_subsets.append(scdata_subset)
 
 """-----------For the first subset, we run a script that creates a star-tree for the first guide-tree---------"""
-# Run the script that will read in and preprocess the data, and create the star-tree for the first guide-tree
+# Run the script that will read in and preprocess *all* the data, and create the star-tree for the first guide-tree
+subset_results_folders = [scdata_subsets[ind].metadata.results_folder for ind in range(len(scdata_subsets)-1)]
+subset_results_folders = ','.join(subset_results_folders)
 preprocess_cmd = ['bonsai_iterative_build/bonsai_iterative_first_split.py',
                   '--config_filepath', args.config_filepath,
-                  '--subset_results_folder', scdata_subsets[0].metadata.results_folder]
+                  '--subset_results_folder', subset_results_folders]
 
 if not args.return_commands:
     output1 = subprocess.run([sys.executable] + preprocess_cmd, stdout=subprocess.PIPE, text=True)
@@ -277,8 +280,8 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
         mp_print(output1.stderr)
     else:
         cmd = ' '.join(bonsai_subset1_cmd)
-        mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
-                 "{}".format(commands_file, cmd))
+        mp_print("Command for creating refined Bonsai-tree based on subset {}, (stored in {}):\n "
+                 "{}".format(subset_ind, commands_file, cmd))
         with open(commands_file, "a") as file:
             file.write(cmd + '\n')
 
@@ -317,11 +320,12 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
                      '--config_filepath', config_filepath_add,
                      '--guide_tree_folder', results_dir_subset,
                      '--cells_to_be_added', os.path.join(new_non_refined_folder, 'starting_cell_ids.txt'),
-                     '--preprocessed_data_folder', scdata.metadata.processedDatafolder,
+                     '--preprocessed_data_folder', scdata_subsets[subset_ind+1].metadata.processedDatafolder,
                      '--growth_before_cleanup', str(args.growth_before_cleanup),
                      '--select_target', args.select_target,
                      '--search_tol', str(args.search_tol),
-                     '--seed', str(add_cells_seed)]
+                     '--seed', str(add_cells_seed),
+                     '--debug_mode', str(args.debug_mode)]
     # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 
     if not args.return_commands:

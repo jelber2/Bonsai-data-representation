@@ -66,6 +66,9 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=True,
 parser.add_argument('--seed', type=int, default=1231,
                     help="Random seed for order of adding the cells.")
 
+parser.add_argument('--debug_mode', type=str2bool, default=False,
+                    help='Print additional information that may sometimes slow down the calculations.')
+
 args = parser.parse_args()
 np.random.seed(args.seed)
 
@@ -76,6 +79,7 @@ cells_to_be_added = args.cells_to_be_added
 resolve_polytomies_immediately = args.resolve_polytomies_immediately
 preprocessed_data_folder = args.preprocessed_data_folder
 pickup_intermediate = args.pickup_intermediate
+debug_mode = args.debug_mode
 search_tol = args.search_tol
 args = Run_Configs(args.config_filepath)
 args.preprocessed_data_folder = preprocessed_data_folder
@@ -85,6 +89,7 @@ args.cells_to_be_added = cells_to_be_added
 args.resolve_polytomies_immediately = resolve_polytomies_immediately
 args.search_tol = search_tol
 args.pickup_intermediate = pickup_intermediate
+args.debug_mode = debug_mode
 
 from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
     OriginalData, Metadata
@@ -184,20 +189,23 @@ for node in nodes_list:
         node.setLtqsVarsOrW(ltqsVars=scdata_all_cells.originalData.ltqsVars[:, cell_ind])
         node.isCell = True
 
+# if args.debug_mode:
+#     mp_print("Loaded tree loglikelihood is:",
+#              scdata_guide.tree.calcLogLComplete(mem_friendly=True, loglikVarCorr=scdata_guide.metadata.loglikVarCorr))
+
 guide_cell_inds = np.unique(guide_cell_inds)
 non_guide_cell_inds = np.setdiff1d(np.arange(scdata_all_cells.metadata.nCells), guide_cell_inds)
-
 # Select subset of non_guide-cells that we want to add based on the "cells_to_be_added"-argument
-if cells_to_be_added is not None:
+cell_id_list_after_adding = []
+if (cells_to_be_added is not None) and os.path.exists(os.path.abspath(cells_to_be_added)):
     cells_to_be_added = os.path.abspath(cells_to_be_added)
-    if os.path.exists(cells_to_be_added):
-        # cell_ids_to_be_added = []
-        cell_inds_to_add = []
-        with open(cells_to_be_added, 'r') as file:
-            reader = csv.reader(file, delimiter="\t")
-            for row in reader:
-                # cell_ids_to_be_added.append(row[0])
-                cell_inds_to_add.append(cell_id_to_ind[row[0]])
+    # cell_ids_to_be_added = []
+    cell_inds_to_add = []
+    with open(cells_to_be_added, 'r') as file:
+        reader = csv.reader(file, delimiter="\t")
+        for row in reader:
+            cell_id_list_after_adding.append(row[0])
+            cell_inds_to_add.append(cell_id_to_ind[row[0]])
     cell_inds_to_add = np.array(cell_inds_to_add)
     cell_inds_to_add = np.intersect1d(cell_inds_to_add, non_guide_cell_inds)
 else:
@@ -217,8 +225,8 @@ ltqs_to_add = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+',
 ltqsvars_to_add = np.lib.format.open_memmap(ltqsvars_file, dtype='float64', mode='w+',
                                             shape=(n_to_add, bs_glob.nGenes))
 for out_row, orig_col in enumerate(cell_inds_to_add):
-    ltqs_to_add[out_row, :] = scdata_all_cells.originalData.ltqs[:, orig_col]    # memmap → memmap copy
-    ltqsvars_to_add[out_row, :] = scdata_all_cells.originalData.ltqsVars[:, orig_col]    # memmap → memmap copy
+    ltqs_to_add[out_row, :] = scdata_all_cells.originalData.ltqs[:, orig_col]
+    ltqsvars_to_add[out_row, :] = scdata_all_cells.originalData.ltqsVars[:, orig_col]
 
 # Flush to disk
 ltqs_to_add.flush()
@@ -252,9 +260,9 @@ scdata_guide.tree.add_cells(ltqs_to_add_cg, ltqsvars_to_add_cg, cell_ids_to_add,
 
 # Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,
 # Internal nodes start at nCells and increase in depth-first manner.
-scdata_guide.metadata.nCells = len(cell_id_to_ind)
+scdata_guide.metadata.cellIds = cell_id_list_after_adding
+scdata_guide.metadata.nCells = len(scdata_guide.metadata.cellIds)
 bs_glob.nCells = scdata_guide.metadata.nCells
-scdata_guide.metadata.cellIds = scdata_all_cells.metadata.cellIds
 scdata_guide.cleanup_node_inds()
 
 """

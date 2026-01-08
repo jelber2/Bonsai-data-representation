@@ -816,19 +816,19 @@ class TreeNode:
             if change_node_inds:
                 self.nodeInd = -1
                 self.nodeId = 'root'
-        for child in self.childNodes:
-            if not child.isLeaf:
-                child.renumberNodes(change_node_inds=change_node_inds)
         if not self.isRoot:
             is_cell = self.isCell if (self.isCell is not None) else self.isLeaf
-            if change_node_inds and (not is_cell):
-                # self.nodeInd = bs_glob.nNodes - 1
-                self.nodeInd = bs_glob.max_node_ind + 1
-                bs_glob.max_node_ind += 1
-                self.nodeId = 'internal_' + str(self.nodeInd)
+            if not is_cell:
+                bs_glob.nNodes += 1
+                if change_node_inds:
+                    # self.nodeInd = bs_glob.nNodes - 1
+                    self.nodeInd = bs_glob.max_node_ind + 1
+                    bs_glob.max_node_ind += 1
+                    self.nodeId = 'internal_' + str(self.nodeInd)
             if self.nodeId is None:
                 self.nodeId = 'internal_' + str(self.nodeInd)
-            bs_glob.nNodes += 1
+        for child in self.childNodes:
+            child.renumberNodes(change_node_inds=change_node_inds)
 
     def renumber_verts(self, vertIndToNode, vert_count, include_nodeInd=False, old_ind_to_new_ind=None):
         if old_ind_to_new_ind is not None:
@@ -2754,7 +2754,7 @@ class TreeNode:
         search_count += 1
         # First calculate the loglikelihood when adding the candidate on this node
         if dlogl_self is None:
-            # We only enter this if-statement, if we do not get this information from the parent process, which is when
+            # We only enter this if-statement if we do not get this information from the parent process, which is when
             # the search actually starts at this node
             dlogl_self, opt_t_self = self.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
                                                              as_if_root_version=as_if_root_version,
