@@ -99,4 +99,4 @@ for ind_subset, subset_folder in enumerate(subset_folders):
         scdata_subset.storeTreeInFolder(results_folder_initial, with_coords=True, verbose=args.verbose,
                                         cleanup_tree=False)
 
-    mp_print("Reading and filtering data took " + str(time.time() - start_all) + " seconds.")
+mp_print("Reading, filtering, and storing data took " + str(time.time() - start_all) + " seconds.")
