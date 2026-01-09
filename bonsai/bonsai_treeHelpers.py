@@ -1170,6 +1170,8 @@ class TreeNode:
                                                                                                        WAsIfRoot_g)
             else:  # i.e. if mpiInfo.rank != 0. The process coming here already means this round will be parallel
                 # start_comm = time.time()
+                very_verbose = True
+                mp_print("This process is being used in the merge-children computation!", ALL_RANKS=True)
                 mpiInfoTmp = mpiInfo
                 infoTuple, tChildren, coordsTuple = self.receiveMergeChildrenInfo()
                 pairInfoTuple, UBInfo, runConfigs, chInfo = infoTuple
@@ -3183,8 +3185,8 @@ class Tree:
             else:
                 np.save(ltqs_file, ltqs, allow_pickle=False)
                 np.save(ltqsVars_file, ltqs_vars, allow_pickle=False)
-        print_memory("Wrote ltqs and ltqsVars to file")
-        mp_print("Printing to file took %.2f seconds." % (time.time() - start))
+            print_memory("Wrote ltqs and ltqsVars to file")
+        mp_print("Storing tree in folder took %.2f seconds." % (time.time() - start))
 
         return edge_lst, dist_lst, vert_info
 

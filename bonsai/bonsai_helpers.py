@@ -1182,7 +1182,8 @@ def print_memory(location=None):
     mp_print(message, ALL_RANKS=True)
 
 
-def store_scdata_and_communicate_path(scData, specific_results_folder, general_results_folder=None, prefix=None):
+def store_scdata_and_communicate_path(scData, specific_results_folder, general_results_folder=None, prefix=None,
+                                      with_coords=True):
     mpi_info = mpi_wrapper.get_mpi_info()
     if mpi_info.rank == 0:
         no_scdata_path = True
@@ -1198,7 +1199,7 @@ def store_scdata_and_communicate_path(scData, specific_results_folder, general_r
             if not os.path.exists(scdata_path):
                 no_scdata_path = False
         # We store the tree to make sure we have the data of all vertices
-        scData.storeTreeInFolder(os.path.join(scdata_path), with_coords=True, verbose=False, nwk=False)
+        scData.storeTreeInFolder(os.path.join(scdata_path), with_coords=with_coords, verbose=False, nwk=False)
 
         # Communicate the path where scData is stored with the other processes. This also serves as a barrier between
         # storing the tree and loading it on other processes

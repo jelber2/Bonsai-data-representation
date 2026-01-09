@@ -515,8 +515,8 @@ if args.perform_annot_guided_clustering:
         mp_print("Starting clustering guided by Annotation: {}".format(annot_id))
 
         # TODO: REMOVE THIS FOR SURE!
-        if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
-            continue
+        # if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
+        #     continue
         if annot_id:
             if annot_id.startswith('annot_num'):
                 continue

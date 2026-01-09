@@ -1370,8 +1370,8 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_in
         if mpi_info.rank != 0:
             mp_print("Can't contribute to doing SPR moves in any other mode than 'large_tree'. "
                      "Choose --spr_strategy='large_tree' to benefit from parallelization "
-                     "(at the cost of memory usage) for the SPR-moves.")
-            return
+                     "(at the cost of some memory usage) for the SPR-moves."
+                     "Now, this process will wait to see whether it can help in the postprocessing.", ALL_RANKS=True)
 
     if strategy == 'determ_random_determ':
         if output_present[0]:
@@ -1492,7 +1492,7 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_in
 
 
 def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_target, max_moves=None,
-                                     min_branch_length=-1, large_tree=False):
+                                     min_branch_length=-1, large_tree=False, parallel=False):
     """
 
     :param args:
@@ -1518,14 +1518,18 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
 
     # The actual moves!
     if not large_tree:
-        scData = loadReconstructedTreeAndData(args, scdata_path,
-                                              reprocess_data=False, all_genes=False, get_cell_info=False,
-                                              all_ranks=True, rel_to_results=False, verbose=False)
+        if mpi_info.rank != 0:
+            mp_print("This process will only contribute to SPR-postprocessing.", ALL_RANKS=True)
+            scData = None
+        else:
+            scData = loadReconstructedTreeAndData(args, scdata_path,
+                                                  reprocess_data=False, all_genes=False, get_cell_info=False,
+                                                  all_ranks=True, rel_to_results=False, verbose=False)
 
-        successful_moves, total_dlogl, _ = scData.tree.do_spr_moves(max_moves=max_moves,
-                                                                    select_cand=select_cand,
-                                                                    select_target=select_target,
-                                                                    min_branch_length=min_branch_length)
+            successful_moves, total_dlogl, _ = scData.tree.do_spr_moves(max_moves=max_moves,
+                                                                        select_cand=select_cand,
+                                                                        select_target=select_target,
+                                                                        min_branch_length=min_branch_length)
     else:
         # In this case, do three phases:
         # Phase 1: only moves are performed until they occur at low frequency only,
@@ -1638,30 +1642,32 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
                     gc.collect()
                 except UnboundLocalError:
                     pass
-                mp_print("My job in the SPR-moves is done.", ALL_RANKS=True)
-                return
+                mp_print("My job in the SPR-moves is done. Will wait to see if I can help in postprocessing.",
+                         ALL_RANKS=True)
+                scData = None
+            else:
+                # So only process zero goes here. It merges all the sorted lists using the heapq.merge algorithm
+                negdlogl_nodeind_tuples = list(heapq.merge(*all_negdlogl_nodeind_tuples))
 
-            # So only process zero goes here. It merges all the sorted lists using the heapq.merge algorithm
-            negdlogl_nodeind_tuples = list(heapq.merge(*all_negdlogl_nodeind_tuples))
+        if mpi_info.rank == 0:
+            # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
+            # OPTIONAL: Re-load tree that was stored as intermediate, because then we the scanning behavior didn't change
+            # the ordering of children, which makes it perfectly comparable when running on different numbers of cores
+            del scData
+            gc.collect()
+            print_memory('Deleted scData after parallel phase')
+            scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
+                                                  reprocess_data=False, all_genes=False, get_cell_info=False,
+                                                  all_ranks=True, rel_to_results=False, single_process=True, verbose=False)
+            # scData.tree.root.storeParent()
+            print_memory("Loaded tree again after parallel phase")
 
-        # Phase 3: the successful candidates are sorted for their predicted loglikelihood and executed
-        # OPTIONAL: Re-load tree that was stored as intermediate, because then we the scanning behavior didn't change
-        # the ordering of children, which makes it perfectly comparable when running on different numbers of cores
-        del scData
-        gc.collect()
-        print_memory('Deleted scData after parallel phase')
-        scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
-                                              reprocess_data=False, all_genes=False, get_cell_info=False,
-                                              all_ranks=True, rel_to_results=False, single_process=True, verbose=False)
-        # scData.tree.root.storeParent()
-        print_memory("Loaded tree again after parallel phase")
-
-        my_tasks = [node_ind_dlogl[1] for node_ind_dlogl in negdlogl_nodeind_tuples]
-        successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(select_cand='list',
-                                                                               select_target=select_target,
-                                                                               cand_list=my_tasks, only_scan=False,
-                                                                               mem_friendly=True,
-                                                                               skip_prepare_tree=True)
+            my_tasks = [node_ind_dlogl[1] for node_ind_dlogl in negdlogl_nodeind_tuples]
+            successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(select_cand='list',
+                                                                                   select_target=select_target,
+                                                                                   cand_list=my_tasks, only_scan=False,
+                                                                                   mem_friendly=True,
+                                                                                   skip_prepare_tree=True)
 
     # Just some tracking
     # if tracking:
@@ -1675,8 +1681,10 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
 
     # start = time.time()
     # start_logl = new_logl
+
+    # All processes should come togethere here.
     mp_print("Start round of postprocessing after SPR-moves.", ALL_RANKS=True)
-    scData.tree.do_spr_postprocessing(verbose=large_tree)
+    scData = extensive_spr_postprocessing(args, scData, verbose=large_tree)
     print_memory("After round of postprocessing after SPR-moves.")
 
     # Just some tracking
@@ -1688,6 +1696,44 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
     #     info_dict['successes'].append(0)
     #     mp_print("Loglikelihood of inferred tree after postprocessing: {}".format(new_logl))
     return scData
+
+
+def extensive_spr_postprocessing(args, scdata, verbose=False):
+    mpi_info = mpi_wrapper.get_mpi_info()
+    # First do smaller postprocessing just on zero-th process
+    if mpi_info.rank == 0:
+        scdata.tree.do_spr_postprocessing(verbose=verbose, only_cleanup=False, only_time_opt=True)
+
+    # Then communicate the tree-topology (without the data coordinates), necessary to resolve polytomies
+    scdata_path_postproc = store_scdata_and_communicate_path(scdata, specific_results_folder='spr_intermediates')
+    if (mpi_info.size > 1) and (mpi_info.rank != 0):
+        scdata = loadReconstructedTreeAndData(args, scdata_path_postproc, reprocess_data=False, all_genes=False,
+                                              get_cell_info=False, all_ranks=False, rel_to_results=True)
+    else:
+        # Get as-if-root information, necessary for resolving polytomies
+        scdata.tree.root.getAIRootInfo(None, None)
+    # Make sure, node counts are correct on all processes
+    scdata.tree.root.renumberNodes(change_node_inds=False)
+    scdata.tree.nNodes = bs_glob.nNodes
+
+    # Resolve polytomies
+    scdata.tree.root.mergeChildrenRecursive(scdata.tree.root.ltqs, scdata.tree.root.getW(), sequential=False,
+                                            verbose=verbose, ellipsoidSize=1.0, single_process=False,
+                                            mergeDownstream=True, tree=scdata.tree, nChildNN=50, kNN=10)
+    if mpi_info.rank != 0:
+        mp_print("Now, my job in the SPR postprocessing is also done. Returning to main function.", ALL_RANKS=True)
+        del scdata
+        gc.collect()
+        return None
+
+    # Only the first process goes here.
+    scdata.tree.root.renumberNodes(change_node_inds=False)  # Some nodes were merged, need to re-count the nodes
+    scdata.tree.nNodes = bs_glob.nNodes
+    scdata.tree.root.storeParent()
+    scdata.tree.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-4)
+
+    return scdata
+
 
     # Used
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
