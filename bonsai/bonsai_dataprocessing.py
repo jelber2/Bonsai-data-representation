@@ -2361,6 +2361,30 @@ def loadReconstructedTreeAndData(args, tree_folder, reprocess_data=False, all_ge
                                  single_process=False, keep_original_data=False, calc_loglik=False, get_data=True,
                                  get_posterior_ltqs=False, otherRanksMinimalInfo=False, verbose=True,
                                  calc_posteriors=True):
+    """
+
+    :param args:
+    :param tree_folder:
+    :param reprocess_data:
+    :param all_genes:
+    :param all_ranks:
+    :param get_cell_info:
+    :param corrected_data:
+    :param rel_to_results:
+    :param no_data_needed:
+    :param single_process:
+    :param keep_original_data:
+    :param calc_loglik:
+    :param get_data:
+    :param get_posterior_ltqs:
+    :param otherRanksMinimalInfo:
+    :param verbose:
+    :param calc_posteriors: This boolean may be false, even when get_posterior_ltqs is True. This means that, even
+    though we want to read in the posteriors if they are stored in the folder, we do not calculate them if they are not
+    available. This is to save the memory of storing these posteriors on the tree. Instead, we only have to calculate
+    them when we immediately write them to the file.
+    :return:
+    """
     if type(args) is dict:
         args = convert_dict_to_named_tuple(args)
     mpi_info = mpi_wrapper.get_mpi_info(singleProcess=single_process)

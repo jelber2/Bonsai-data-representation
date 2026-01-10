@@ -2670,6 +2670,8 @@ class TreeNode:
 
     def getAIRootInfo(self, ltqsParent, W_gParent):
         if self.isRoot:
+            if self.ltqs is None:
+                self.getLtqsComplete(mem_friendly=True)
             ltqsAIRoot = self.ltqs.copy()
             WAIRoot = self.getW().copy()
         else:
@@ -3143,6 +3145,10 @@ class Tree:
 
         # Finally, we do another depth-first search to store the coordinates at the rows given by the vert_inds
         if coords_folder is not None:
+            # First, we need to make sure that ltqs are calculated at the nodes
+            if self.root.ltqs is None:
+                self.root.getLtqsComplete(mem_friendly=bs_glob.mem_friendly)
+
             # We initialize the filenames first
             if not store_posterior_ltqs:
                 ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
