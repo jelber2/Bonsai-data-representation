@@ -2698,6 +2698,7 @@ class TreeNode:
         self.ltqsAIRoot = None
         self._W_gAIRoot = None
         self._ltqsVarsAIRoot = None
+        self._AIRoot_version = -1
         for child in self.childNodes:
             child.clear_AIRoot()
 
@@ -4327,6 +4328,7 @@ class Tree:
         self.nNodes = bs_glob.nNodes
         self.root.storeParent()
         self.root.clear_memory()
+        self.root.reset_version_numbers('_AIRoot_version')
 
         if only_cleanup:
             return
