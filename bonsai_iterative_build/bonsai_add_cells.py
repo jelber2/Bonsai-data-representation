@@ -281,3 +281,6 @@ scdata_guide.storeTreeInFolder(scdata_guide.result_path(), with_coords=True, ver
 
 if tmp_folder is not None:
     remove_tree_folders(tmp_folder, removeDir=True, base='added')
+
+mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
+print_memory("Memory peak after the whole calculation")
