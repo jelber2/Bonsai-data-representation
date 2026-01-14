@@ -143,7 +143,7 @@ scdata.metadata.processedDatafolder = scdata.result_path('zscorefiltered_%.3f_an
 # Select a subset of the cell-IDs to build a first guide-tree on
 np.random.seed(seed)
 
-if args.n_initial_cells > scdata.metadata.nCells:
+if args.n_initial_cells >= scdata.metadata.nCells:
     mp_print("The dataset is smaller than your proposed starting tree. In that case, you can just run the normal"
              "Bonsai-algorithm.", ERROR=True)
     exit()
