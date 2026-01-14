@@ -209,6 +209,7 @@ def get_pairwise_dist_on_tree(tree, node_ids_of_interest):
     nVerts = np.max(colsComplete) + 1
     distance_csr = csr_matrix((weightsComplete, (rowsComplete, colsComplete)), shape=(nVerts, nVerts))
 
+    print("Done preparing inputs. Starting shortest-path algorithm from Scipy.")
     distances = squareform(shortest_path(distance_csr, method='auto', directed=False, return_predecessors=False,
                                          unweighted=False, overwrite=False, indices=indices)[:, indices], checks=False)
     return distances
