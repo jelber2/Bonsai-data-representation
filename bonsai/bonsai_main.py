@@ -680,3 +680,6 @@ if args.step in ['metadata', 'all']:
             redundant_folder = scData.result_path(redundant_folder)
             if os.path.exists(redundant_folder):
                 remove_tree_folders(redundant_folder, removeDir=True)
+
+mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
+print_memory("Memory peak after the whole calculation")

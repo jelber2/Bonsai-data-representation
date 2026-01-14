@@ -10,8 +10,11 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
+import tracemalloc
+tracemalloc.start()
+
 from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, \
-    convert_dict_to_named_tuple, str2bool
+    convert_dict_to_named_tuple, str2bool, print_memory
 
 parser = ArgumentParser(
     description='First script to be called in bonsai_iterative_build.py.'
@@ -100,3 +103,5 @@ for ind_subset, subset_folder in enumerate(subset_folders):
                                         cleanup_tree=False)
 
 mp_print("Reading, filtering, and storing data took " + str(time.time() - start_all) + " seconds.")
+mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
+print_memory("Memory peak after the whole calculation")
