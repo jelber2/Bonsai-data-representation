@@ -1791,6 +1791,7 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
     tmp_folder = os.path.join(resultsFolder, 'intermediate_trees')
     stored_tree_ind = None
     if mpiInfo.rank == 0:
+        found_intermediate = False
         if args.pickup_intermediate and os.path.exists(tmp_folder):
             intermediateFolders = os.listdir(tmp_folder)
             if len(intermediateFolders):
@@ -1801,11 +1802,14 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
                                                           reprocess_data=False, all_genes=False, get_cell_info=False,
                                                           all_ranks=False, rel_to_results=False)
                     randomMoves = 0
+                    found_intermediate = True
             elif os.path.exists(os.path.join(resultsFolder, 'random_trees', 'orig_tree')):
                 scData = loadReconstructedTreeAndData(args, os.path.join(resultsFolder, 'random_trees', 'orig_tree'),
                                                       reprocess_data=False, all_genes=False, get_cell_info=False,
                                                       all_ranks=False, rel_to_results=False)
-        else:
+                found_intermediate = True
+
+        if not found_intermediate:
             scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
                                                   get_cell_info=False, all_ranks=False, rel_to_results=True)
         Path(tmp_folder).mkdir(parents=True, exist_ok=True)
