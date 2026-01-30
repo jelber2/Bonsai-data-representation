@@ -1009,7 +1009,8 @@ class SCData:
                                  "(or cellstates) in the dataset. Please check this. For now, we are discarding this "
                                  "annotation-file".format(filename), WARNING=True)
                         annotation_df = None
-                except:
+                except Exception as e:
+                    mp_print("An error occurred: {}".format(e))
                     mp_print("Annotation-file '{}' can somehow not be mapped to any annotation of the cells or "
                              "cellstates in the dataset.".format(filename), WARNING=True)
                     annotation_df = None
