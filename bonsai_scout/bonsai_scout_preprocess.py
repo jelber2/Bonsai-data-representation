@@ -490,8 +490,8 @@ celltype_info = Celltype_info(cell_info_dict=cell_info_dict,
                               cs_info_dict=cs_info_dict)
 cell_id_to_node_id = {scData.metadata.cellIds[cell_ind]: node_ids[vert_ind] for cell_ind, vert_ind in
                       scData.cellIndToVertInd.items()}
-cs_id_to_node_id = {scData.metadata.csIds[cell_ind]: node_ids[vert_ind] for cell_ind, vert_ind in
-                    scData.cellIndToVertInd.items()}
+cs_id_to_node_id = {scData.metadata.csIds[cs_ind]: node_ids[vert_ind] for cs_ind, vert_ind in
+                    scData.csIndToVertInd.items()}
 
 # all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
 # We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
