@@ -992,14 +992,14 @@ class SCData:
                     # of rows
                     saved_df = False
                     annotation_df = annot_input.reindex(self.metadata.csIds)
-                    if annotation_df.shape[0]:
+                    if annotation_df.shape[0] and annotation_df.notna().any().any():
                         cell_or_cs = 'cs'
                         mp_print("Managed to save the annotation in {}. "
                                  "Do check if results are correct.".format(filename), WARNING=True)
                         saved_df = True
                     if not saved_df:
                         annotation_df = annot_input.reindex(self.metadata.cellIds)
-                        if annotation_df.shape[0]:
+                        if annotation_df.shape[0] and annotation_df.notna().any().any():
                             cell_or_cs = 'cell'
                             mp_print("Managed to save the annotation in {}. "
                                      "Do check if results are correct.".format(filename), WARNING=True)
