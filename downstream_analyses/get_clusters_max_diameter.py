@@ -96,7 +96,7 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
     :return:
     """
     cluster_tree = Cluster_Tree()
-    cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
+    cluster_tree.from_newick_string(nwk_str=tree_nwk_str)
     clusters, cut_edges, mut_info = get_annotation_based_clustering_random(cluster_tree,
                                                                            cell_id_to_node_id=cell_id_to_node_id,
                                                                            annotation_dict=annotation_dict,

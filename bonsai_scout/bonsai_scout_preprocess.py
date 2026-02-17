@@ -547,7 +547,7 @@ if args.perform_annot_guided_clustering:
                                                                                      random_sampling=True,
                                                                                      tracking_path=tracking_path,
                                                                                      max_moves=1000, cutting_tol=1e-4,
-                                                                                     prohibit_small_clsts=True)
+                                                                                     prohibit_small_clsts=False)
         if len(cut_edges):  # i.e. we discard the trivial clusterings
             clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
             cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
