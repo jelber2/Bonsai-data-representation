@@ -2,14 +2,20 @@ from argparse import ArgumentParser
 import numpy as np
 import time
 from pathlib import Path
-import os, sys, psutil
+import os, sys, psutil, gc
+
+# TODO: Remove this later maybe
+import tracemalloc
+
+tracemalloc.start()
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
 sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
-from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, str2bool
+from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, str2bool, \
+    print_memory, store_scdata_and_communicate_path
 
 parser = ArgumentParser(
     description='Infers a cell-tree to approximate the distances in gene expression space between cells in single'
@@ -32,8 +38,9 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
 # TODO: To be moved to config file
 parser.add_argument('--spr_strategy', type=str, default='determ_random_determ',
                     help="Move to general config-file later. This will determine what strategy we follow for the "
-                         "spr-moves. Current options are 'determ_random_determ', 'deterministic', "
-                         "'deterministic_exhaustive', 'super_sure'.")
+                         "spr-moves. Current options are 'large_tree', 'determ_random_determ', 'deterministic', "
+                         "'deterministic_exhaustive', 'super_sure'."
+                         "NOTE: Only large_tree allows for parallelization, the rest will only use 1 CPU.")
 
 # TODO: To be removed
 parser.add_argument('--store_all_nwk_folder', type=str, default='',
@@ -158,6 +165,12 @@ SEQUENTIAL = True
 STORED_GREEDY_RESULT = False
 
 start_all = time.time()
+print_memory("Start")
+
+# Make sure that args.results_folder is set:
+sc_data = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
+args.results_folder = sc_data.result_path()
+del sc_data
 
 """-----------------Greedily maximizing tree likelihood starting from star-tree------"""
 if args.step in ['preprocess', 'all']:
@@ -168,8 +181,8 @@ if args.step in ['preprocess', 'all']:
     if args.pickup_intermediate:
         try:
             scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
-                                         get_cell_info=False,
-                                         all_ranks=False, rel_to_results=True)
+                                                  get_cell_info=False,
+                                                  all_ranks=False, rel_to_results=True)
             mp_print("Since --pickup_intermediate = True, Bonsai successfully loaded the preprocessing result from {}."
                      "\nPlease set --pickup_intermediate False "
                      "for redoing the preprocessing.".format(scData.result_path(outputFolder)))
@@ -190,7 +203,8 @@ if args.step in ['preprocess', 'all']:
                 scData = loadReconstructedTreeAndData(args, args.tmp_folder, all_genes=False, get_cell_info=False,
                                                       corrected_data=True)
             else:
-                mp_print("Could not find tmp-folder at {}. Loading tree from start.".format(args.tmp_folder), ERROR=True)
+                mp_print("Could not find tmp-folder at {}. Loading tree from start.".format(args.tmp_folder),
+                         ERROR=True)
                 scData = initializeSCData(args, createStarTree=True, getOrigData=False, otherRanksMinimalInfo=True)
         else:
             scData = initializeSCData(args, createStarTree=True, getOrigData=False, otherRanksMinimalInfo=True)
@@ -206,6 +220,8 @@ if args.step in ['preprocess', 'all']:
                                      cleanup_tree=False)
     if args.step in ['preprocess']:
         exit()
+
+print_memory("After preprocessing.")
 
 if args.step in ['core_calc', 'all']:
     if scData is None:
@@ -271,6 +287,8 @@ if args.step in ['core_calc', 'all']:
                                          ellipsoidSize=origEllipsoidSize, outputFolder=outputFolder, nChildNN=nChildNN,
                                          kNN=args.use_knn, mergeDownstream=True, tree=scData.tree,
                                          tmpTreeInd=tmpTreeInd)
+        if (scData is not None) and (scData.tree is not None):
+            scData.tree.root.clear_memory()
         if mpiRank == 0:
             mp_print("First greedy maximisation of tree likelihood took " + str(time.time() - startGML) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
@@ -325,6 +343,8 @@ if args.step in ['core_calc', 'all']:
                                                 sequential=SEQUENTIAL, verbose=args.verbose,
                                                 ellipsoidSize=origEllipsoidSize, nChildNN=nChildNN, kNN=args.use_knn,
                                                 mergeDownstream=True, tree=scData.tree)
+        if (scData is not None) and (scData.tree is not None):
+            scData.tree.root.clear_memory()
         if mpiRank == 0:
             mp_print("Redoing starry nodes took " + str(time.time() - startRedoingStarry) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
@@ -361,6 +381,8 @@ if args.step in ['core_calc', 'all']:
             startOptTimes = time.time()
             optTimes = scData.tree.optTimes(verbose=True, singleProcess=True, mem_friendly=True, maxiter=100)
 
+            if (scData is not None) and (scData.tree is not None):
+                scData.tree.root.clear_memory()
             mp_print("Optimization of diffusion times took " + str(time.time() - startOptTimes) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                                   loglikVarCorr=scData.metadata.loglikVarCorr)
@@ -393,22 +415,35 @@ if args.step in ['core_calc', 'all']:
                  "the results of this step are already present in {}".format(results_folder))
     else:
         mp_print("Starting SPR moves.")
-        if scData is None or args.skip_greedy_merging:
-            # Determine where to load results from
-            outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
-                                           redo_starry=True, opt_times=True,
-                                           tmp_file=os.path.basename(args.tmp_folder))
-            scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
-                                                  get_cell_info=False, all_ranks=False, rel_to_results=True)
-
         start_spr = time.time()
-        # Do the actual moves here:
+        if mpiRank == 0:
+            if scData is None or args.skip_greedy_merging:
+                # Determine where to load results from
+                outputFolder = getOutputFolder(zscore_cutoff=args.zscore_cutoff,
+                                               redo_starry=True, opt_times=True,
+                                               tmp_file=os.path.basename(args.tmp_folder))
+                scData = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=False, all_genes=False,
+                                                      get_cell_info=False, all_ranks=False, rel_to_results=True,
+                                                      verbose=True)
 
-        # TODO: Turn on!
-        # rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
-        do_spr_moveset(scData, args, strategy=spr_strategy, tracking=True, output_folder=scData.result_path())
-        mp_print("Done with SPR moves, current memory usage is ",
-                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+            rootsetting_success = scData.tree.set_mindist_root(cell_ids=scData.metadata.cellIds)
+            scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
+                                                                  loglikVarCorr=scData.metadata.loglikVarCorr)
+            mp_print("Loglikelihood of inferred tree before starting SPR moves: " + str(scData.metadata.loglik))
+
+        # For memory usage reasons, it's best to here delete scData, then read it in using memmap in the SPR-moves
+        # function
+        scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
+                                                        general_results_folder=args.results_folder)
+        scData = None
+        gc.collect()
+        print_memory("Ready to start SPR moves")
+
+        # Do the actual moves here:
+        scData = do_spr_moveset(scdata_path, args, strategy=spr_strategy, pickup_intermediate=args.pickup_intermediate)
+        print_memory("Done with SPR moves")
+        if (scData is not None) and (scData.tree is not None):
+            scData.tree.root.clear_memory()
 
         if mpiRank == 0:
             scData.tree.remove_two_child_root()
@@ -423,6 +458,11 @@ if args.step in ['core_calc', 'all']:
                                            redo_starry=True, opt_times=True, tmp_file=os.path.basename(args.tmp_folder))
             mp_print("Storing result after SPR moves in " + scData.result_path(outputFolder) + "\n")
             scData.storeTreeInFolder(scData.result_path(outputFolder), with_coords=True, verbose=args.verbose)
+
+            redundant_folder = scData.result_path('spr_intermediates')
+            if os.path.exists(redundant_folder):
+                remove_tree_folders(redundant_folder, removeDir=True)
+
             # Store tree topology with optimised times, and the data only for selected genes, such that it can be read
             # by multiple cores such that the next part of the program can be run in parallel
             # storeCurrentState(outputFolder, scData, dataOrResults='results', args=args)
@@ -474,6 +514,8 @@ if args.step in ['core_calc', 'all']:
         # mp_print("Before starting nnnReorder, memory usage is ",
         #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
         scData = nnnReorder(args, tmp_folder, stored_tree_ind, maxMoves=1000, closenessBound=0.5, verbose=args.verbose)
+        if (scData is not None) and (scData.tree is not None):
+            scData.tree.root.clear_memory()
 
         if mpiRank != 0:
             mp_print("This process's job is done. Closing down.")
@@ -495,6 +537,9 @@ if args.step in ['core_calc', 'all']:
         mp_print("Optimization of diffusion times took " + str(time.time() - startOptTimes) + " seconds.")
         scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
                                                               loglikVarCorr=scData.metadata.loglikVarCorr)
+        if (scData is not None) and (scData.tree is not None):
+            scData.tree.root.clear_memory()
+
         mp_print("Loglikelihood of inferred tree after optimising diffusion times: " + str(scData.metadata.loglik))
 
         # Store intermediate results
@@ -550,6 +595,8 @@ if args.step in ['core_calc', 'all']:
             scData.tree.nNodes = bs_glob.nNodes
             # scData.tree.root.reorderChildrenRoot(verbose=args.verbose, maxChild=8)
             scData.tree.root.ladderize_in_main()
+            if (scData is not None) and (scData.tree is not None):
+                scData.tree.root.clear_memory()
 
             mp_print("Reordering children took " + str(time.time() - startReorderEdges) + " seconds.")
             scData.metadata.loglik = scData.tree.calcLogLComplete(mem_friendly=True,
@@ -607,7 +654,8 @@ if args.step in ['metadata', 'all']:
         all_genes = False
         scData = loadReconstructedTreeAndData(args, outputFolder, all_genes=all_genes, get_cell_info=False,
                                               reprocess_data=True, all_ranks=True, rel_to_results=True,
-                                              no_data_needed=False, get_posterior_ltqs=True, otherRanksMinimalInfo=True)
+                                              no_data_needed=False, get_posterior_ltqs=True, otherRanksMinimalInfo=True,
+                                              calc_posteriors=False)
 
     # scDataUncorrected = loadReconstructedTreeAndData(args, outputFolder, reprocess_data=True, all_genes=False,
     #                                                  all_ranks=False, get_cell_info=False, corrected_data=False,
@@ -632,3 +680,6 @@ if args.step in ['metadata', 'all']:
             redundant_folder = scData.result_path(redundant_folder)
             if os.path.exists(redundant_folder):
                 remove_tree_folders(redundant_folder, removeDir=True)
+
+mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
+print_memory("Memory usage after the whole calculation")

@@ -8,6 +8,7 @@ import pandas as pd
 from ruamel.yaml import YAML
 from shiny import ui
 import sys
+import re
 
 import logging
 FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
@@ -52,6 +53,24 @@ bonvis_data_objects = {}
 #     ui.p("The flat geometry does not transform distances, but plots all points and lines that are outside of \
 #                  the field of view on the enveloping square.")
 # )
+
+
+def small_cluster_grouping_ui():
+    return ui.TagList(
+        ui.input_slider(
+            "small_cluster_cutoff_general",
+            ui.strong("Group clusters smaller than:"),
+            min=1,
+            max=20,
+            value=1,
+            step=1,
+        ),
+        ui.input_action_button(
+            "go_group_small_clusters",
+            "Group small clusters!",
+            class_="btn-success",
+        ),
+    )
 
 
 def get_feature_info_display(bonvis_data, feature_path):
@@ -144,7 +163,7 @@ class BonvisObject:
                         'nodes_smaller': 0, 'more_curve': 0, 'less_curve': 0, 'zoom_in': 0,
                         'zoom_out': 0, 'marker': 0, 'trigger_marker': 0, 'open_marker_gene_warning': 0,
                         'fig': 0, 'marker_info': 0, 'edges_thicker': 0, 'edges_thinner': 0,
-                        'node_edges_thicker': 0, 'node_edges_thinner': 0
+                        'node_edges_thicker': 0, 'node_edges_thinner': 0, 'small_clusters': 0,
                         }
         self.mask_counters = {'temp_mask': [11] * 3,  # Variable to track if mask should be turned off in couple of seconds
                         'redraw_mask': 0,  # tracking number of redraws (in figure) done
@@ -162,10 +181,16 @@ class BonvisObject:
         self.annot_infos = dict(self.bonvis_fig.bonvis_settings.celltype_info.annot_infos,
                                 **self.bonvis_fig.bonvis_settings.verttype_info.annot_infos)
         self.annotation_dict = {}
+        self.clustering_annotation_dict = {}
+        annot_alts_set = set(self.bonvis_fig.bonvis_settings.celltype_info.annot_alts + 
+                             self.bonvis_fig.bonvis_settings.verttype_info.annot_alts)
         for annot, annot_info in self.annot_infos.items():
             if hasattr(annot_info, 'hidden') and annot_info.hidden:
                 continue
             self.annotation_dict[annot_info.label] = annot_info.label
+            clustering_name = 'annot_cluster_' + annot_info.info_key[6:] if annot_info.info_key.startswith('annot_') else annot_info.info_key
+            if (annot_info.cats is not None) and (clustering_name in annot_alts_set):
+                self.clustering_annotation_dict[annot_info.label] = annot_info.label
 
         self.size_annotation_dict = {}
         for annot, annot_info in self.annot_infos.items():
@@ -201,9 +226,9 @@ class BonvisObject:
         self.init_feature_path = self.bonvis_fig.bonvis_settings.node_style['feature_path']
         self.feature_display = get_feature_info_display(self.bonvis_fig.bonvis_data,
                                                         self.bonvis_fig.bonvis_settings.node_style['feature_path'])
-        self.max_n_clusters = int(np.max([int(annot_alt.split('annot_cluster_n')[-1]) for 
-                                      annot_alt in self.bonvis_fig.bonvis_settings.celltype_info.annot_alts 
-                                      if annot_alt.startswith('annot_cluster_n')]))
+        pattern = re.compile(r"annot_cluster_n(\d+)")
+        self.max_n_clusters = max((int(m.group(1)) for s in annot_alts_set if (m := pattern.search(s))),
+                                  default=None)
 
         self.old_orig = np.array([0, 0])
         self.old_node_style = self.bonvis_fig.bonvis_settings.node_style['annot_info'].label

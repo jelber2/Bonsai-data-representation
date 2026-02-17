@@ -35,6 +35,8 @@ parser.add_argument('--unbalanced', type=str2bool, default=False,
                     help='Determines whether we simulate an unbalanced tree, instead of a perfect binary tree.')
 parser.add_argument('--realcovariance', type=str2bool, default=False,
                     help='Determines whether we reconstruct a realistic covariance structure')
+parser.add_argument('--keep_progenitor_cells', type=str2bool, default=False,
+                    help='Determines if the internal nodes on the tree are added as observed cells to the datset.')
 parser.add_argument('--multiply_cell_counts', type=float, default=-1,
                     help='To create a dataset with more or less noise, we can multiply the cell counts by a number'
                          'smaller or larger than 1, respectively.')
@@ -50,7 +52,11 @@ N_GENERATIONS = args.num_gens
 RANDOM_TIMES = args.random_times
 UNBALANCED = args.unbalanced
 REAL_COVARIANCE = args.realcovariance
+KEEP_PROGENITORS = args.keep_progenitor_cells
 n_cells_simu = 2 ** N_GENERATIONS
+
+if KEEP_PROGENITORS:
+    n_cells_simu = n_cells_simu * 2 - 1
 
 if REAL_COVARIANCE:
     args.sanity_output_path = os.path.join(args.data_path, "Sanity")
@@ -170,6 +176,20 @@ def addChildCells_unbalanced(node_counter, all_leaf_nodes, variances=None, n_gen
 def addChildCells(treeNode, counter, barcode, node_counter, variances, n_genes):
     counter += 1
     treeNode.childNodes = []
+
+    if KEEP_PROGENITORS:
+        # In this case, create an additional cell with zero branch length from the internal node
+        node_counter += 1
+        progenitor_node = TreeNode(isLeaf=True, ltqs=treeNode.ltqs.copy(), childNodes=[], nodeInd=node_counter)
+        progenitor_node.tParent = 0.0
+        treeNode.childNodes.append(progenitor_node)
+        tree.nNodes += 1
+        # Add this to the observed nodes
+        delta_gc[:, tree.nLeafs] = treeNode.ltqs.copy()
+        cellIds[tree.nLeafs] = "Progenitor_Cell" + (barcode if len(barcode) else '-')
+        progenitor_node.nodeId = cellIds[tree.nLeafs]
+        tree.nLeafs += 1
+
     for ind in range(2):
         node_counter += 1
         if not RANDOM_TIMES:
@@ -198,6 +218,15 @@ if UNBALANCED:
 else:
     node_counter = addChildCells(tree.root, counter=0, barcode="", node_counter=-1, variances=gene_variances,
                                  n_genes=n_genes_simu)
+
+# Create SCData-object to keep track of all information
+scData = SCData(onlyObject=True)
+scData.tree = tree
+scData.metadata.cellIds = cellIds
+scData.metadata.nCells = len(cellIds)
+bs_glob.nCells = scData.metadata.nCells
+
+scData.cleanup_node_inds()
 
 # Renumber the vertices to make everything consistent with depth first search
 vertIndToNode, tree.nNodes = tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
@@ -242,6 +271,8 @@ if UNBALANCED:
     datadir += '_unbalanced'
 if REAL_COVARIANCE:
     datadir += '_realcovariance'
+if KEEP_PROGENITORS:
+    datadir += '_withprogenitors'
 if args.multiply_cell_counts > 0:
     datadir += '_countstimes{}'.format(args.multiply_cell_counts)
 
@@ -252,11 +283,7 @@ geneID = ['Gene_' + str(ind) for ind in range(n_genes_final)]
 data_path = os.path.abspath(os.path.join(args.results_folder, datadir))
 Path(data_path).mkdir(parents=True, exist_ok=True)
 
-scData = SCData(onlyObject=True)
-scData.tree = tree
-scData.metadata.cellIds = cellIds
-scData.metadata.nCells = len(cellIds)
-bs_glob.nCells = scData.metadata.nCells
+# Store gene-variances and gene-IDs
 scData.metadata.geneVariances = true_vars_g
 scData.metadata.geneIds = geneID
 
@@ -319,6 +346,18 @@ for gen in range(N_GENERATIONS - 1):
 # Add total UMI-counts per cell as annotation
 total_counts_c = list(np.sum(umi_counts, axis=0))
 annotation_dict['total_count'] = total_counts_c
+
+prog_annot = [("progenitor" if cell_id.startswith('Progenitor') else "terminal_fate") for cell_id in cellIds]
+annotation_dict['progenitor_or_terminal'] = prog_annot
+
+depth_annot = []
+for cell_id in cellIds:
+    annot_part = cell_id.split('Cell')[1]
+    depth = 0 if annot_part == '-' else len(annot_part)
+    depth_annot.append(depth)
+
+annotation_dict['progenitor_depth'] = depth_annot
+
 
 annotation_df = pd.DataFrame(annotation_dict, index=cellIds)
 Path(os.path.join(data_path, 'annotation')).mkdir(parents=True, exist_ok=True)

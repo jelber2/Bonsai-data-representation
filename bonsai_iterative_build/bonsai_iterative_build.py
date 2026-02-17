@@ -4,6 +4,12 @@ import time
 from pathlib import Path
 import os, sys, csv
 import subprocess
+import pandas as pd
+
+# TODO: REMOVE THIS EVENTUALLY
+import tracemalloc
+
+tracemalloc.start()
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
@@ -11,7 +17,7 @@ sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
 from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, \
-    convert_dict_to_named_tuple, str2bool
+    convert_dict_to_named_tuple, str2bool, read_ids, write_ids
 
 parser = ArgumentParser(
     description='Starts from cell-data and a tree on which some of the cells are already placed. Cells that are not on'
@@ -44,6 +50,10 @@ parser.add_argument('--growth_before_cleanup', type=float, default=.5,
                     help="When adding cells, this factor (larger than 0) determines after what growth factor (so .1 "
                          "means 10% growth) we re-optimize the tree before adding another set of cells.")
 
+parser.add_argument('--growth_factor_guide', type=float, default=10,
+                    help="Starting from the guide tree, we add cells until the tree is growth_factor_guide as large,"
+                         "then we refine this tree with a normal Bonsai-run, and then add the next factor of cells..")
+
 parser.add_argument('--return_commands', type=str2bool, default=False,
                     help="If True, this script will only return a file with the commands that should be run, "
                          "but not run them. This is useful for running these commands using parallel computing.\n"
@@ -57,6 +67,9 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
 parser.add_argument('--seed', type=int, default=1231,
                     help="Sets the random seed necessary for getting the subset of cells.")
 
+parser.add_argument('--debug_mode', type=str2bool, default=False,
+                    help='Print additional information that may sometimes slow down the calculations.')
+
 args = parser.parse_args()
 
 # TODO: Make sure that Run_configs initialization just copies all arguments that were originally in args
@@ -67,27 +80,27 @@ iterative_cell_lists = args.iterative_cell_lists
 n_initial_cells = args.n_initial_cells
 return_commands = args.return_commands
 config_filepath = args.config_filepath
+growth_factor_guide = args.growth_factor_guide
 seed = args.seed
+debug_mode = args.debug_mode
 search_tol = args.search_tol
 
 args = Run_Configs(args.config_filepath)
 
 args.search_tol = search_tol
+args.debug_mode = debug_mode
 args.select_target = select_target
 args.iterative_cell_lists = iterative_cell_lists
 args.growth_before_cleanup = growth_before_cleanup
 args.n_initial_cells = n_initial_cells
 args.return_commands = return_commands
 args.config_filepath = config_filepath
+args.growth_factor_guide = growth_factor_guide
 if pickup_intermediate:
     args.pickup_intermediate = True
 
-import bonsai.mpi_wrapper as mpi_wrapper
-from bonsai.bonsai_dataprocessing import initializeSCData, getMetadata, loadReconstructedTreeAndData, SCData, \
-    nnnReorder, nnnReorderRandom, Metadata, storeData
-from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder, get_latest_intermediate, \
-    clean_up_redundant_data_files, str2bool
-from bonsai.bonsai_treeHelpers import Tree
+from bonsai.bonsai_dataprocessing import SCData, Metadata
+from bonsai.bonsai_helpers import mp_print, startMPI, getOutputFolder
 import bonsai.bonsai_globals as bs_glob
 
 # Some of the code can be run in parallel, parallelization is done via mpi4py
@@ -115,12 +128,8 @@ if args.return_commands:
 
 scdata.metadata.pathToOrigData = args.data_folder
 # Get cell-IDs of whole dataset
-scdata.metadata.cellIds = []
 if os.path.exists(scdata.data_path('cellID.txt')):
-    with open(scdata.data_path('cellID.txt'), 'r') as file:
-        reader = csv.reader(file, delimiter="\t")
-        for row in reader:
-            scdata.metadata.cellIds.append(row[0])
+    scdata.metadata.cellIds = read_ids(scdata.data_path('cellID.txt'))
     scdata.metadata.nCells = len(scdata.metadata.cellIds)
     n_unq_ids = len(np.unique(scdata.metadata.cellIds))
     if scdata.metadata.nCells is not None:
@@ -134,34 +143,68 @@ scdata.metadata.processedDatafolder = scdata.result_path('zscorefiltered_%.3f_an
 # Select a subset of the cell-IDs to build a first guide-tree on
 np.random.seed(seed)
 
+if args.n_initial_cells >= scdata.metadata.nCells:
+    mp_print("The dataset is smaller than your proposed starting tree. In that case, you can just run the normal"
+             "Bonsai-algorithm.", ERROR=True)
+    exit()
 n_initial_cells = min(args.n_initial_cells, scdata.metadata.nCells)
-subset = np.random.choice(np.arange(scdata.metadata.nCells), size=n_initial_cells, replace=False)
-cell_ids_subset = [scdata.metadata.cellIds[ind] for ind in subset]
+guide_tree_sizes = [n_initial_cells]
+# Check how often we have to grow the tree by a factor of growth_factor_guide
+while guide_tree_sizes[-1] < scdata.metadata.nCells:
+    guide_tree_sizes.append(int(min(args.growth_factor_guide * guide_tree_sizes[-1], scdata.metadata.nCells)))
+subsets = [None] * len(guide_tree_sizes)
+subsets[-1] = np.arange(scdata.metadata.nCells)
+for subset_ind in range(len(guide_tree_sizes) - 2, -1, -1):
+    subsets[subset_ind] = np.random.choice(subsets[subset_ind + 1], size=guide_tree_sizes[subset_ind], replace=False)
 
-# Also create a scdata-object for the subset
-metadata_subset = Metadata(curr_metadata=scdata.metadata)
-metadata_subset.cellIds = cell_ids_subset
-metadata_subset.nCells = len(cell_ids_subset)
-bs_glob.nCells = metadata_subset.nCells
-metadata_subset.dataset = os.path.join(scdata.metadata.dataset, 'subset_0')
-metadata_subset.results_folder = os.path.join(scdata.metadata.results_folder, 'subset_0')
+# Create annotation file that stores which cell belongs to which subset
+which_subset = [None] * scdata.metadata.nCells
+for subset_ind, subset in enumerate(subsets):
+    for cell_ind in subset:
+        if which_subset[cell_ind] is None:
+            which_subset[cell_ind] = "subset_{}".format(subset_ind)
+annotation_df = pd.DataFrame({'iteration_subset': which_subset}, index=scdata.metadata.cellIds)
+annotation_df.to_csv(os.path.join(scdata.result_path(), 'iteration_subset_annotation.tsv'), sep='\t')
 
-scdata_subset = SCData(onlyObject=True, dataset=metadata_subset.dataset,
-                       results_folder=metadata_subset.results_folder)
+scdata_subsets = []
+for subset_ind, subset in enumerate(subsets):
+    cell_ids_subset = [scdata.metadata.cellIds[ind] for ind in subset]
+    if subset_ind == len(subsets) - 1:
+        scdata_subsets.append(scdata)
+        folder_for_nonrefined_tree = scdata.result_path('non_refined_tree')
+        Path(folder_for_nonrefined_tree).mkdir(parents=True, exist_ok=True)
+        write_ids(os.path.join(folder_for_nonrefined_tree, 'starting_cell_ids.txt'), cell_ids_subset)
+        break
 
-scdata_subset.metadata = metadata_subset
-scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed' % args.zscore_cutoff)
+    # Also create a scdata-object for the subset
+    metadata_subset = Metadata(curr_metadata=scdata.metadata)
+    metadata_subset.cellIds = cell_ids_subset
+    metadata_subset.nCells = len(cell_ids_subset)
+    bs_glob.nCells = metadata_subset.nCells
+    metadata_subset.dataset = os.path.join(scdata.metadata.dataset, 'subset_{}'.format(subset_ind))
+    metadata_subset.results_folder = os.path.join(scdata.metadata.results_folder, 'subset_{}'.format(subset_ind))
 
-# Store this subset in a file such that the other script can read it in.
-mp_print("Writing cell IDs to file:")
-with open(scdata.result_path('starting_cell_ids.txt'), 'w') as f:
-    for ID in cell_ids_subset:
-        f.write("%s\n" % ID)
+    scdata_subset = SCData(onlyObject=True, dataset=metadata_subset.dataset,
+                           results_folder=metadata_subset.results_folder)
 
-# Run the script that will read in and preprocess the data, and create the star-tree for the first guide-tree
+    scdata_subset.metadata = metadata_subset
+    scdata_subset.metadata.processedDatafolder = scdata_subset.result_path('zscorefiltered_%.3f_and_processed' %
+                                                                           args.zscore_cutoff)
+
+    # Store this subset in a file such that the other script can read it in.
+    mp_print("Writing cell IDs to file:")
+    folder_for_nonrefined_tree = scdata_subset.result_path('non_refined_tree')
+    Path(folder_for_nonrefined_tree).mkdir(parents=True, exist_ok=True)
+    write_ids(os.path.join(folder_for_nonrefined_tree, 'starting_cell_ids.txt'), cell_ids_subset)
+    scdata_subsets.append(scdata_subset)
+
+"""-----------For the first subset, we run a script that creates a star-tree for the first guide-tree---------"""
+# Run the script that will read in and preprocess *all* the data, and create the star-tree for the first guide-tree
+subset_results_folders = [scdata_subsets[ind].metadata.results_folder for ind in range(len(scdata_subsets)-1)]
+subset_results_folders = ','.join(subset_results_folders)
 preprocess_cmd = ['bonsai_iterative_build/bonsai_iterative_first_split.py',
                   '--config_filepath', args.config_filepath,
-                  '--starting_cell_ids', scdata.result_path('starting_cell_ids.txt')]
+                  '--subset_results_folder', subset_results_folders]
 
 if not args.return_commands:
     output1 = subprocess.run([sys.executable] + preprocess_cmd, stdout=subprocess.PIPE, text=True)
@@ -170,20 +213,19 @@ if not args.return_commands:
 else:
     cmd = ' '.join(preprocess_cmd)
     mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
-          "{}".format(commands_file, cmd))
+             "{}".format(commands_file, cmd))
     with open(commands_file, "w") as file:
         file.write(cmd + '\n')
 
-
 """
 ------------------------------------------------------------------------------------------
-Step 2: Run Bonsai on the first subset.
+Step 2: Run Bonsai on the next subset, then run adding cells. Iterate, and finish with a Bonsai-run.
 ------------------------------------------------------------------------------------------
 """
 
 
 def get_command_config_file(args, dataset, result_path, data_folder=None, tmp_folder=None):
-    config_filepath = os.path.join(result_path, 'iterative_configs_yaml.yaml')
+    config_filepath = os.path.join(result_path, 'iterative_configs.yaml')
     if data_folder is None:
         data_folder = result_path
     command1 = [sys.executable,
@@ -217,99 +259,118 @@ def get_command_config_file(args, dataset, result_path, data_folder=None, tmp_fo
     return command1, config_filepath
 
 
-# Create new config-file for the subset
-create_config_command_1, config_filepath = get_command_config_file(args, scdata_subset.metadata.dataset,
-                                                                   scdata_subset.result_path())
-output1 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
-mp_print(output1.stdout)
-mp_print(output1.stderr)
-
-# Run Bonsai on the new config-file
-bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
-                      '--config_filepath', config_filepath,
-                      '--step', 'all',
-                      '--spr_strategy', 'large_tree',
-                      '--pickup_intermediate', 'True']
-
-if not args.return_commands:
-    output1 = subprocess.run([sys.executable] + bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
+for subset_ind, scdata_subset in enumerate(scdata_subsets):
+    data_folder = scdata_subset.result_path() if subset_ind != len(scdata_subsets) - 1 else args.data_folder
+    non_refined_folder = scdata_subset.result_path('non_refined_tree')
+    # Create new config-file for the subset
+    create_config_command_1, config_filepath = get_command_config_file(args, scdata_subset.metadata.dataset,
+                                                                       scdata_subset.result_path(),
+                                                                       data_folder=data_folder,
+                                                                       tmp_folder=non_refined_folder)
+    output1 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
     mp_print(output1.stdout)
     mp_print(output1.stderr)
-else:
-    cmd = ' '.join(bonsai_subset1_cmd)
-    mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
-          "{}".format(commands_file, cmd))
-    with open(commands_file, "a") as file:
-        file.write(cmd + '\n')
 
-results_dir_subset0 = scdata_subset.result_path(getOutputFolder(zscore_cutoff=args.zscore_cutoff, final=True))
+    # Run Bonsai on the new config-file
+    bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
+                          '--config_filepath', config_filepath,
+                          '--step', 'all',
+                          '--spr_strategy', 'large_tree',
+                          '--pickup_intermediate', 'True']
 
-"""
-------------------------------------------------------------------------------------------
-Step 3: Add remaining cells to the initial guide-tree.
-------------------------------------------------------------------------------------------
-"""
-# TODO: Eventually allow looping over remaining subsets
+    if not args.return_commands:
+        output1 = subprocess.run([sys.executable] + bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
+        mp_print(output1.stdout)
+        mp_print(output1.stderr)
+    else:
+        cmd = ' '.join(bonsai_subset1_cmd)
+        mp_print("Command for creating refined Bonsai-tree based on subset {}, (stored in {}):\n "
+                 "{}".format(subset_ind, commands_file, cmd))
+        with open(commands_file, "a") as file:
+            file.write(cmd + '\n')
 
-final_dataset_name = os.path.join(scdata.metadata.dataset, 'subset_final')
-final_result_folder = os.path.join(scdata.result_path(), 'subset_final')
-create_config_command_1, config_filepath = get_command_config_file(args, final_dataset_name, final_result_folder,
-                                                                   data_folder=args.data_folder,
-                                                                   tmp_folder=scdata_subset.result_path())
-output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
-mp_print(output1.stdout)
-mp_print(output1.stderr)
+    results_dir_subset = scdata_subset.result_path(getOutputFolder(zscore_cutoff=args.zscore_cutoff, final=True,
+                                                                   tmp_file=os.path.basename(non_refined_folder)))
 
-add_cells_seed = np.random.randint(1e6)
-add_cells_cmd = ['bonsai_iterative_build/bonsai_add_cells.py',
-                 '--config_filepath', config_filepath,
-                 '--guide_tree_folder', results_dir_subset0,
-                 '--preprocessed_data_folder', scdata.metadata.processedDatafolder,
-                 '--growth_before_cleanup', str(args.growth_before_cleanup),
-                 '--select_target', args.select_target,
-                 '--search_tol', str(args.search_tol),
-                 '--seed', str(add_cells_seed)]
-# TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
+    """
+    ------------------------------------------------------------------------------------------
+    Add the next batch of cells to the just created Bonsai-tree.
+    ------------------------------------------------------------------------------------------
+    """
 
-if not args.return_commands:
-    output1 = subprocess.run([sys.executable] + add_cells_cmd, stdout=subprocess.PIPE, text=True)
+    if subset_ind == len(scdata_subsets) - 1:
+        # In this case, we have added all the cells, so we can end the for-loop now
+        break
+    # final_dataset_name = os.path.join(scdata.metadata.dataset, 'subset_final')
+    # final_result_folder = os.path.join(scdata.result_path(), 'subset_final')
+    # create_config_command_1, config_filepath = get_command_config_file(args, final_dataset_name, final_result_folder,
+    #                                                                    data_folder=args.data_folder,
+    #                                                                    tmp_folder=scdata_subset.result_path())
+    # output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
+    # mp_print(output1.stdout)
+    # mp_print(output1.stderr)
+
+    # Create new config-file for the subset
+    new_non_refined_folder = os.path.join(scdata_subsets[subset_ind + 1].result_path(), 'non_refined_tree')
+    create_config_command_addcells, config_filepath_add = get_command_config_file(args, scdata_subset.metadata.dataset,
+                                                                                  new_non_refined_folder,
+                                                                                  data_folder=scdata_subset.result_path())
+    output1 = subprocess.run(create_config_command_addcells, stdout=subprocess.PIPE, text=True)
     mp_print(output1.stdout)
     mp_print(output1.stderr)
-else:
-    cmd = ' '.join(add_cells_cmd)
-    mp_print("Command for adding remaining cells to guide tree (stored in {}):\n{}".format(commands_file, cmd))
-    with open(commands_file, "a") as file:
-        file.write(cmd + '\n')
+
+    add_cells_seed = np.random.randint(1e6)
+    add_cells_cmd = ['bonsai_iterative_build/bonsai_add_cells.py',
+                     '--config_filepath', config_filepath_add,
+                     '--guide_tree_folder', results_dir_subset,
+                     '--cells_to_be_added', os.path.join(new_non_refined_folder, 'starting_cell_ids.txt'),
+                     '--preprocessed_data_folder', scdata_subsets[subset_ind+1].metadata.processedDatafolder,
+                     '--growth_before_cleanup', str(args.growth_before_cleanup),
+                     '--select_target', args.select_target,
+                     '--search_tol', str(args.search_tol),
+                     '--seed', str(add_cells_seed),
+                     '--debug_mode', str(args.debug_mode)]
+    # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
+
+    if not args.return_commands:
+        output1 = subprocess.run([sys.executable] + add_cells_cmd, stdout=subprocess.PIPE, text=True)
+        mp_print(output1.stdout)
+        mp_print(output1.stderr)
+    else:
+        cmd = ' '.join(add_cells_cmd)
+        mp_print("Command for adding remaining cells to guide tree (stored in {}):\n{}".format(commands_file, cmd))
+        with open(commands_file, "a") as file:
+            file.write(cmd + '\n')
 
 """
-------------------------------------------------------------------------------------------
-Step 4: Run Bonsai one more time starting from the created tree to see what spr-moves and NNI moves are still possible
-------------------------------------------------------------------------------------------
-"""
-
-create_config_command_1, config_filepath = get_command_config_file(args, scdata.metadata.dataset, scdata.result_path(),
-                                                                   tmp_folder=final_result_folder)
-output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
-mp_print(output1.stdout)
-mp_print(output1.stderr)
-
-# Run Bonsai on the new config-file
-bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
-                      '--config_filepath', config_filepath,
-                      '--step', 'all',
-                      '--spr_strategy', 'large_tree',
-                      '--pickup_intermediate', 'True']
-
-if not args.return_commands:
-    output1 = subprocess.run([sys.executable] + bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
-    mp_print(output1.stdout)
-    mp_print(output1.stderr)
-else:
-    cmd = ' '.join(bonsai_subset1_cmd)
-    mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
-          "{}".format(commands_file, cmd))
-    with open(commands_file, "a") as file:
-        file.write(cmd + '\n')
+# ------------------------------------------------------------------------------------------
+# Step 4: Run Bonsai one more time starting from the created tree to see what spr-moves and NNI moves are still possible
+# ------------------------------------------------------------------------------------------
+# """
+#
+# create_config_command_1, config_filepath = get_command_config_file(args, scdata.metadata.dataset, scdata.result_path(),
+#                                                                    tmp_folder=final_result_folder)
+# output2 = subprocess.run(create_config_command_1, stdout=subprocess.PIPE, text=True)
+# mp_print(output1.stdout)
+# mp_print(output1.stderr)
+#
+# # Run Bonsai on the new config-file
+# bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
+#                       '--config_filepath', config_filepath,
+#                       '--step', 'all',
+#                       '--spr_strategy', 'large_tree',
+#                       '--pickup_intermediate', 'True']
+#
+# if not args.return_commands:
+#     output1 = subprocess.run([sys.executable] + bonsai_subset1_cmd, stdout=subprocess.PIPE, text=True)
+#     mp_print(output1.stdout)
+#     mp_print(output1.stderr)
+# else:
+#     cmd = ' '.join(bonsai_subset1_cmd)
+#     mp_print("Command for creating initial Bonsai guide-tree (stored in {}):\n "
+#              "{}".format(commands_file, cmd))
+#     with open(commands_file, "a") as file:
+#         file.write(cmd + '\n')
 
 print_text = 'only printing commands' if args.return_commands else "performing all calculations"
 mp_print("Running the iterative-bonsai script while {} took {} seconds.".format(print_text, time.time() - start_all))

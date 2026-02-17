@@ -8,6 +8,7 @@ plt.set_loglevel(level='warning')
 import matplotlib
 import re
 import itertools
+import time
 
 from matplotlib.collections import LineCollection, EllipseCollection
 from matplotlib import cm
@@ -28,7 +29,7 @@ from bonsai_scout.my_tree_layout import Layout_Tree
 from downstream_analyses.calc_marker_genes_helpers import calc_marker_genes_single, calc_marker_genes_double, \
     calc_marker_genes_error_bars, calc_marker_genes_error_bars_approx2
 from downstream_analyses.get_clusters_max_diameter import get_max_diam_clustering_from_nwk_str, \
-    get_footfall_clustering_from_nwk_str, get_cluster_assignments, get_min_pdists_clustering_from_nwk_str
+    get_footfall_clustering_from_nwk_str_deprecated, get_cluster_assignments, get_min_pdists_clustering_from_nwk_str
 
 gray = cm.get_cmap('gray')(0.75)
 blackish = (0.08578431372549018, 0.08578428015768168, 0.11935208866155156, 1.0)
@@ -68,6 +69,13 @@ class Celltype_info:
         n_cells = len(cell_info_dict[next(iter(cell_info_dict))])
         bottom_quantile = np.minimum(10 / n_cells, 0.01)
         top_quantile = 1 - bottom_quantile
+
+        # Replace the info_dicts by empty dictionaries if None
+        cluster_info_dict = cluster_info_dict or {}
+        cs_info_dict = cs_info_dict or {}
+        cell_info_dict = cell_info_dict or {}
+        cat_counts_dict = None
+
         for info_key in list(cell_info_dict.keys()) + list(cs_info_dict.keys()) + list(cluster_info_dict.keys()):
             if info_key in cs_info_dict.keys():
                 annot_type = 'cellstates'
@@ -95,7 +103,14 @@ class Celltype_info:
                 cats = None
                 color_type = 'sequential'
             elif info_key.startswith('annot_'):
-                cats = natsorted(list(np.unique(info_dict_curr[info_key])))
+                if (info_object == 'cluster_info_dict') and (not re.fullmatch(r'annot_cluster_n\d+', info_key)):
+                    cats, counts = np.unique(info_dict_curr[info_key], return_counts=True)
+                    order = np.argsort(-counts)
+                    cats = list(cats[order])
+                    counts = list(counts[order])
+                    cat_counts_dict = {k: int(v) for k, v in zip(cats, counts)}
+                else:
+                    cats = natsorted(list(np.unique(info_dict_curr[info_key])))
                 if 'NaN' in cats:
                     n_celltypes = len(cats) - 1
                 else:
@@ -120,7 +135,8 @@ class Celltype_info:
                 self.annot_infos[info_key] = Annotation_info(cats=cats, annot_to_color=annot_to_color, label=label,
                                                              cbar_info=cbar_info, annot_type=annot_type,
                                                              color_type=color_type, info_object=info_object,
-                                                             info_key=info_key, hidden=hidden)
+                                                             info_key=info_key, hidden=hidden,
+                                                             cat_counts_dict=cat_counts_dict)
 
     def to_dict(self):
         self_dict = self.__dict__
@@ -271,9 +287,11 @@ class Annotation_info:
     info_object = None
     info_key = None
     hidden = False
+    small_type_cutoff = 1
+    cat_counts_dict = None
 
     def __init__(self, cats=None, annot_to_color=None, label=None, cbar_info=None, annot_type=None, color_type=None,
-                 info_object=None, info_key=None, hidden=False):
+                 info_object=None, info_key=None, hidden=False, cat_counts_dict=None):
         self.cats = cats
         if annot_to_color is not None:
             self.annot_to_color = {}
@@ -288,6 +306,7 @@ class Annotation_info:
         self.color_type = color_type
         self.info_object = info_object
         self.info_key = info_key
+        self.cat_counts_dict = cat_counts_dict
 
     def to_dict(self):
         self_dict = self.__dict__
@@ -372,22 +391,20 @@ class Bonvis_settings:
         #     possible_init_annots = [annot for annot in self.celltype_info.annot_alts if annot != 'annot_default']
         possible_init_annots = []
         if len(self.celltype_info.annot_alts) > 1:
-            possible_init_annots = [annot for annot in self.celltype_info.annot_alts if annot != 'annot_default']
+            possible_init_annots = [annot_key for annot_key, annot_info in self.celltype_info.annot_infos.items()
+                                    if not annot_info.hidden]
             annot_tuples = []
-            for annot_alt in self.celltype_info.annot_alts:
-                if annot_alt == 'annot_default':
+            for annot_key, annot_info in self.celltype_info.annot_infos.items():
+                if annot_info.hidden:
                     continue
-                if annot_alt[:15] == 'annot_cluster_n':
+                if annot_info.cats is None:
                     continue
-                annot_info_alt = self.celltype_info.annot_infos[annot_alt]
-                if annot_info_alt.cats is None:
-                    continue
-                annot_tuples.append((annot_alt, len(annot_info_alt.cats)))
+                annot_tuples.append((annot_key, len(annot_info.cats)))
             if len(annot_tuples) > 0:
                 # Select "cellTypeName" first, if not present, "Celltype", then the one with fewest categories
                 sorted_annots = sorted(annot_tuples, key=lambda x: (not x[0].lower().startswith("annot_celltypename"),
                                                                     not x[0].lower().startswith("annot_celltype"),
-                                                                    x[1]))
+                                                                    abs(x[1]-10)))
                 possible_init_annots = [sorted_annots[0][0]]
         init_annot = possible_init_annots[0] if len(possible_init_annots) else self.celltype_info.annot_alts[0]
         self.set_annot(annot_label=init_annot)
@@ -689,7 +706,9 @@ class Bonvis_figure:
 
         # Get some information on verts with one cell
         if plot_unit == 'cells':
-            self.single_obj['obj_inds'] = self.bonvis_metadata.cell_info['single_at_vert']
+            self.single_obj['obj_inds'] = np.asarray(self.bonvis_metadata.cell_info['single_at_vert'], dtype=int)
+            print(self.single_obj['obj_inds'])
+            print(cell_to_vert)
             self.single_obj['vert_inds'] = cell_to_vert[self.single_obj['obj_inds']]
             # In this case self.single_obj['obj_inds'] gives me the cell-inds corresponding to the cells
             # at nodes with only one cell
@@ -974,32 +993,80 @@ class Bonvis_figure:
                 vert_to_size = np.ones_like(vert_to_size_raw) * radius_internal
         return vert_to_size
 
-    def get_color_info(self, annot_info=None):
-        cell_info_dict = self.bonvis_metadata.cell_info['cell_info_dict']
-        cs_info_dict = self.bonvis_metadata.cs_info['cs_info_dict']
-        cluster_info_dict = self.bonvis_metadata.cs_info['cluster_info_dict']
-        annot = annot_info.info_key
-        node_style = self.bonvis_settings.node_style
-        # Get color information for all cells or all verts
-        if annot_info.info_object == 'cell_info_dict':
-            cell_to_celltype = cell_info_dict[annot]
-        elif annot_info.info_object == 'cs_info_dict':
-            cell_to_celltype = cs_info_dict[annot]
-        elif annot_info.info_object == 'cluster_info_dict':
-            cell_to_celltype = cluster_info_dict[annot]
-        elif annot_info.info_object == 'vert_info_dict':
-            vert_info_dict = self.bonvis_metadata.vert_info
-            cell_to_celltype = vert_info_dict[annot]
-        elif annot_info.info_object == 'new_cell_info_dict':
-            cell_to_celltype = self.bonvis_settings.verttype_info.new_cell_info_dict[annot]
-        elif annot_info.info_object[:5] == 'data/':
-            feature_ind = int(annot[8:])
-            cell_to_celltype = self.bonvis_data[annot_info.info_object]['means'][feature_ind, :]
+    def set_small_type_cutoff(self, annot_info, small_type_cutoff):
+        if small_type_cutoff == annot_info.small_type_cutoff:
+            return
+        cell_to_celltype = self.get_correct_cell_to_celltype(annot_info)
+        if hasattr(annot_info, 'cat_counts_dict') and (annot_info.cat_counts_dict is not None):
+            counts = annot_info.cat_counts_dict
+            cats = list(counts.keys())
         else:
-            logger.error("Could not find this cell-to-celltype mapping ({}) anywhere".format(annot))
-            return None, None
-        cell_to_celltype = np.array(cell_to_celltype)
+            cats, counts = np.unique(cell_to_celltype, return_counts=True)
+            sorted_idx = np.argsort(-counts)
+            cats = cats[sorted_idx]
+            counts = counts[sorted_idx]
+            counts = {k: int(v) for k, v in zip(cats, counts)}
+            annot_info.cat_counts_dict = counts
 
+        kept_cats = set()
+        low_freq_cats = set()
+        for cat, count in counts.items():
+            if count >= small_type_cutoff:
+                kept_cats.add(cat)
+            else:
+                low_freq_cats.add(cat)
+        n_colors = len(kept_cats) + (1 if len(low_freq_cats) else 0)
+        n_colors = (n_colors - 1) if ('NaN' in cats) else n_colors
+        celltype_colors = get_celltype_colors_new(n_colors, colortype=None)
+        annot_to_color = {}
+        ind = 1
+        sorted_cats = annot_info.cats if hasattr(annot_info, 'cats') else cats
+        for cat in sorted_cats:
+            if cat == 'NaN':
+                annot_to_color[cat] = cm.get_cmap('gray')(0.75)
+            if cat in low_freq_cats:
+                annot_to_color[cat] = celltype_colors(0)
+            if cat in kept_cats:
+                annot_to_color[cat] = celltype_colors(ind)
+                ind += 1
+        annot_info.annot_to_color = annot_to_color
+        annot_info.small_type_cutoff = small_type_cutoff
+
+    def get_correct_cell_to_celltype(self, annot_info):
+        try:
+            cell_info_dict = self.bonvis_metadata.cell_info['cell_info_dict']
+            cs_info_dict = self.bonvis_metadata.cs_info['cs_info_dict']
+            cluster_info_dict = self.bonvis_metadata.cs_info['cluster_info_dict']
+            annot = annot_info.info_key
+            # Get color information for all cells or all verts
+            if annot_info.info_object == 'cell_info_dict':
+                cell_to_celltype = cell_info_dict[annot]
+            elif annot_info.info_object == 'cs_info_dict':
+                cell_to_celltype = cs_info_dict[annot]
+            elif annot_info.info_object == 'cluster_info_dict':
+                cell_to_celltype = cluster_info_dict[annot]
+            elif annot_info.info_object == 'vert_info_dict':
+                vert_info_dict = self.bonvis_metadata.vert_info
+                cell_to_celltype = vert_info_dict[annot]
+            elif annot_info.info_object == 'new_cell_info_dict':
+                cell_to_celltype = self.bonvis_settings.verttype_info.new_cell_info_dict[annot]
+            elif annot_info.info_object[:5] == 'data/':
+                feature_ind = int(annot[8:])
+                cell_to_celltype = self.bonvis_data[annot_info.info_object]['means'][feature_ind, :]
+            else:
+                logger.error("Could not find this cell-to-celltype mapping ({}) anywhere".format(annot))
+                return None
+        except KeyError:
+            logger.error("Could not find this cell-to-celltype mapping ({}) anywhere".format(annot))
+            return None
+        cell_to_celltype = np.array(cell_to_celltype)
+        return cell_to_celltype
+
+    def get_color_info(self, annot_info=None):
+        cell_to_celltype = self.get_correct_cell_to_celltype(annot_info)
+        if cell_to_celltype is None:
+            return None, None
+        node_style = self.bonvis_settings.node_style
         if annot_info.color_type == 'categorical':
             nan_entries = np.where(cell_to_celltype == 'NaN')[0]
             cell_to_color = np.array([annot_info.annot_to_color[cell_to_celltype[cell]] for cell in
@@ -1560,7 +1627,8 @@ class Bonvis_figure:
         cbar_info = annot_info.cbar_info
         if celltype_to_color is not None:
             # colors.to_hex(color, keep_alpha=True)
-            celltype_to_hex = {ind: (" ", celltype) for ind, (celltype, color) in enumerate(celltype_to_color.items())}
+            # celltype_to_hex = {ind: (" ", celltype) for ind, (celltype, color) in enumerate(celltype_to_color.items())}
+            celltype_to_hex = {ind: (" ", cat) for ind, cat in enumerate(annot_info.cats)}
             leg_df = pd.DataFrame.from_dict(celltype_to_hex, orient='index', columns=["Color", 'Celltype'])
             color_codes = [colors.to_hex(celltype_to_color[celltype], keep_alpha=True) for celltype in
                            leg_df['Celltype']]
@@ -2579,7 +2647,7 @@ def color_code_to_color(dummy, color_codes=None):
 def find_annot(new_annot_label, bonvis_settings, bonvis_data, bonvis_metadata):
     celltype_info = bonvis_settings.celltype_info
     annot_objs = [annot_info for annot, annot_info in celltype_info.annot_infos.items() if
-                  annot_info.label == new_annot_label]
+                  annot_info.label.lower() == new_annot_label.lower()]
     found_it = False
     if len(annot_objs) == 1:
         found_it = True
@@ -2587,7 +2655,7 @@ def find_annot(new_annot_label, bonvis_settings, bonvis_data, bonvis_metadata):
     if not found_it:
         verttype_info = bonvis_settings.verttype_info
         annot_objs = [annot_info for annot, annot_info in verttype_info.annot_infos.items() if
-                      annot_info.label == new_annot_label]
+                      annot_info.label.lower() == new_annot_label.lower()]
         if len(annot_objs) == 1:
             found_it = True
             return annot_objs[0]
@@ -2598,7 +2666,7 @@ def find_annot(new_annot_label, bonvis_settings, bonvis_data, bonvis_metadata):
             feature_hdf = bonvis_data[feature_path]
             feature_ids = json.loads(feature_hdf.attrs['gene_ids'])
             feature_tuples = [(feature_ind, feature_name) for feature_ind, feature_name in
-                              enumerate(feature_ids) if feature_name == new_annot_label]
+                              enumerate(feature_ids) if feature_name.lower() == new_annot_label.lower()]
         else:
             feature_tuples = []
         if len(feature_tuples) == 1:
@@ -2751,3 +2819,114 @@ def get_placeholder_fig():
     "For large datasets, this can take a while. Please be patient."
     ax.text(0, 0, text, ha='center', va='center', fontsize=16)
     return fig
+
+
+# def rename_clusters_fast(cluster_series, annot_col=None):
+#     if annot_col is not None:
+#         tmp = pd.DataFrame({"cluster": cluster_series, "annot": annot_col})
+#     else:
+#         tmp = pd.DataFrame({'cluster': cluster_series})
+#
+#     # cluster sizes
+#     cluster_sizes = tmp.groupby("cluster").size()
+#
+#     if annot_col is not None:
+#         # annotation frequencies per cluster
+#         freq = (
+#             tmp
+#             .groupby("cluster")["annot"]
+#             .value_counts(normalize=True)
+#             .mul(100)
+#             .round()
+#             .astype(int)
+#             .rename("perc")
+#             .reset_index()
+#         )
+#
+#         # take top 2 annotations per cluster
+#         top2 = freq.sort_values(["cluster", "perc"], ascending=[True, False])
+#         top2 = top2.groupby("cluster").head(2)
+#
+#     # build cluster → name mapping
+#     def build_name(sub):
+#         cl = sub.name
+#
+#         parts = [cl, f"Size={cluster_sizes[cl]}"]
+#         if annot_col is not None:
+#             for _, r in sub.iterrows():
+#                 parts.append(f"{r['perc']}%={r['annot']}")
+#
+#         return ", ".join(parts)
+#
+#     new_names = top2.groupby("cluster").apply(build_name)
+#
+#     # map back
+#     return cluster_series.map(new_names)
+
+
+def rename_clusters_fast(cluster_series, annot_col=None):
+    if annot_col is not None:
+        tmp = pd.DataFrame({"cluster": cluster_series, "annot": annot_col})
+    else:
+        tmp = pd.DataFrame({"cluster": cluster_series})
+
+    # cluster sizes
+    cluster_sizes = tmp.groupby("cluster").size()
+
+    if annot_col is not None:
+        # annotation frequencies per cluster
+        freq = (
+            tmp
+            .groupby("cluster")["annot"]
+            .value_counts(normalize=True)
+            .mul(100)
+            .round()
+            .astype(int)
+            .rename("perc")
+            .reset_index()
+        )
+
+        # take top 2 annotations per cluster
+        top2 = (
+            freq
+            .sort_values(["cluster", "perc"], ascending=[True, False])
+            .groupby("cluster")
+            .head(2)
+        )
+
+        # build cluster → name mapping (with annotations)
+        def build_name(sub):
+            cl = sub.name
+            parts = [str(cl), f"Size={cluster_sizes[cl]}"]
+            for _, r in sub.iterrows():
+                parts.append(f"{r['perc']}%={r['annot']}")
+            return ", ".join(parts)
+
+        new_names = top2.groupby("cluster").apply(build_name)
+
+    else:
+        # build cluster → name mapping (no annotations)
+        new_names = cluster_sizes.index.to_series().apply(
+            lambda cl: f"{cl}, Size={cluster_sizes[cl]}"
+        )
+
+    # map back to original series
+    return cluster_series.map(new_names)
+
+
+def process_annot_based_clsts(cl_df, cell2annot=None):
+    start = time.time()
+    df = cl_df.copy()
+    if cell2annot is not None:
+        df["annotation"] = cl_df.index.map(cell2annot)
+        cluster_cols = df.columns.drop("annotation")
+        annot_col = df['annotation']
+    else:
+        cluster_cols = df.columns
+        annot_col = None
+    for col in cluster_cols:
+        df[col] = rename_clusters_fast(df[col], annot_col)
+    print("Processing cluster names took {} seconds.".format(time.time() - start))
+    if cell2annot is not None:
+        df = df.drop(columns='annotation')
+    return df

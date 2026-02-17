@@ -48,7 +48,7 @@ plt.set_loglevel(level='warning')
 class Run_Configs:
     config_yaml = None
 
-    def __init__(self, yaml_filepath=None, step=None):
+    def __init__(self, yaml_filepath=None, step=None, create_empty_configs=False):
 
         pars_defaults = {'step': 'all',
                          'dataset': 'new_dataset',
@@ -71,6 +71,11 @@ class Run_Configs:
                          'skip_reorder_edges': False,
                          'pickup_intermediate': False,
                          'tmp_folder': None}
+
+        if create_empty_configs:
+            for label in pars_defaults:
+                setattr(self, label, pars_defaults[label])
+            return
 
         if yaml_filepath is not None and os.path.exists(yaml_filepath):
             yaml = YAML()
@@ -477,7 +482,6 @@ def hierarchy_to_newick(pathToMerger, clustIds, pathToOutput):
         f.write("%s" % newick_string)
 
 
-# TODO: Use this again. In tree visualisation
 # Should go to tree vis file
 def compile_tree_from_newick(newickFilename):
     from skbio import TreeNode
@@ -769,7 +773,6 @@ def calcTInit(tOld1, tOld2, sequential):
 
 # Used
 def getAllDLogLs(dLogLDict, mpi_rank, nChildren):
-    # TODO: Wrap this communication step in a function
     # Gather all dLogLs on the first process
     dLogLsDicts = mpi_wrapper.world_allgather(dLogLDict)
     if mpi_rank != 0:
@@ -1158,3 +1161,71 @@ def write_ids(filepath, ids_list):
     with open(filepath, 'w') as f:
         for ID in ids_list:
             f.write("%s\n" % ID)
+
+
+import psutil
+import tracemalloc
+import resource
+def print_memory(location=None):
+    message = ''
+    if location is not None:
+        message += "{}: ".format(location)
+    # mp_print("Current RSS memory usage is ",
+    #       psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+    # print("Current shared memory usage is ",
+    #       psutil.Process(os.getpid()).memory_info().shared / 1024 ** 2, " MB.")
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.reset_peak()
+    message += "Current-mem: {} MB, Peak-mem since last: {} MB".format(current / 1000 ** 2, peak / 1000 ** 2)
+    # mp_print("Python data segment =",
+    #       resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2, "MB", ALL_RANKS=True)
+    mp_print(message, ALL_RANKS=True)
+
+
+def store_scdata_and_communicate_path(scData, specific_results_folder, general_results_folder=None, prefix=None,
+                                      with_coords=True):
+    mpi_info = mpi_wrapper.get_mpi_info()
+    if mpi_info.rank == 0:
+        no_scdata_path = True
+        while no_scdata_path:
+            if prefix is None:
+                subfoldername = 'scdata_state_{}'.format(np.random.randint(1e6))
+            else:
+                subfoldername = prefix + '_' + 'scdata_state_{}'.format(np.random.randint(1e6))
+            if general_results_folder is None:
+                scdata_path = scData.result_path(os.path.join(specific_results_folder, subfoldername))
+            else:
+                scdata_path = os.path.join(general_results_folder, specific_results_folder, subfoldername)
+            if not os.path.exists(scdata_path):
+                no_scdata_path = False
+        # We store the tree to make sure we have the data of all vertices
+        scData.storeTreeInFolder(os.path.join(scdata_path), with_coords=with_coords, verbose=False, nwk=False)
+
+        # Communicate the path where scData is stored with the other processes. This also serves as a barrier between
+        # storing the tree and loading it on other processes
+        scdata_path = mpi_wrapper.bcast(scdata_path, root=0)
+    else:
+        scdata_path = None
+        # Other processes receive the path to scData
+        scdata_path = mpi_wrapper.bcast(scdata_path, root=0)
+    return scdata_path
+
+
+def look_for_output_folder(specific_results_folder, general_results_folder=None, prefix=None):
+    if general_results_folder is not None:
+        full_path = os.path.join(general_results_folder, specific_results_folder)
+    else:
+        full_path = specific_results_folder
+
+    full_path = Path(full_path)
+
+    if not full_path.exists() or not full_path.is_dir():
+        return False, None
+
+    subfolders = [p for p in full_path.iterdir() if p.is_dir() and (prefix is None or p.name.startswith(prefix))]
+    if len(subfolders) == 0:
+        return False, None
+
+    # Return the folder that was last modified
+    scdata_path = max(subfolders, key=lambda p: p.stat().st_mtime)
+    return True, scdata_path

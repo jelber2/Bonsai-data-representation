@@ -6,14 +6,16 @@ import h5py
 import json
 import pandas as pd
 from argparse import ArgumentTypeError
+from pathlib import Path
 
 import logging
+
 FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
 logging.basicConfig(format=FORMAT,
                     datefmt='%m-%d %H:%M:%S',
-                    level=logging.WARNING)   # silence all libraries
+                    level=logging.WARNING)  # silence all libraries
 
 # Create your app logger
 logger = logging.getLogger("myapp")
@@ -24,8 +26,9 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
-from bonsai.bonsai_helpers import str2bool, Run_Configs, find_latest_tree_folder
-from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str, get_min_pdists_clustering_from_nwk_str_new, get_cluster_assignments_new
+from bonsai.bonsai_helpers import str2bool, Run_Configs, find_latest_tree_folder, mp_print
+from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str, \
+    get_cluster_assignments, get_annotation_based_clustering_from_nwk_str
 
 parser = ArgumentParser(
     description='Starts from a reconstructed tree output by Bonsai and creates a data-object necessary for further '
@@ -54,6 +57,11 @@ parser.add_argument('--take_all_genes', type=str2bool, default=False,
                          'reconstruction was based. Loading all gene expression values will make this preprocessing'
                          'a lot slower for large datasets, and will require much more memory.')
 
+parser.add_argument('--take_no_genes', type=str2bool, default=False,
+                    help='For very large datasets, it can be too memory-intensive to load all gene expresion values'
+                         'into memory. This mode allows to explore the tree, but prohibits plotting gene expression'
+                         'or finding marker genes.')
+
 parser.add_argument('--cell_id_to_cs_id_file', type=str, default='',
                     help='Should point towards csv-file with two columns: 1) cell-IDs, 2) the corresponding '
                          'cellstates-id'
@@ -64,6 +72,12 @@ parser.add_argument('--cell_id_to_cs_id_file', type=str, default='',
 parser.add_argument('--new_gene_ids_file', type=str, default='',
                     help='Should point towards a csv- or tsv-file with the first column containing the old gene-IDs'
                          '(as used in Bonsai) and the second column containing the new gene-IDs.')
+
+parser.add_argument('--perform_annot_guided_clustering', type=str2bool, default=True,
+                    help='Determines whether we use categorical annotations to create a tree-consistent clustering of'
+                         'the cells that best aligns with that annotation.'
+                         'Since this clustering can be somewhat slow when many categorical annotations are provided,'
+                         'one can turn it off here.')
 
 # parser.add_argument('--use_log1p_dists', type=str2bool, default=False,
 #                     help='Can plot log(1+dist)-distances to make tree more easily viewable')
@@ -82,20 +96,28 @@ else:
         if re.search(".*config.*.yaml$", file) is not None:
             config_filepath = file
             break
+
 if config_filepath is None:
-    exit("Couldn't find configurations file (YAML-file) that was used for running Bonsai.")
-config_filepath = os.path.abspath(os.path.join(args.results_folder, config_filepath))
+    mp_print("Couldn't find configurations file (YAML-file) that was used for running Bonsai.", ERROR=True)
+    mp_print("For now, we're trying to interpret --results_folder as a folder with tree-information, rather than the"
+             "main results folder of Bonsai. This may break. To be sure, --results_folder should point to "
+             "all Bonsai-results, and --config_filepath can be used to point to the used Bonsai-config file.")
+    tree_folder = args.results_folder
+    run_configs = Run_Configs(create_empty_configs=True)
+    run_configs.results_folder = args.results_folder
+else:
+    config_filepath = os.path.abspath(os.path.join(args.results_folder, config_filepath))
 
-run_configs = Run_Configs(config_filepath)
-run_configs.results_folder = args.results_folder
+    run_configs = Run_Configs(config_filepath)
+    run_configs.results_folder = args.results_folder
 
-# Find latest tree-folder
-rel_tree_folder = find_latest_tree_folder(run_configs.results_folder)
-tree_folder = os.path.abspath(os.path.join(args.results_folder, rel_tree_folder))
+    # Find latest tree-folder
+    rel_tree_folder = find_latest_tree_folder(run_configs.results_folder)
+    tree_folder = os.path.abspath(os.path.join(args.results_folder, rel_tree_folder))
 
 from bonsai.bonsai_dataprocessing import loadReconstructedTreeAndData
 from bonsai_scout.bonsai_scout_helpers import get_edge_coords, Bonvis_figure, Bonvis_settings, merge_cells_at_zero_dist, \
-    Bonvis_metadata
+    Bonvis_metadata, Celltype_info, process_annot_based_clsts
 from bonsai_scout.my_tree_layout import my_tree_layout
 from bonsai_scout.change_gene_ids import change_json_file
 
@@ -109,8 +131,9 @@ else:
     reprocess_data = False
     all_genes = False
 
+get_data = not args.take_no_genes
 scData, _ = loadReconstructedTreeAndData(run_configs, tree_folder, reprocess_data=reprocess_data,
-                                         get_cell_info=True, all_ranks=False, all_genes=all_genes, get_data=True,
+                                         get_cell_info=True, all_ranks=False, all_genes=all_genes, get_data=get_data,
                                          rel_to_results=False, no_data_needed=True, calc_loglik=False,
                                          get_posterior_ltqs=True)
 
@@ -148,8 +171,8 @@ scData.metadata.nCells = len(scData.metadata.cellIds)
 scData.metadata.nCss = len(scData.metadata.csIds)
 scData.csIndToVertInd = scData.cellIndToVertInd.copy()
 # scData.cssToVerts = scData.cellsToVerts.copy()
-scData.cellIndToVertInd = {cell_ind: scData.csIndToVertInd[cs_ind] for cell_ind, cs_ind in
-                           scData.metadata.cell_ind_to_cs_ind.items()}
+scData.cellIndToVertInd = {cell_ind: scData.csIndToVertInd[cs_ind]
+    for cell_ind, cs_ind in scData.metadata.cell_ind_to_cs_ind.items() if cs_ind in scData.csIndToVertInd}
 scData.metadata.cs_ind_to_cell_inds = {cs_ind: [] for cs_ind in range(scData.metadata.nCss)}
 for cell_ind, cs_ind in scData.metadata.cell_ind_to_cs_ind.items():
     scData.metadata.cs_ind_to_cell_inds[cs_ind].append(cell_ind)
@@ -175,22 +198,27 @@ merge_cells_at_zero_dist(scData)
 nwk_str = scData.tree.to_newick()
 
 # If we get posterior_ltqs and rescale_by_var was True, then we have to undo that rescaling
-if reprocess_data and run_configs.rescale_by_var:
-    undo_rescaling_by_var = True
+if reprocess_data:
+    if run_configs.rescale_by_var:
+        undo_rescaling_by_var = 'geneVariances'
+    else:
+        undo_rescaling_by_var = np.mean(scData.metadata.geneVariances)
 else:
-    undo_rescaling_by_var = False
+    undo_rescaling_by_var = None
 
 if scData.tree.root.ltqsAIRoot is not None:
     ltqs = np.zeros((scData.metadata.nGenes, scData.nVerts))
     ltqs_vars = np.zeros((scData.metadata.nGenes, scData.nVerts))
     for vert_ind, node in scData.tree.vert_ind_to_node.items():
-        if undo_rescaling_by_var:
+        if undo_rescaling_by_var is None:
+            ltqs[:, vert_ind] = node.ltqsAIRoot
+            ltqs_vars[:, vert_ind] = node.getLtqsVars(AIRoot=True)
+        elif undo_rescaling_by_var == 'geneVariances':
             ltqs[:, vert_ind] = node.ltqsAIRoot * np.sqrt(scData.metadata.geneVariances)
             ltqs_vars[:, vert_ind] = node.getLtqsVars(AIRoot=True) * scData.metadata.geneVariances
         else:
-            mean_var = np.mean(scData.metadata.geneVariances)
-            ltqs[:, vert_ind] = node.ltqsAIRoot * np.sqrt(mean_var)
-            ltqs_vars[:, vert_ind] = node.getLtqsVars(AIRoot=True) * mean_var
+            ltqs[:, vert_ind] = node.ltqsAIRoot * np.sqrt(undo_rescaling_by_var)
+            ltqs_vars[:, vert_ind] = node.getLtqsVars(AIRoot=True) * undo_rescaling_by_var
 else:
     ltqs = None
     ltqs_vars = None
@@ -224,6 +252,15 @@ if ltqs is not None:
         normalized_hdf.create_dataset('vars', data=ltqs_vars)
         zscores = np.sqrt(np.mean((ltqs - np.mean(ltqs, axis=1, keepdims=True)) ** 2 / ltqs_vars, axis=1))
         normalized_hdf.create_dataset('zscores', data=zscores)
+else:
+    normalized_hdf = data_hdf.create_group('dummy_gene')
+    normalized_hdf.create_dataset('means', data=np.linspace(.9, 1.1, len(node_ids))[None, :])
+    feature_paths.append('data/dummy_gene')
+    normalized_hdf.attrs['node_ids'] = json.dumps(node_ids)
+    normalized_hdf.attrs['gene_ids'] = json.dumps(['dummy_gene'])
+    no_variation_genes = np.array([])
+    normalized_hdf.create_dataset('no_variation_features', data=no_variation_genes)
+    normalized_hdf.create_dataset('variances', data=np.array([1.0]))
 
 # Get z-scores of genes
 # if ltqs_vars is not None:
@@ -442,19 +479,87 @@ for ind, node_id in enumerate(node_ids):
     if vert_n_cells[ind] > 0:
         node_ids_with_cells.append(node_id)
 # node_id_to_n_cells = {node_id: vert_n_cells[ind] for ind, node_id in enumerate(node_ids)}
-all_clusterings, cut_edges = get_min_pdists_clustering_from_nwk_str_new(tree_nwk_str=nwk_str, n_clusters=100,
-                                                                        cell_ids=node_ids_with_cells,
-                                                                        node_id_to_n_cells=node_id_to_n_cells,
-                                                                        footfall=False)
+all_clusterings, cut_edges = get_min_pdists_clustering_from_nwk_str(tree_nwk_str=nwk_str, n_clusters=100,
+                                                                    cell_ids=node_ids_with_cells,
+                                                                    node_id_to_n_cells=node_id_to_n_cells,
+                                                                    footfall=False)
+
+cell_info_dict = cell_info_df.to_dict(orient='list')
+cs_info_dict = cs_info_df.to_dict(orient='list')
+celltype_info = Celltype_info(cell_info_dict=cell_info_dict,
+                              cs_info_dict=cs_info_dict)
+cell_id_to_node_id = {scData.metadata.cellIds[cell_ind]: node_ids[vert_ind] for cell_ind, vert_ind in
+                      scData.cellIndToVertInd.items()}
+cs_id_to_node_id = {scData.metadata.csIds[cs_ind]: node_ids[vert_ind] for cs_ind, vert_ind in
+                    scData.csIndToVertInd.items()}
+
 # all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
 # We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
 node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
                             vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}
-cl_df = get_cluster_assignments_new(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
+cl_df = get_cluster_assignments(all_clusterings=all_clusterings, node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
 cl_df = cl_df.loc[metadata_dict['csIds']]
+# Process distance-based clustering names
+cl_df = process_annot_based_clsts(cl_df, cell2annot=None)
 
-cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='table',
-                  data_columns=True)
+all_cl_dfs = [cl_df]
+
+if args.perform_annot_guided_clustering:
+    # TODO: REMOVE THIS! AND TEST THIS EXTENSIVELY
+    #  Test if it works with nan
+    #  Test if it works with cellstates
+
+    for annot_id, annot_info in celltype_info.annot_infos.items():
+        if annot_info.color_type != 'categorical':
+            continue
+        mp_print("Starting clustering guided by Annotation: {}".format(annot_id))
+
+        # TODO: REMOVE THIS FOR SURE!
+        # if annot_id not in ['annot_rna_annotations', 'annot_protein_annotations', 'annot_cell_type_v2']: # , 'annot_chen_group']:
+        #     continue
+        if annot_id:
+            if annot_id.startswith('annot_num'):
+                continue
+
+        if annot_info.info_object == 'cell_info_dict':
+            cell_to_celltype = cell_info_dict[annot_id]
+            to_be_clst_ids = scData.metadata.cellIds
+            id_to_node_id = cell_id_to_node_id
+        elif annot_info.info_object == 'cs_info_dict':
+            cell_to_celltype = cs_info_dict[annot_id]
+            to_be_clst_ids = scData.metadata.csIds
+            id_to_node_id = cs_id_to_node_id
+        annotation_dict = dict(zip(to_be_clst_ids, cell_to_celltype))
+        if 'NaN' in annot_info.cats:
+            annotation_dict = {key: val for key, val in annotation_dict.items() if val != 'NaN'}
+
+        tracking_folder = scData.result_path('annot_based_clustering_stats')
+        random_sampling = True
+        suffix = '_random.tsv' if random_sampling else '.tsv'
+        tracking_path = os.path.join(tracking_folder, annot_id + '_clustering_stats' + suffix)
+        Path(tracking_folder).mkdir(parents=True, exist_ok=True)
+
+        clusters, cut_edges, mut_info = get_annotation_based_clustering_from_nwk_str(tree_nwk_str=nwk_str,
+                                                                                     annotation_dict=annotation_dict,
+                                                                                     node_ids_to_clst=node_ids_with_cells,
+                                                                                     cell_id_to_node_id=id_to_node_id,
+                                                                                     verbose=True,
+                                                                                     random_sampling=True,
+                                                                                     tracking_path=tracking_path,
+                                                                                     max_moves=1000, cutting_tol=1e-4,
+                                                                                     prohibit_small_clsts=False)
+        if len(cut_edges):  # i.e. we discard the trivial clusterings
+            clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
+            cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
+                                                  node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
+            cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]
+            # Process annot-based clustering results
+            cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict)
+            all_cl_dfs.append(cl_df_annot)
+
+cl_df = pd.concat(all_cl_dfs, axis=1)
+cl_df.to_hdf(scData.result_path('bonsai_vis_data.hdf'), key='cs_info/cluster_info_dict', mode='a', format='fixed',
+             data_columns=True)
 
 bonvis_data_hdf.close()
 # test = pd.read_hdf(scData.result_path('bonsai_vis_data.dat'), key='cell_info')

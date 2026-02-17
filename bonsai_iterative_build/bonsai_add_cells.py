@@ -4,6 +4,10 @@ import time
 import os, sys, csv
 from pathlib import Path
 
+import tracemalloc
+
+tracemalloc.start()
+
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
 sys.path.append(parent_dir)
@@ -62,28 +66,34 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=True,
 parser.add_argument('--seed', type=int, default=1231,
                     help="Random seed for order of adding the cells.")
 
+parser.add_argument('--debug_mode', type=str2bool, default=False,
+                    help='Print additional information that may sometimes slow down the calculations.')
+
 args = parser.parse_args()
 np.random.seed(args.seed)
 
 select_target = args.select_target
-cells_to_be_added = args.cells_to_be_added
 guide_tree_folder = args.guide_tree_folder
 growth_before_cleanup = args.growth_before_cleanup
+cells_to_be_added = args.cells_to_be_added
 resolve_polytomies_immediately = args.resolve_polytomies_immediately
 preprocessed_data_folder = args.preprocessed_data_folder
 pickup_intermediate = args.pickup_intermediate
+debug_mode = args.debug_mode
 search_tol = args.search_tol
 args = Run_Configs(args.config_filepath)
 args.preprocessed_data_folder = preprocessed_data_folder
 args.select_target = select_target
 args.growth_before_cleanup = growth_before_cleanup
+args.cells_to_be_added = cells_to_be_added
 args.resolve_polytomies_immediately = resolve_polytomies_immediately
 args.search_tol = search_tol
 args.pickup_intermediate = pickup_intermediate
+args.debug_mode = debug_mode
 
 from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
     OriginalData, Metadata
-from bonsai.bonsai_helpers import mp_print, startMPI
+from bonsai.bonsai_helpers import mp_print, startMPI, print_memory
 import bonsai.bonsai_globals as bs_glob
 
 if guide_tree_folder is None:
@@ -166,7 +176,7 @@ scdata_guide.metadata.geneVariances = scdata_all_cells.metadata.geneVariances
 scdata_guide.metadata.loglikVarCorr = scdata_all_cells.metadata.loglikVarCorr
 scdata_guide.metadata.pathToOrigData = scdata_all_cells.metadata.pathToOrigData
 scdata_guide.metadata.processedDatafolder = scdata_all_cells.metadata.processedDatafolder
-scdata_guide.metadata.results_folder = scdata_all_cells.metadata.results_folder
+scdata_guide.metadata.results_folder = args.results_folder
 
 # Add data to guide-tree, take signal-to-noise genes based on all cells
 guide_cell_inds = []
@@ -179,20 +189,23 @@ for node in nodes_list:
         node.setLtqsVarsOrW(ltqsVars=scdata_all_cells.originalData.ltqsVars[:, cell_ind])
         node.isCell = True
 
+# if args.debug_mode:
+#     mp_print("Loaded tree loglikelihood is:",
+#              scdata_guide.tree.calcLogLComplete(mem_friendly=True, loglikVarCorr=scdata_guide.metadata.loglikVarCorr))
+
 guide_cell_inds = np.unique(guide_cell_inds)
 non_guide_cell_inds = np.setdiff1d(np.arange(scdata_all_cells.metadata.nCells), guide_cell_inds)
-
 # Select subset of non_guide-cells that we want to add based on the "cells_to_be_added"-argument
-if cells_to_be_added is not None:
+cell_id_list_after_adding = []
+if (cells_to_be_added is not None) and os.path.exists(os.path.abspath(cells_to_be_added)):
     cells_to_be_added = os.path.abspath(cells_to_be_added)
-    if os.path.exists(cells_to_be_added):
-        # cell_ids_to_be_added = []
-        cell_inds_to_add = []
-        with open(cells_to_be_added, 'r') as file:
-            reader = csv.reader(file, delimiter="\t")
-            for row in reader:
-                # cell_ids_to_be_added.append(row[0])
-                cell_inds_to_add.append(cell_id_to_ind[row[0]])
+    # cell_ids_to_be_added = []
+    cell_inds_to_add = []
+    with open(cells_to_be_added, 'r') as file:
+        reader = csv.reader(file, delimiter="\t")
+        for row in reader:
+            cell_id_list_after_adding.append(row[0])
+            cell_inds_to_add.append(cell_id_to_ind[row[0]])
     cell_inds_to_add = np.array(cell_inds_to_add)
     cell_inds_to_add = np.intersect1d(cell_inds_to_add, non_guide_cell_inds)
 else:
@@ -200,10 +213,29 @@ else:
 
 # Create random order of cells to be added
 np.random.shuffle(cell_inds_to_add)
-ltqs_to_add = scdata_all_cells.originalData.ltqs[:, cell_inds_to_add]
-ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, cell_inds_to_add]
+# ltqs_to_add = scdata_all_cells.originalData.ltqs[:, cell_inds_to_add]
+# ltqsvars_to_add = scdata_all_cells.originalData.ltqsVars[:, cell_inds_to_add]
+
+# Store ltqs to be added in a file, such that they can be memory-mapped when reading in
+n_to_add = len(cell_inds_to_add)
+ltqs_file = os.path.join(tmp_folder, 'ltqs_to_add_cell_by_gene.npy')
+ltqsvars_file = os.path.join(tmp_folder, 'ltqsvars_to_add_cell_by_gene.npy')
+ltqs_to_add = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+',
+                                        shape=(n_to_add, bs_glob.nGenes))
+ltqsvars_to_add = np.lib.format.open_memmap(ltqsvars_file, dtype='float64', mode='w+',
+                                            shape=(n_to_add, bs_glob.nGenes))
+for out_row, orig_col in enumerate(cell_inds_to_add):
+    ltqs_to_add[out_row, :] = scdata_all_cells.originalData.ltqs[:, orig_col]
+    ltqsvars_to_add[out_row, :] = scdata_all_cells.originalData.ltqsVars[:, orig_col]
+
+# Flush to disk
+ltqs_to_add.flush()
+ltqsvars_to_add.flush()
+del ltqs_to_add
+del ltqsvars_to_add
+ltqs_to_add_cg = np.load(ltqs_file, allow_pickle=False, mmap_mode='r')
+ltqsvars_to_add_cg = np.load(ltqsvars_file, allow_pickle=False, mmap_mode='r')
 cell_ids_to_add = [scdata_all_cells.metadata.cellIds[ind] for ind in cell_inds_to_add]
-# TODO: Store these two data-matrices in an .npy-file, such that we can do lazy reading. Then just give the filenames
 
 # Make sure that all ltqs are calculated at all nodes (automatically done when calculating a loglikelihood)
 scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=True,
@@ -219,7 +251,7 @@ if args.select_target == 'root':
 else:
     n_centers = None
 
-scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
+scdata_guide.tree.add_cells(ltqs_to_add_cg, ltqsvars_to_add_cg, cell_ids_to_add,
                             growth_before_cleanup=args.growth_before_cleanup,
                             select_target=args.select_target,
                             resolve_polytomies_immediately=args.resolve_polytomies_immediately,
@@ -228,9 +260,9 @@ scdata_guide.tree.add_cells(ltqs_to_add, ltqsvars_to_add, cell_ids_to_add,
 
 # Make node-indices nice again: The cells have the node-ind matching position in the input cell-ID list. Root has -1,
 # Internal nodes start at nCells and increase in depth-first manner.
-scdata_guide.metadata.nCells = len(cell_id_to_ind)
+scdata_guide.metadata.cellIds = cell_id_list_after_adding
+scdata_guide.metadata.nCells = len(scdata_guide.metadata.cellIds)
 bs_glob.nCells = scdata_guide.metadata.nCells
-scdata_guide.metadata.cellIds = scdata_all_cells.metadata.cellIds
 scdata_guide.cleanup_node_inds()
 
 """
@@ -244,5 +276,11 @@ scdata_guide.metadata.loglik = scdata_guide.tree.calcLogLComplete(mem_friendly=T
                                                                   loglikVarCorr=scdata_guide.metadata.loglikVarCorr)
 mp_print("Loglikelihood of inferred tree after adding cells: " + str(scdata_guide.metadata.loglik))
 
-mp_print("Storing result after reordering children in " + scdata_guide.result_path() + "\n\n")
+mp_print("Storing result after adding all cells in " + scdata_guide.result_path() + "\n\n")
 scdata_guide.storeTreeInFolder(scdata_guide.result_path(), with_coords=True, verbose=args.verbose)
+
+if tmp_folder is not None:
+    remove_tree_folders(tmp_folder, removeDir=True, base='added')
+
+mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
+print_memory("Memory usage after the whole calculation")
