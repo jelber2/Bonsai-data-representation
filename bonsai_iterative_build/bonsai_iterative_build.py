@@ -27,7 +27,6 @@ parser.add_argument('--config_filepath', type=str, default=None,
                     help='Absolute (or relative to "bonsai-development") path to YAML-file that contains all arguments'
                          'needed to run Bonsai.')
 
-# TODO: To be moved to config-file
 parser.add_argument('--select_target', type=str, default='cluster_centers',
                     help="This will determine what strategy we follow for the "
                          "spr-moves. Current options are 'root', 'cluster_centers', 'exhaustive'")
@@ -67,35 +66,32 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
 parser.add_argument('--seed', type=int, default=1231,
                     help="Sets the random seed necessary for getting the subset of cells.")
 
-parser.add_argument('--debug_mode', type=str2bool, default=False,
-                    help='Print additional information that may sometimes slow down the calculations.')
-
 args = parser.parse_args()
 
 # TODO: Make sure that Run_configs initialization just copies all arguments that were originally in args
 pickup_intermediate = args.pickup_intermediate
-growth_before_cleanup = args.growth_before_cleanup
-select_target = args.select_target
-iterative_cell_lists = args.iterative_cell_lists
-n_initial_cells = args.n_initial_cells
-return_commands = args.return_commands
-config_filepath = args.config_filepath
-growth_factor_guide = args.growth_factor_guide
+# growth_before_cleanup = args.growth_before_cleanup
+# select_target = args.select_target
+# iterative_cell_lists = args.iterative_cell_lists
+# n_initial_cells = args.n_initial_cells
+# return_commands = args.return_commands
+# config_filepath = args.config_filepath
+# growth_factor_guide = args.growth_factor_guide
+# search_tol = args.search_tol
 seed = args.seed
-debug_mode = args.debug_mode
-search_tol = args.search_tol
+args_to_copy = ['growth_before_cleanup', 'select_target', 'iterative_cell_lists', 'n_initial_cells', 'return_commands',
+                'config_filepath', 'growth_factor_guide', 'search_tol']
 
-args = Run_Configs(args.config_filepath)
+args = Run_Configs(args.config_filepath, args=args, args_to_copy=args_to_copy)
 
-args.search_tol = search_tol
-args.debug_mode = debug_mode
-args.select_target = select_target
-args.iterative_cell_lists = iterative_cell_lists
-args.growth_before_cleanup = growth_before_cleanup
-args.n_initial_cells = n_initial_cells
-args.return_commands = return_commands
-args.config_filepath = config_filepath
-args.growth_factor_guide = growth_factor_guide
+# args.search_tol = search_tol
+# args.select_target = select_target
+# args.iterative_cell_lists = iterative_cell_lists
+# args.growth_before_cleanup = growth_before_cleanup
+# args.n_initial_cells = n_initial_cells
+# args.return_commands = return_commands
+# args.config_filepath = config_filepath
+# args.growth_factor_guide = growth_factor_guide
 if pickup_intermediate:
     args.pickup_intermediate = True
 
@@ -275,7 +271,6 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
     bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
                           '--config_filepath', config_filepath,
                           '--step', 'all',
-                          '--spr_strategy', 'large_tree',
                           '--pickup_intermediate', 'True']
 
     if not args.return_commands:
@@ -329,7 +324,7 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
                      '--select_target', args.select_target,
                      '--search_tol', str(args.search_tol),
                      '--seed', str(add_cells_seed),
-                     '--debug_mode', str(args.debug_mode)]
+                     '--pickup_intermediate', str(args.pickup_intermediate)]
     # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 
     if not args.return_commands:
@@ -358,7 +353,6 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
 # bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
 #                       '--config_filepath', config_filepath,
 #                       '--step', 'all',
-#                       '--spr_strategy', 'large_tree',
 #                       '--pickup_intermediate', 'True']
 #
 # if not args.return_commands:

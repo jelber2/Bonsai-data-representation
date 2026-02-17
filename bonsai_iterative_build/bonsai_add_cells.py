@@ -36,9 +36,9 @@ parser.add_argument('--growth_before_cleanup', type=float, default=.5,
                     help="When adding cells, this factor (larger than 0) determines after what growth factor (so .1 "
                          "means 10% growth) we re-optimize the tree before adding another set of cells.")
 
-parser.add_argument('--resolve_polytomies_immediately', type=str2bool, default=True,
-                    help="Determines whether, when adding a cell downstream of a node, we immediately test whether it "
-                         "wants to merge with one of the other children of that node.")
+# parser.add_argument('--resolve_polytomies_immediately', type=str2bool, default=True,
+#                     help="Determines whether, when adding a cell downstream of a node, we immediately test whether it "
+#                          "wants to merge with one of the other children of that node.")
 
 # TODO: To be moved to config-file
 parser.add_argument('--select_target', type=str, default='cluster_centers',
@@ -66,37 +66,20 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=True,
 parser.add_argument('--seed', type=int, default=1231,
                     help="Random seed for order of adding the cells.")
 
-parser.add_argument('--debug_mode', type=str2bool, default=False,
-                    help='Print additional information that may sometimes slow down the calculations.')
-
 args = parser.parse_args()
 np.random.seed(args.seed)
 
-select_target = args.select_target
-guide_tree_folder = args.guide_tree_folder
-growth_before_cleanup = args.growth_before_cleanup
-cells_to_be_added = args.cells_to_be_added
-resolve_polytomies_immediately = args.resolve_polytomies_immediately
-preprocessed_data_folder = args.preprocessed_data_folder
-pickup_intermediate = args.pickup_intermediate
-debug_mode = args.debug_mode
-search_tol = args.search_tol
 args = Run_Configs(args.config_filepath)
-args.preprocessed_data_folder = preprocessed_data_folder
-args.select_target = select_target
-args.growth_before_cleanup = growth_before_cleanup
-args.cells_to_be_added = cells_to_be_added
-args.resolve_polytomies_immediately = resolve_polytomies_immediately
-args.search_tol = search_tol
-args.pickup_intermediate = pickup_intermediate
-args.debug_mode = debug_mode
+args_to_copy = ['preprocessed_data_folder', 'growth_before_cleanup', 'select_target', 'guide_tree_folder',
+                'cells_to_be_added', 'pickup_intermediate', 'search_tol']
+args = Run_Configs(args.config_filepath, args=args, args_to_copy=args_to_copy)
 
 from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
     OriginalData, Metadata
 from bonsai.bonsai_helpers import mp_print, startMPI, print_memory
 import bonsai.bonsai_globals as bs_glob
 
-if guide_tree_folder is None:
+if args.guide_tree_folder is None:
     mp_print("Cannot add cells if 'guide_tree_folder' is not defined, don't know where to find the guide tree.",
              ERROR=True)
     exit()
@@ -189,10 +172,6 @@ for node in nodes_list:
         node.setLtqsVarsOrW(ltqsVars=scdata_all_cells.originalData.ltqsVars[:, cell_ind])
         node.isCell = True
 
-# if args.debug_mode:
-#     mp_print("Loaded tree loglikelihood is:",
-#              scdata_guide.tree.calcLogLComplete(mem_friendly=True, loglikVarCorr=scdata_guide.metadata.loglikVarCorr))
-
 guide_cell_inds = np.unique(guide_cell_inds)
 non_guide_cell_inds = np.setdiff1d(np.arange(scdata_all_cells.metadata.nCells), guide_cell_inds)
 # Select subset of non_guide-cells that we want to add based on the "cells_to_be_added"-argument
@@ -254,7 +233,6 @@ else:
 scdata_guide.tree.add_cells(ltqs_to_add_cg, ltqsvars_to_add_cg, cell_ids_to_add,
                             growth_before_cleanup=args.growth_before_cleanup,
                             select_target=args.select_target,
-                            resolve_polytomies_immediately=args.resolve_polytomies_immediately,
                             scdata=scdata_guide, tmp_folder=tmp_folder, tmp_tree_ind=tmp_tree_ind,
                             search_tol=args.search_tol, n_centers=n_centers, only_count_search_moves=False)
 

@@ -48,7 +48,7 @@ plt.set_loglevel(level='warning')
 class Run_Configs:
     config_yaml = None
 
-    def __init__(self, yaml_filepath=None, step=None, create_empty_configs=False):
+    def __init__(self, yaml_filepath=None, args=None, args_to_copy=None, step=None, create_empty_configs=False):
 
         pars_defaults = {'step': 'all',
                          'dataset': 'new_dataset',
@@ -96,6 +96,11 @@ class Run_Configs:
                 setattr(self, label, self.config_yaml[label])
             else:
                 setattr(self, label, pars_defaults[label])
+
+        if (args_to_copy is not None) and (args is not None):
+            for label in args_to_copy:
+                if hasattr(args, label):
+                    setattr(self, label, getattr(args, label))
 
         # The following run-configurations are still used in Bonsai, but can no longer be set by users. Instead,
         # picking up intermediate results is only done through --pickup_intermediate and providing the correct
