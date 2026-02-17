@@ -20,8 +20,16 @@ from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_
     convert_dict_to_named_tuple, str2bool, read_ids, write_ids
 
 parser = ArgumentParser(
-    description='Starts from cell-data and a tree on which some of the cells are already placed. Cells that are not on'
-                'the tree but are in the data will be placed one by one on the tree.')
+    description='This script provides a way of running backbone-based-Bonsai, consisting of the steps'
+                '1) Preprocess the data'
+                '2) Build a normal Bonsai-tree on a subset of the data as a backbone'
+                '3) Grow this backbone by a factor "growth_factor_guide" (or just add all remaining cells)'
+                '4) Refine the tree using Bonsai.'
+                ''
+                'There are a few arguments that one can set below. Importantly, if you run this script with '
+                'return_commands=False, it will try to run the whole calculation with just a single CPU. If you set'
+                'return_commands=True, it will just print out the commands to a file, which you can then use to run'
+                'the separate steps with more optimized computational resources.')
 
 parser.add_argument('--config_filepath', type=str, default=None,
                     help='Absolute (or relative to "bonsai-development") path to YAML-file that contains all arguments'
