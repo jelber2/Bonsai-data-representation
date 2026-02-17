@@ -56,7 +56,7 @@ parser.add_argument('--input_is_sanity_output', type=str2bool, default=True,
 parser.add_argument('--verbose', type=str2bool, default=True,
                     help='False only shows essential print messages')
 
-# Arguments that decide on how many genes are kept for the inference
+# Arguments that decide on how data is preprocessed
 parser.add_argument('--zscore_cutoff', type=float, default=1.0,
                     help='# Genes with a signal-to-noise ratio under this cutoff will be dropped. '
                          'Default=1.0, Negative means: keep all. '
@@ -67,6 +67,12 @@ parser.add_argument('--zscore_cutoff', type=float, default=1.0,
                          'where delta_{gc} is the feature value for gene g and cell c, '
                          'epsilon_{gc} is the standard-deviation')
 
+parser.add_argument("--rescale_by_var", type=str2bool, default=True,
+                    help="This determines whether oordinates are rescaled by the inferred variance per gene (feature). "
+                         "This is equivalent to putting the prior assumption that it is more likely to see change in a "
+                         "certain gene's expression when the gene shows much variation over the whole dataset.")
+
+# Arguments determining which computational speedups are done
 parser.add_argument("--use_knn", type=int, default=10,
                     help="Decides whether nearest-neighbours are used to get candidate pairs to merge. Set to -1 for "
                          "consideringall pairs of leafs. Values between 5 and 20 give good results. Computation time "
@@ -81,7 +87,6 @@ parser.add_argument("--nnn_n_randomtrees", type=int, default=10,
                          "parallelized, it never hurts to set nnn_n_randomtrees equal to the number of cores that are "
                          "anyhow reserved, since then the different random trees will be created in parallel.")
 
-# Arguments determining which computational speedups are done
 parser.add_argument("--UB_ellipsoid_size", type=float, default=1.0,
                     help="This is a purely computational optimization that does not affect the final result. Decides "
                          "whether we calculate an upper bound (UB) for the increase in loglikelihood that merging a "
@@ -95,10 +100,10 @@ parser.add_argument("--UB_ellipsoid_size", type=float, default=1.0,
                          "recommend to start at 1. Ellipsoid size will be updated dynamically by Bonsai based on the "
                          "results.")
 
-parser.add_argument("--rescale_by_var", type=str2bool, default=True,
-                    help="This determines whether oordinates are rescaled by the inferred variance per gene (feature). "
-                         "This is equivalent to putting the prior assumption that it is more likely to see change in a "
-                         "certain gene's expression when the gene shows much variation over the whole dataset.")
+parser.add_argument('--spr_strategy', type=str, default='large_tree',
+                    help="Move to general config-file later. This will determine what strategy we follow for the "
+                         "spr-moves. Current options are 'large_tree', 'long_branch_sorted', 'super_sure'."
+                         "NOTE: Only large_tree allows for parallelization, the rest will only use 1 CPU.")
 
 
 """Information on starting from previous runs configurations"""

@@ -88,6 +88,13 @@ use_knn: 10
 # by Bonsai based on the results.
 UB_ellipsoid_size: 1.0
 
+# SPR-strategy [string, default='large_tree']
+# Move to general config-file later. This will determine what strategy we follow for the
+# spr-moves. Current options are 'large_tree', 'long_branch_sorted', 'super_sure'.
+# NOTE: Only large_tree allows for parallelization, the rest will only use 1 CPU.
+spr_strategy: large_tree
+
+
 ########################### Information on starting from previous runs configurations ###############################
 
 # pickup_intermediate [bool, default=false]:
