@@ -865,7 +865,7 @@ class TreeNode:
             tChildren[cInd] = child.tParent
         return ltqsChildren, ltqsVarsChildren, tChildren
 
-    def get_posterior_info_children(self, xrAIRoot, WRoot):
+    def get_posterior_info_children(self, xrAIRoot, WRoot, minimum_time=None): # SARAH added minimum_time
         nChildren = len(self.childNodes)
         ltqsChildren = np.zeros((bs_glob.nGenes, nChildren))
         WChildren = np.zeros((bs_glob.nGenes, nChildren))
@@ -876,6 +876,14 @@ class TreeNode:
             WChildren[:, cInd] = child.getW()
             tChildren[cInd] = child.tParent
 
+        # SARAH fix
+        if minimum_time is not None:
+            # We here enforce that children should be at least <minimum_time> away from the root. Otherwise, the difference
+            # between root-position and posterior-ltqs for this child is zero, which is undesired for knn-search.
+            # Set minimum_time=None if you don't want this
+            tChildren = np.maximum(tChildren, minimum_time)
+
+        post_ltqsCh, _ = getLtqsAsIfRoot_vectorized(ltqsChildren, WChildren, tChildren, xrAIRoot, WRoot)
         # Get posterior best guess for coordinates by integrating out everything but the root
         post_ltqsCh, _ = getLtqsAsIfRoot_vectorized(ltqsChildren, WChildren, tChildren, xrAIRoot, WRoot)
         return post_ltqsCh
@@ -2109,7 +2117,8 @@ class TreeNode:
         start = time.time()
 
         # We first gather all ltq-information about the children
-        post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot)
+        # post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot) # SARAH: Before I added min time
+        post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot, minimum_time=1e-4) # SARAH fix
         # We center the ltq-information around the root
         post_ltqsCh -= xrAIRoot[:, None]
         NNInfo['subtracted_mean'] = xrAIRoot
@@ -2175,7 +2184,8 @@ class TreeNode:
         # other nodes to compensate for no other nodes adding connections to ancestor
         if update_nn_index:
             # We first gather all ltq-information about the children
-            post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot)
+            # post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot) # SARAH: before adding min_time
+            post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot, minimum_time=1e-4) # SARAH FIX
             # We center the ltq-information around the root
             post_ltqsCh -= xrAIRoot[:, None]
             NNInfo['subtracted_mean'] = xrAIRoot
@@ -2193,8 +2203,13 @@ class TreeNode:
 
         # Get the posterior coordinates for the new node
         # post_ltqs = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot)
-        post_ltqs, _ = getLtqsAsIfRoot_vectorized(new_node.ltqs[:, None], new_node.getW()[:, None], new_node.tParent,
-                                                  xrAIRoot, 1 / xrVarsAIRoot)
+        # post_ltqs, _ = getLtqsAsIfRoot_vectorized(new_node.ltqs[:, None], new_node.getW()[:, None], new_node.tParent,
+        #                                           xrAIRoot, 1 / xrVarsAIRoot) # SARAH before adding new_time=1e-4
+
+        t_parent = max(new_node.tParent, 1e-4) # SARAH new
+        post_ltqs, _ = getLtqsAsIfRoot_vectorized(new_node.ltqs[:, None], new_node.getW()[:, None], t_parent, xrAIRoot,
+                                                  1 / xrVarsAIRoot) # SARAH new
+
         post_ltqs = post_ltqs.flatten()
 
         # post_ltqs_old = lik_to_post_coords(new_node.ltqs, new_node.getLtqsVars())
