@@ -1135,11 +1135,13 @@ class Bonvis_figure:
             else:
                 if node_style['verts_masked'] is None:
                     verts_masked = []
-                    if node_style['cells_masked'] is not None:
+                    if (node_style['cells_masked'] is not None) and (len(node_style['cells_masked']) != 0):
                         cell_ind_to_vert_ind = np.array(
                             self.bonvis_metadata.cell_info['cell_info_dict']['cell_ind_to_vert_ind'])
                         verts_masked = list(cell_ind_to_vert_ind[np.array(node_style['cells_masked'])])
                         verts_masked = np.union1d(verts_masked, self.bonvis_metadata.cell_info['int_vert_inds'])
+                    elif node_style['cells_masked'] is not None: # avoid problematic array indexing for empty mask
+                        verts_masked = self.bonvis_metadata.cell_info['int_vert_inds']
                     cell_to_celltype = cell_to_celltype.astype(str)
                     cell_to_celltype[verts_masked] = np.nan
                     cell_to_color[verts_masked] = masked_color
@@ -2120,7 +2122,8 @@ def update_marker_genes_df(run_with_vars, marker_genes_tuple):
         marker_genes = calc_marker_genes_error_bars_approx2(indices1=ds_cell_inds_1, indices2=ds_cell_inds_2,
                                                             means=means,
                                                             vars=vars, gene_ids=gene_ids, n_points_total=n_points,
-                                                            n_marker_genes=10)
+                                                            min_marker_genes=10,
+                                                            marker_cutoff=.9)
     else:
         # ds_cell_inds_1, ds_cell_inds_2, n_cells, gene_ids, ranks_per_gene, variation_features, cells_wo_nan = marker_genes_tuple
         bonvis_data_path, ds_cell_inds_1, ds_cell_inds_2, n_cells, gene_ids, ranks_per_gene_path, variation_features, cells_wo_nan = marker_genes_tuple
@@ -2129,14 +2132,16 @@ def update_marker_genes_df(run_with_vars, marker_genes_tuple):
         if ds_cell_inds_2 is None:
             print("Starting the calc_marker_genes_single")
             marker_genes = calc_marker_genes_single(ds_cell_inds_1, n_cells, gene_ids, ranks_per_gene,
-                                                    n_marker_genes=10,
+                                                    min_marker_genes=10,
+                                                    marker_cutoff=.9,
                                                     gene_subset=variation_features)
         else:
             print("Starting the calc_marker_genes_double")
             ds_cell_inds_2 = np.intersect1d(ds_cell_inds_2, cells_wo_nan)
             marker_genes = calc_marker_genes_double(ds_cell_inds_1, ds_cell_inds_2, n_cells, gene_ids,
                                                     ranks_per_gene,
-                                                    n_marker_genes=10,
+                                                    min_marker_genes=10,
+                                                    marker_cutoff=.9,
                                                     gene_subset=variation_features)
 
     marker_genes_df = pd.DataFrame.from_dict(marker_genes, orient='index', columns=['marker_scores'])

@@ -865,7 +865,7 @@ class TreeNode:
             tChildren[cInd] = child.tParent
         return ltqsChildren, ltqsVarsChildren, tChildren
 
-    def get_posterior_info_children(self, xrAIRoot, WRoot, minimum_time=None): # SARAH added minimum_time
+    def get_posterior_info_children(self, xrAIRoot, WRoot, minimum_time=None):
         nChildren = len(self.childNodes)
         ltqsChildren = np.zeros((bs_glob.nGenes, nChildren))
         WChildren = np.zeros((bs_glob.nGenes, nChildren))
@@ -876,7 +876,6 @@ class TreeNode:
             WChildren[:, cInd] = child.getW()
             tChildren[cInd] = child.tParent
 
-        # SARAH fix
         if minimum_time is not None:
             # We here enforce that children should be at least <minimum_time> away from the root. Otherwise, the difference
             # between root-position and posterior-ltqs for this child is zero, which is undesired for knn-search.
