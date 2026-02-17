@@ -70,7 +70,8 @@ class Run_Configs:
                          'skip_nnn_reordering': False,
                          'skip_reorder_edges': False,
                          'pickup_intermediate': False,
-                         'tmp_folder': None}
+                         'tmp_folder': None,
+                         'spr_strategy': 'large_tree'}
 
         if create_empty_configs:
             for label in pars_defaults:
