@@ -113,7 +113,7 @@ mpi_rank, mpi_size = startMPI(verbose=True)
 start_all = time.time()
 
 if mpi_rank != 0:
-    mp_print("The script 'bonsai_iterative_build.py' is not designed to use multiple CPUs in all steps."
+    mp_print("The script 'backbone_based_bonsai.py' is not designed to use multiple CPUs in all steps."
              "Instead, please run this script with the command '--return_commands True'. "
              "It will then return the commands in a text-file "
              "(and printed out on the console) that you can then run yourself using multiple CPUs.",
@@ -206,7 +206,7 @@ for subset_ind, subset in enumerate(subsets):
 # Run the script that will read in and preprocess *all* the data, and create the star-tree for the first guide-tree
 subset_results_folders = [scdata_subsets[ind].metadata.results_folder for ind in range(len(scdata_subsets)-1)]
 subset_results_folders = ','.join(subset_results_folders)
-preprocess_cmd = ['bonsai_iterative_build/bonsai_iterative_first_split.py',
+preprocess_cmd = ['backbone_based_bonsai/bonsai_iterative_first_split.py',
                   '--config_filepath', args.config_filepath,
                   '--subset_results_folder', subset_results_folders]
 
@@ -323,7 +323,7 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
     mp_print(output1.stderr)
 
     add_cells_seed = np.random.randint(1e6)
-    add_cells_cmd = ['bonsai_iterative_build/bonsai_add_cells.py',
+    add_cells_cmd = ['backbone_based_bonsai/bonsai_add_cells.py',
                      '--config_filepath', config_filepath_add,
                      '--guide_tree_folder', results_dir_subset,
                      '--cells_to_be_added', os.path.join(new_non_refined_folder, 'starting_cell_ids.txt'),

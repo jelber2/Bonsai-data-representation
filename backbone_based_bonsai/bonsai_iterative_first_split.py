@@ -17,7 +17,7 @@ from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_
     convert_dict_to_named_tuple, str2bool, print_memory
 
 parser = ArgumentParser(
-    description='First script to be called in bonsai_iterative_build.py.'
+    description='First script to be called in backbone_based_bonsai.py.'
                 'Creates a first star-tree on a first subset of the data. Preprocesses all the data to store the'
                 'preprocessed data in the results-folder of all subsets already.')
 
