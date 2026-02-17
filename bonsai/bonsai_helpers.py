@@ -1175,7 +1175,7 @@ def print_memory(location=None):
     # print("Current shared memory usage is ",
     #       psutil.Process(os.getpid()).memory_info().shared / 1024 ** 2, " MB.")
     current, peak = tracemalloc.get_traced_memory()
-    # tracemalloc.reset_peak()
+    tracemalloc.reset_peak()
     message += "Current-mem: {} MB, Peak-mem since last: {} MB".format(current / 1000 ** 2, peak / 1000 ** 2)
     # mp_print("Python data segment =",
     #       resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2, "MB", ALL_RANKS=True)

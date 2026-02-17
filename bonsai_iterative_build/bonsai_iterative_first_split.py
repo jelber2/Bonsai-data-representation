@@ -104,4 +104,4 @@ for ind_subset, subset_folder in enumerate(subset_folders):
 
 mp_print("Reading, filtering, and storing data took " + str(time.time() - start_all) + " seconds.")
 mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
-print_memory("Memory peak after the whole calculation")
+print_memory("Memory usage after the whole calculation")
