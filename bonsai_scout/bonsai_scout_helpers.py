@@ -1436,8 +1436,7 @@ class Bonvis_figure:
         # self.number_of_clusters_found = len(clusters_list)
         # logger.debug(self.number_of_clusters_found)
         # get clusters to cluster-idx
-        cl_dict = get_cluster_assignments(clusters_list=clusters_list)
-
+        cl_dict = get_cluster_assignments(all_clusterings=clusters_list)
         # get cluster annotation
         # cmap = get_celltype_colors_new(colortype='gradient_colormap', gradientType=gradient_type)
         # n_cells = len(cell_info_dict[next(iter(cell_info_dict))])
@@ -1451,8 +1450,8 @@ class Bonvis_figure:
         # cats = list(set(cl_dict.values()))
         # cats = list(np.sort(list(set(cl_dict.values()))))
         # natural sorting
-        cats = natsorted(list(set(cl_dict.values())))
-
+        # cats = natsorted(list(set(cl_dict.values())))
+        cats = natsorted(cl_dict.iloc[:, -1].dropna().unique())
         n_clusters = len(cats)
         cluster_colors = get_celltype_colors_new(n_clusters, colortype=colortype)
         annot_to_color = {cat: cluster_colors(ind) for ind, cat in enumerate(cats)}
@@ -1473,13 +1472,15 @@ class Bonvis_figure:
                                    info_key=info_key)
 
         # convert to right order
-        cs_id_to_ind = {cs_id: ind for ind, cs_id in enumerate(cl_dict)}
+        # cs_id_to_ind = {cs_id: ind for ind, cs_id in enumerate(cl_dict)}
+        cs_id_to_ind = {cs_id: ind for ind, cs_id in enumerate(cl_dict.index)}
         cs_inds = np.array([cs_id_to_ind[cs_id] for cs_id in self.bonvis_metadata.cs_ids])
 
-        annot_df = pd.DataFrame({"cb_name": cl_dict.keys(),
-                                 "clustering_tmp": cl_dict.values()})
+        #annot_df = pd.DataFrame({"cb_name": cl_dict.keys(),
+        #                         "clustering_tmp": cl_dict.values()})
+        annot_df = cl_dict
         annotation_df = annot_df.iloc[cs_inds, :]
-        self.bonvis_metadata.cs_info['cs_info_dict'][info_key] = annotation_df['clustering_tmp'].tolist()
+        self.bonvis_metadata.cs_info['cs_info_dict'][info_key] = annotation_df.iloc[:, -1].tolist()
         # logger.debug(annotation_df)
 
         self.bonvis_settings.set_annot(annot_info=cl_annot)
