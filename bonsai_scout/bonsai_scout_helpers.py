@@ -1421,9 +1421,9 @@ class Bonvis_figure:
                 cell_ids=self.bonvis_metadata.cs_ids, node_id_to_n_cells=node_id_to_n_cells)
         elif footfall:
             logger.debug("Performing maximal footfall clustering!")
-            clusters_list, cut_edges = get_footfall_clustering_from_nwk_str(
+            clusters_list, cut_edges = get_min_pdists_clustering_from_nwk_str(
                 tree_nwk_str=self.bonvis_metadata.tree_info['nwk_str'],
-                n_clusters=cluster_param, cell_ids=self.bonvis_metadata.cell_ids)
+                n_clusters=cluster_param, cell_ids=self.bonvis_metadata.cell_ids, footfall=True)
         else:
             logger.debug("Performing max-diameter clustering")
             clusters_list = get_max_diam_clustering_from_nwk_str(tree_nwk_str=self.bonvis_metadata.tree_info['nwk_str'],
