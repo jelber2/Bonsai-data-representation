@@ -8,18 +8,23 @@ from bonsai_scout.my_tree_layout import Layout_Tree
 from scipy.sparse.csgraph import shortest_path
 from scipy.sparse import csr_matrix
 from scipy.stats import rankdata
-import logging
 import phate
 from dtne import DTNE
 from pathlib import Path
 import subprocess
 import glob
 
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(message)s'
+import logging
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
-logging.basicConfig(format=FORMAT, datefmt='%H:%M:%S',
-                    level=log_level)
-plt.set_loglevel(level='warning')
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 logging.getLogger('umap').setLevel(logging.WARNING)
 logging.getLogger('numba').setLevel(logging.WARNING)
 
@@ -204,6 +209,7 @@ def get_pairwise_dist_on_tree(tree, node_ids_of_interest):
     nVerts = np.max(colsComplete) + 1
     distance_csr = csr_matrix((weightsComplete, (rowsComplete, colsComplete)), shape=(nVerts, nVerts))
 
+    print("Done preparing inputs. Starting shortest-path algorithm from Scipy.")
     distances = squareform(shortest_path(distance_csr, method='auto', directed=False, return_predecessors=False,
                                          unweighted=False, overwrite=False, indices=indices)[:, indices], checks=False)
     return distances

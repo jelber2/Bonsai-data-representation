@@ -31,13 +31,16 @@ other_colors = cm.get_cmap('tab20')
 gradient_colors = cm.get_cmap('viridis')
 
 import logging
-
-# FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
-FORMAT = '%(asctime)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
 log_level = logging.DEBUG
-logging.basicConfig(format=FORMAT, datefmt='%m-%d %H:%M:%S',
-                    level=log_level)
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
+
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
 
 plt.set_loglevel(level='warning')
 
@@ -45,7 +48,7 @@ plt.set_loglevel(level='warning')
 class Run_Configs:
     config_yaml = None
 
-    def __init__(self, yaml_filepath=None, step=None):
+    def __init__(self, yaml_filepath=None, args=None, args_to_copy=None, step=None, create_empty_configs=False):
 
         pars_defaults = {'step': 'all',
                          'dataset': 'new_dataset',
@@ -63,10 +66,17 @@ class Run_Configs:
                          'skip_greedy_merging': False,
                          'skip_redo_starry': False,
                          'skip_opt_times': False,
+                         'skip_spr_moves': False,
                          'skip_nnn_reordering': False,
                          'skip_reorder_edges': False,
                          'pickup_intermediate': False,
-                         'tmp_folder': None}
+                         'tmp_folder': None,
+                         'spr_strategy': 'large_tree'}
+
+        if create_empty_configs:
+            for label in pars_defaults:
+                setattr(self, label, pars_defaults[label])
+            return
 
         if yaml_filepath is not None and os.path.exists(yaml_filepath):
             yaml = YAML()
@@ -87,11 +97,16 @@ class Run_Configs:
             else:
                 setattr(self, label, pars_defaults[label])
 
+        if (args_to_copy is not None) and (args is not None):
+            for label in args_to_copy:
+                if hasattr(args, label):
+                    setattr(self, label, getattr(args, label))
+
         # The following run-configurations are still used in Bonsai, but can no longer be set by users. Instead,
         # picking up intermediate results is only done through --pickup_intermediate and providing the correct
         # intermediate-results folders in the results-folder
-        deprecated_args = ['skip_greedy_merging', 'skip_opt_times', 'skip_redo_starry', 'skip_nnn_reordering',
-                           'skip_reorder_edges']
+        deprecated_args = ['skip_greedy_merging', 'skip_opt_times', 'skip_redo_starry', 'skip_spr_moves',
+                           'skip_nnn_reordering', 'skip_reorder_edges']
         for dep_arg in deprecated_args:
             if hasattr(self, dep_arg) and getattr(self, dep_arg):
                 setattr(self, dep_arg, False)
@@ -166,13 +181,13 @@ def mp_print(*args, **kwargs):
         return
 
     if error:
-        logging.error(print_message)
+        logger.error(print_message)
     elif debug:
-        logging.debug(print_message)
+        logger.debug(print_message)
     elif warning:
-        logging.warning(print_message)
+        logger.warning(print_message)
     else:
-        logging.info(print_message)
+        logger.info(print_message)
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -473,7 +488,6 @@ def hierarchy_to_newick(pathToMerger, clustIds, pathToOutput):
         f.write("%s" % newick_string)
 
 
-# TODO: Use this again. In tree visualisation
 # Should go to tree vis file
 def compile_tree_from_newick(newickFilename):
     from skbio import TreeNode
@@ -549,7 +563,7 @@ def get_shortest_distances_on_tree(ig_graph, indices=None):
 
 # Used
 def getOutputFolder(zscore_cutoff=-1, greedy=True, redo_starry=True, opt_times=True, final=False,
-                    reorderedEdges=False, nnn_reorder=False, tmp_file='', get_all_possibilities=False):
+                    reorderedEdges=False, spr_moves=False, nnn_reorder=False, tmp_file='', get_all_possibilities=False):
     if get_all_possibilities:
         all_possibilities = []
 
@@ -574,6 +588,10 @@ def getOutputFolder(zscore_cutoff=-1, greedy=True, redo_starry=True, opt_times=T
         all_possibilities.append(mergerFolder)
     if (opt_times or get_all_possibilities) and (not final):
         mergerFolder += "_optTimes"
+    if get_all_possibilities:
+        all_possibilities.append(mergerFolder)
+    if (spr_moves or get_all_possibilities) and (not final):
+        mergerFolder += "_sprMoves"
     if get_all_possibilities:
         all_possibilities.append(mergerFolder)
     if (nnn_reorder or get_all_possibilities) and (not final):
@@ -618,6 +636,7 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
         args.skip_greedy_merging = True
         args.skip_redo_starry = True
         args.skip_opt_times = True
+        args.skip_spr_moves = True
         args.skip_nnn_reordering = True
         args.skip_reorder_edges = True
 
@@ -631,7 +650,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
 
     # 2. Check if done all computation steps, except for the final metadata
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
-                               reorderedEdges=True, nnn_reorder=True, tmp_file=os.path.basename(args.tmp_folder))
+                               reorderedEdges=True, nnn_reorder=True, spr_moves=True,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -639,7 +659,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_reorder_edges = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
-                               nnn_reorder=True, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=True, reorderedEdges=False, spr_moves=True,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -647,7 +668,17 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_nnn_reordering = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
-                               nnn_reorder=False, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=True,
+                               tmp_file=os.path.basename(args.tmp_folder))
+    if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
+        return dir_path
+
+    # 4. Check if done everything up to SPR-moves
+    if set_skip_args:
+        args.skip_spr_moves = False
+    dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=True, final=False,
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=False,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -655,7 +686,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_opt_times = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=True, opt_times=False, final=False,
-                               nnn_reorder=False, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=False,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -663,7 +695,8 @@ def find_latest_tree_folder_new(args, results_folder, not_final=False, set_skip_
     if set_skip_args:
         args.skip_redo_starry = False
     dir_path = getOutputFolder(zscore_cutoff=args.zscore_cutoff, redo_starry=False, opt_times=False, final=False,
-                               nnn_reorder=False, reorderedEdges=False, tmp_file=os.path.basename(args.tmp_folder))
+                               nnn_reorder=False, reorderedEdges=False, spr_moves=False,
+                               tmp_file=os.path.basename(args.tmp_folder))
     if os.path.exists(os.path.join(results_folder, dir_path, 'vertInfo.txt')):
         return dir_path
 
@@ -746,7 +779,6 @@ def calcTInit(tOld1, tOld2, sequential):
 
 # Used
 def getAllDLogLs(dLogLDict, mpi_rank, nChildren):
-    # TODO: Wrap this communication step in a function
     # Gather all dLogLs on the first process
     dLogLsDicts = mpi_wrapper.world_allgather(dLogLDict)
     if mpi_rank != 0:
@@ -823,25 +855,25 @@ def create_celltypefile_from_cellstates(cellstates_file, celltype_file, multipli
             file.write(cellstate + '\n')
 
 
-def storeCurrentState(outputFolder, scData, filename='tmp_tree.dat', dataOrResults='data', args=None, dataFolder=None):
-    if mpi_wrapper.get_process_rank() == 0:
-        if dataFolder is None:
-            if args.dataset is not None:
-                dataFolder = os.path.join(dataOrResults, args.dataset)
-            else:
-                dataFolder = args.data_folder
-        tmpDataPath = os.path.join(dataFolder, outputFolder)
-        Path(tmpDataPath).mkdir(parents=True, exist_ok=True)
-
-        scData.tree.nNodes = bs_glob.nNodes
-        mp_print("Printing tree at %s" % os.path.join(tmpDataPath, filename))
-        try:
-            with open(os.path.join(tmpDataPath, filename), 'wb') as file:
-                pickle.dump(scData, file)
-        except RecursionError:
-            with RecursionLimit():
-                with open(os.path.join(tmpDataPath, filename), 'wb') as file:
-                    pickle.dump(scData, file)
+# def storeCurrentState(outputFolder, scData, filename='tmp_tree.dat', dataOrResults='data', args=None, dataFolder=None):
+#     if mpi_wrapper.get_process_rank() == 0:
+#         if dataFolder is None:
+#             if args.dataset is not None:
+#                 dataFolder = os.path.join(dataOrResults, args.dataset)
+#             else:
+#                 dataFolder = args.data_folder
+#         tmpDataPath = os.path.join(dataFolder, outputFolder)
+#         Path(tmpDataPath).mkdir(parents=True, exist_ok=True)
+#
+#         scData.tree.nNodes = bs_glob.nNodes
+#         mp_print("Printing tree at %s" % os.path.join(tmpDataPath, filename))
+#         try:
+#             with open(os.path.join(tmpDataPath, filename), 'wb') as file:
+#                 pickle.dump(scData, file)
+#         except RecursionError:
+#             with RecursionLimit():
+#                 with open(os.path.join(tmpDataPath, filename), 'wb') as file:
+#                     pickle.dump(scData, file)
 
 
 def get_latest_intermediate(intermediateFiles, base=None):
@@ -867,30 +899,30 @@ def get_latest_intermediate(intermediateFiles, base=None):
     return intermediateFiles[latestIntFile], tmpTreeInd
 
 
-def pickleTree(pickleFolder, filename, tree):
-    Path(pickleFolder).mkdir(parents=True, exist_ok=True)
-    tree.nNodes = bs_glob.nNodes
-    try:
-        with open(os.path.join(pickleFolder, filename), 'wb') as file:
-            pickle.dump(tree, file)
-    except RecursionError:
-        with RecursionLimit():
-            with open(os.path.join(pickleFolder, filename), 'wb') as file:
-                pickle.dump(tree, file)
+# def pickleTree(pickleFolder, filename, tree):
+#     Path(pickleFolder).mkdir(parents=True, exist_ok=True)
+#     tree.nNodes = bs_glob.nNodes
+#     try:
+#         with open(os.path.join(pickleFolder, filename), 'wb') as file:
+#             pickle.dump(tree, file)
+#     except RecursionError:
+#         with RecursionLimit():
+#             with open(os.path.join(pickleFolder, filename), 'wb') as file:
+#                 pickle.dump(tree, file)
 
 
-def unpickleTree(pickleFolder, filename):
-    mp_print("Trying to unpickle tree from ", os.path.join(pickleFolder, filename), ALL_RANKS=True)
-    try:
-        with open(os.path.join(pickleFolder, filename), 'rb') as file:
-            tree = pickle.load(file)
-    except RecursionError:
-        with RecursionLimit():
-            with open(os.path.join(pickleFolder, filename), 'rb') as file:
-                tree = pickle.load(file)
-    bs_glob.nNodes = tree.nNodes
-    bs_glob.nGenes = len(tree.root.ltqs)
-    return tree
+# def unpickleTree(pickleFolder, filename):
+#     mp_print("Trying to unpickle tree from ", os.path.join(pickleFolder, filename), ALL_RANKS=True)
+#     try:
+#         with open(os.path.join(pickleFolder, filename), 'rb') as file:
+#             tree = pickle.load(file)
+#     except RecursionError:
+#         with RecursionLimit():
+#             with open(os.path.join(pickleFolder, filename), 'rb') as file:
+#                 tree = pickle.load(file)
+#     bs_glob.nNodes = tree.nNodes
+#     bs_glob.nGenes = len(tree.root.ltqs)
+#     return tree
 
 
 def remove_tree_folders(tree_folder, removeDir=False, notRemove=None, base=None):
@@ -1117,3 +1149,89 @@ def add_celltype_info_to_tree(treenode, cell_id_to_ct):
         treenode.celltype = 'unknown'
     for child in treenode.childNodes:
         add_celltype_info_to_tree(child, cell_id_to_ct)
+
+
+def read_ids(filepath):
+    if not os.path.exists(filepath):
+        logger.error("Can't find IDs stored at {}.".format(filepath))
+        return []
+    ids = []
+    with open(filepath, 'r') as file:
+        reader = csv.reader(file, delimiter="\t")
+        for row in reader:
+            ids.append(row[0])
+    return ids
+
+
+def write_ids(filepath, ids_list):
+    with open(filepath, 'w') as f:
+        for ID in ids_list:
+            f.write("%s\n" % ID)
+
+
+import psutil
+import tracemalloc
+import resource
+def print_memory(location=None):
+    message = ''
+    if location is not None:
+        message += "{}: ".format(location)
+    # mp_print("Current RSS memory usage is ",
+    #       psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+    # print("Current shared memory usage is ",
+    #       psutil.Process(os.getpid()).memory_info().shared / 1024 ** 2, " MB.")
+    current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.reset_peak()
+    message += "Current-mem: {} MB, Peak-mem since last: {} MB".format(current / 1000 ** 2, peak / 1000 ** 2)
+    # mp_print("Python data segment =",
+    #       resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2, "MB", ALL_RANKS=True)
+    mp_print(message, ALL_RANKS=True)
+
+
+def store_scdata_and_communicate_path(scData, specific_results_folder, general_results_folder=None, prefix=None,
+                                      with_coords=True):
+    mpi_info = mpi_wrapper.get_mpi_info()
+    if mpi_info.rank == 0:
+        no_scdata_path = True
+        while no_scdata_path:
+            if prefix is None:
+                subfoldername = 'scdata_state_{}'.format(np.random.randint(1e6))
+            else:
+                subfoldername = prefix + '_' + 'scdata_state_{}'.format(np.random.randint(1e6))
+            if general_results_folder is None:
+                scdata_path = scData.result_path(os.path.join(specific_results_folder, subfoldername))
+            else:
+                scdata_path = os.path.join(general_results_folder, specific_results_folder, subfoldername)
+            if not os.path.exists(scdata_path):
+                no_scdata_path = False
+        # We store the tree to make sure we have the data of all vertices
+        scData.storeTreeInFolder(os.path.join(scdata_path), with_coords=with_coords, verbose=False, nwk=False)
+
+        # Communicate the path where scData is stored with the other processes. This also serves as a barrier between
+        # storing the tree and loading it on other processes
+        scdata_path = mpi_wrapper.bcast(scdata_path, root=0)
+    else:
+        scdata_path = None
+        # Other processes receive the path to scData
+        scdata_path = mpi_wrapper.bcast(scdata_path, root=0)
+    return scdata_path
+
+
+def look_for_output_folder(specific_results_folder, general_results_folder=None, prefix=None):
+    if general_results_folder is not None:
+        full_path = os.path.join(general_results_folder, specific_results_folder)
+    else:
+        full_path = specific_results_folder
+
+    full_path = Path(full_path)
+
+    if not full_path.exists() or not full_path.is_dir():
+        return False, None
+
+    subfolders = [p for p in full_path.iterdir() if p.is_dir() and (prefix is None or p.name.startswith(prefix))]
+    if len(subfolders) == 0:
+        return False, None
+
+    # Return the folder that was last modified
+    scdata_path = max(subfolders, key=lambda p: p.stat().st_mtime)
+    return True, scdata_path

@@ -35,16 +35,14 @@ parser.add_argument('--unbalanced', type=str2bool, default=False,
                     help='Determines whether we simulate an unbalanced tree, instead of a perfect binary tree.')
 parser.add_argument('--realcovariance', type=str2bool, default=False,
                     help='Determines whether we reconstruct a realistic covariance structure')
-parser.add_argument('--keep_progenitor_cells', type=str2bool, default=False,
-                    help='Determines if the internal nodes on the tree are added as observed cells to the datset.')
-parser.add_argument('--multiply_cell_counts', type=float, default=-1,
-                    help='To create a dataset with more or less noise, we can multiply the cell counts by a number'
-                         'smaller or larger than 1, respectively.')
+# parser.add_argument('--multiply_cell_counts', type=float, default=-1,
+#                     help='To create a dataset with more or less noise, we can multiply the cell counts by a number'
+#                          'smaller or larger than 1, respectively.')
 
 args = parser.parse_args()
 print(args)
 
-seed = 2462
+seed = 1231
 np.random.seed(seed)
 
 # Set number of generations and diffusion times
@@ -52,11 +50,7 @@ N_GENERATIONS = args.num_gens
 RANDOM_TIMES = args.random_times
 UNBALANCED = args.unbalanced
 REAL_COVARIANCE = args.realcovariance
-KEEP_PROGENITORS = args.keep_progenitor_cells
 n_cells_simu = 2 ** N_GENERATIONS
-
-if KEEP_PROGENITORS:
-    n_cells_simu = n_cells_simu * 2 - 1
 
 if REAL_COVARIANCE:
     args.sanity_output_path = os.path.join(args.data_path, "Sanity")
@@ -115,8 +109,8 @@ np.random.shuffle(N_c)
 if n_cells_simu > nCells_orig:
     N_c = np.tile(N_c, int(np.ceil(n_cells_simu / nCells_orig)))
 
-if args.multiply_cell_counts > 0:
-    N_c = np.ceil(N_c * args.multiply_cell_counts).astype(dtype=int)
+# if args.multiply_cell_counts > 0:
+#     N_c = np.ceil(N_c * args.multiply_cell_counts).astype(dtype=int)
 
 if not REAL_COVARIANCE:
     # Draw gene variances from an exponential with mean 2
@@ -176,20 +170,6 @@ def addChildCells_unbalanced(node_counter, all_leaf_nodes, variances=None, n_gen
 def addChildCells(treeNode, counter, barcode, node_counter, variances, n_genes):
     counter += 1
     treeNode.childNodes = []
-
-    if KEEP_PROGENITORS:
-        # In this case, create an additional cell with zero branch length from the internal node
-        node_counter += 1
-        progenitor_node = TreeNode(isLeaf=True, ltqs=treeNode.ltqs.copy(), childNodes=[], nodeInd=node_counter)
-        progenitor_node.tParent = 0.0
-        treeNode.childNodes.append(progenitor_node)
-        tree.nNodes += 1
-        # Add this to the observed nodes
-        delta_gc[:, tree.nLeafs] = treeNode.ltqs.copy()
-        cellIds[tree.nLeafs] = "Progenitor_Cell" + (barcode if len(barcode) else '-')
-        progenitor_node.nodeId = cellIds[tree.nLeafs]
-        tree.nLeafs += 1
-
     for ind in range(2):
         node_counter += 1
         if not RANDOM_TIMES:
@@ -219,15 +199,6 @@ else:
     node_counter = addChildCells(tree.root, counter=0, barcode="", node_counter=-1, variances=gene_variances,
                                  n_genes=n_genes_simu)
 
-# Create SCData-object to keep track of all information
-scData = SCData(onlyObject=True)
-scData.tree = tree
-scData.metadata.cellIds = cellIds
-scData.metadata.nCells = len(cellIds)
-bs_glob.nCells = scData.metadata.nCells
-
-scData.cleanup_node_inds()
-
 # Renumber the vertices to make everything consistent with depth first search
 vertIndToNode, tree.nNodes = tree.root.renumber_verts(vertIndToNode={}, vert_count=0)
 
@@ -253,6 +224,26 @@ else:
 
 n_genes_final = ltqs_gc.shape[0]
 
+"""-----------Here starts the batch-effect bit.---------------"""
+# Now add a copy for each cell from a second "batch"
+ltqs_gc_batch2 = ltqs_gc.copy()
+# Option 1: Subtract the mean again, and add them back in a random order
+# ltqs_gc_batch2 = ltqs_gc_batch2 - mean_ltqs[:, None]
+# shuffled = mean_ltqs.copy()
+# np.random.shuffle(shuffled)
+# ltqs_gc_batch2 = ltqs_gc_batch2 + shuffled[:, None]
+
+# Option 2: Shift the means by a random number pulled from a Gaussian
+shifts = np.random.normal(loc=0.0, scale=np.exp(1), size=ltqs_gc.shape[0])
+ltqs_gc_batch2 = ltqs_gc_batch2 + shifts[:, None]
+
+# Concatenate these ltqs
+ltqs_gc = np.hstack((ltqs_gc, ltqs_gc_batch2))
+# Also add cell_IDs for the 2nd batch
+cellIds += [cell_id + '_batch2' for cell_id in cellIds]
+n_cells_simu *= 2
+"""-----------Here ends the batch-effect bit.---------------"""
+
 # Normalise such that each cell's TQs add up to 1
 log_tqs = logsumexp(ltqs_gc, axis=0)
 ltqs_gc = ltqs_gc - log_tqs
@@ -271,10 +262,8 @@ if UNBALANCED:
     datadir += '_unbalanced'
 if REAL_COVARIANCE:
     datadir += '_realcovariance'
-if KEEP_PROGENITORS:
-    datadir += '_withprogenitors'
-if args.multiply_cell_counts > 0:
-    datadir += '_countstimes{}'.format(args.multiply_cell_counts)
+# if args.multiply_cell_counts > 0:
+#     datadir += '_countstimes{}'.format(args.multiply_cell_counts)
 
 datadir += '_seed_{}'.format(seed)
 
@@ -283,7 +272,11 @@ geneID = ['Gene_' + str(ind) for ind in range(n_genes_final)]
 data_path = os.path.abspath(os.path.join(args.results_folder, datadir))
 Path(data_path).mkdir(parents=True, exist_ok=True)
 
-# Store gene-variances and gene-IDs
+scData = SCData(onlyObject=True)
+scData.tree = tree
+scData.metadata.cellIds = cellIds
+scData.metadata.nCells = len(cellIds)
+bs_glob.nCells = scData.metadata.nCells
 scData.metadata.geneVariances = true_vars_g
 scData.metadata.geneIds = geneID
 
@@ -298,9 +291,9 @@ subprocess.run(
      os.path.join(scicore_data_path, "true_tree"), '--input_is_sanity_output', 'True', '--zscore_cutoff', '-1',
      '--UB_ellipsoid_size', '1.0', '--use_knn', '10', '--filenames_data', 'delta_true.txt,d_delta.txt'])
 
-print("Writing true deltas to file.")
-delta_df = pd.DataFrame(delta_gc, columns=cellIds, index=geneID)
-delta_df.to_csv(os.path.join(data_path, 'delta_true.txt'), sep='\t', header=False, index=False)
+# print("Writing true deltas to file.")
+# delta_df = pd.DataFrame(delta_gc, columns=cellIds, index=geneID)
+# delta_df.to_csv(os.path.join(data_path, 'delta_true.txt'), sep='\t', header=False, index=False)
 
 print("Writing true variances to file:")
 with open(os.path.join(data_path, 'variance_true.txt'), 'w') as f:
@@ -332,32 +325,24 @@ print("Writing celltypes to file:")
 annotation_dict = {}
 for gen in range(N_GENERATIONS - 1):
     # with open(os.path.join(data_path, 'Celltype' + str(gen) + '.txt'), 'w') as f:
-    celltype_list = ["Type" + ID.split('Cell')[1][:gen + 1] for ID in cellIds]
+    celltype_list = ["Type" + ID.split('_batch')[0].split('Cell')[1][:gen + 1] for ID in cellIds]
     annotation_dict['Celltype{}'.format(gen)] = celltype_list
 
 for gen in range(N_GENERATIONS - 1):
-    celltype_list = ["Type" + ID.split('Cell')[1][:gen + 1] for ID in cellIds]
+    celltype_list = ["Type" + ID.split('_batch')[0].split('Cell')[1][:gen + 1] for ID in cellIds]
     unq_cts, cnts = np.unique(celltype_list, return_counts=True)
     if len(unq_cts) > 20:
         top_ct_inds = np.argsort(-cnts)
         cts_to_new_cts = {ct: (ct if ind in top_ct_inds[:19] else 'rest') for ind, ct in enumerate(unq_cts)}
         celltype_list = [cts_to_new_cts[ct] for ct in celltype_list]
         annotation_dict['Celltype{}_largest_cts'.format(gen)] = celltype_list
+
+celltype_list = [('batch_1' if len(ID.split('_batch')) == 1 else 'batch_2') for ID in cellIds]
+annotation_dict['Batch'] = celltype_list
+
 # Add total UMI-counts per cell as annotation
 total_counts_c = list(np.sum(umi_counts, axis=0))
 annotation_dict['total_count'] = total_counts_c
-
-prog_annot = [("progenitor" if cell_id.startswith('Progenitor') else "terminal_fate") for cell_id in cellIds]
-annotation_dict['progenitor_or_terminal'] = prog_annot
-
-depth_annot = []
-for cell_id in cellIds:
-    annot_part = cell_id.split('Cell')[1]
-    depth = 0 if annot_part == '-' else len(annot_part)
-    depth_annot.append(depth)
-
-annotation_dict['progenitor_depth'] = depth_annot
-
 
 annotation_df = pd.DataFrame(annotation_dict, index=cellIds)
 Path(os.path.join(data_path, 'annotation')).mkdir(parents=True, exist_ok=True)

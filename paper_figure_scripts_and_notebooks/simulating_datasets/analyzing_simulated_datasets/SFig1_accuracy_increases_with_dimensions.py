@@ -10,13 +10,17 @@ from natsort import natsorted
 # from bonsai.bonsai_dataprocessing import get_bonsai_euclidean_distances
 
 import logging
-
-FORMAT = '%(asctime)s %(name)s %(funcName)s %(levelname)s %(message)s'
+FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING
-logging.basicConfig(format=FORMAT, datefmt='%H:%M:%S',
-                    level=log_level)
+log_level = logging.DEBUG
+logging.basicConfig(format=FORMAT,
+                    datefmt='%m-%d %H:%M:%S',
+                    level=logging.WARNING)   # silence all libraries
 
-plt.set_loglevel(level='warning')
+# Create your app logger
+logger = logging.getLogger("myapp")
+logger.setLevel(log_level)
+
 logging.getLogger("umap").disabled = True
 logging.getLogger('numba').setLevel(logging.WARNING)
 

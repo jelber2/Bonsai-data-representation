@@ -13,6 +13,10 @@ from itertools import permutations
 from bonsai.bonsai_approxNN import getApproxNNs
 import pandas as pd
 from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str
+import json
+import heapq
+
+# TODO: Remove this
 
 
 class TreeNode:
@@ -26,6 +30,7 @@ class TreeNode:
     isRoot = None
     isCell = None
     dsLeafs = None
+    n_ds_nodes = None
 
     # Position information
     ltqs = None  # (Effective) coordinates of the (node) leaf
@@ -41,6 +46,14 @@ class TreeNode:
     ltqsAIRoot = None
     _ltqsVarsAIRoot = None
     _W_gAIRoot = None
+    # This _AIRoot_version will be used when we only have to update part of the coordinates. By comparing to a higher
+    # version we can disqualify coordinates that are too old, and should be re-calculated
+    _AIRoot_version = -1
+    # This _spr_target_version will be used when we search for Subtree-Prune and Regraft targets. When starting from
+    # multiple startpoints, we update the version whenever we pass it, such that we don't do it again
+    _spr_target_version = -1
+    _spr_target_dlogl = None
+    _spr_target_opt_t = None
 
     prefactor = None  # Prefactor that enters loglikelihood computation that can be started from root
     dLoglikdtParent = None  # Derivative of total tree likelihood w.r.t. diff. time to parent
@@ -95,6 +108,13 @@ class TreeNode:
             return nwk + ';'
         else:
             return nwk
+
+    def get_max_node_ind(self, max_node_ind):
+        max_node_ind = max(max_node_ind, self.nodeInd)
+        for child in self.childNodes:
+            max_node_ind = child.get_max_node_ind(max_node_ind)
+
+        return max_node_ind
 
     def get_edge_dict_node(self, edge_dict, nodeIdToVertInd=None):
         for child in self.childNodes:
@@ -324,7 +344,7 @@ class TreeNode:
 
     def get_ds_info_for_ladderize(self, verbose=False):
         if verbose and (self.vert_ind % 100000 == 0) and (self.vert_ind != 0):
-            logging.debug("Getting downstream information at vertex number {c:d}.".format(c=self.vert_ind))
+            logger.debug("Getting downstream information at vertex number {c:d}.".format(c=self.vert_ind))
         if self.isLeaf:
             self.dsLeafs = 1
         else:
@@ -333,6 +353,29 @@ class TreeNode:
                 dsLeafsCh = child.get_ds_info_for_ladderize(verbose=verbose)
                 self.dsLeafs += dsLeafsCh
         return self.dsLeafs
+
+    def get_ds_node_counts(self):
+        if self.isLeaf:
+            self.n_ds_nodes = 1
+        else:
+            self.n_ds_nodes = 1
+            for child in self.childNodes:
+                n_ds_nodes_ch = child.get_ds_node_counts()
+                self.n_ds_nodes += n_ds_nodes_ch
+        return self.n_ds_nodes
+
+    def select_nth_node_df(self, nth_node, counter):
+        if counter == nth_node:
+            return self
+        for child in self.childNodes:
+            # Check if this child contains the desired node. This is only true when
+            # nth_node <= child.n_ds_nodes + counter
+            if nth_node <= counter + child.n_ds_nodes:
+                selected_node = child.select_nth_node_df(nth_node, counter + 1)
+                return selected_node
+            else:
+                counter += child.n_ds_nodes
+        exit("Something went wrong! Couldn't find the {} node on this tree.".format(nth_node))
 
     def reset_root_node(self, parent_ind=None, old_tParent=None):
         # Get all connecting nodes
@@ -360,7 +403,8 @@ class TreeNode:
             self.tParent = None
             self.isRoot = True
         if len(new_children) == 0:
-            self.isLeaf = True
+            self.childNodes = []
+            # self.isLeaf = True
         else:
             self.isLeaf = False
             self.childNodes = new_children
@@ -379,7 +423,6 @@ class TreeNode:
         childrenLtqs[:, 0] = leftNeighbour.ltqs
         childrenLtqs[:, -1] = rightNeighbour.ltqs
         # Get distances between children
-        # TODO: Check why this can give a divide by zero warning
         childDists = distance.squareform(np.log(1e-9 + distance.pdist(childrenLtqs.T)))
         if nChild <= maxChild:
             # Get all permutations of childInds up to cyclic permutations
@@ -457,6 +500,7 @@ class TreeNode:
 
     # Used
     def getLtqsVars(self, AIRoot=False, mem_friendly=False):
+        mem_friendly = mem_friendly or bs_glob.mem_friendly
         if not AIRoot:
             if self._ltqsVars is None:
                 if self._W_g is not None:
@@ -474,13 +518,17 @@ class TreeNode:
 
     # Used
     def getW(self, AIRoot=False, mem_friendly=False):
+        mem_friendly = mem_friendly or bs_glob.mem_friendly
         if not AIRoot:
             if self._W_g is None:
                 if self._ltqsVars is not None:
                     # If ltqsVars is known, return 1/ltqsVars, if that is None as well, then just return None
-                    self._W_g = 1 / self._ltqsVars
-                    if mem_friendly:
-                        self._ltqsVars = None
+                    if mem_friendly and isinstance(self._ltqsVars, np.memmap):
+                        return 1 / self._ltqsVars
+                    else:
+                        self._W_g = 1 / self._ltqsVars
+                        if mem_friendly:
+                            self._ltqsVars = None
             return self._W_g
         else:
             if self._W_gAIRoot is None:
@@ -674,6 +722,15 @@ class TreeNode:
         parent.setLtqsUpstream()
 
     # Used
+    def add_n_nodes_upstream(self, n_nodes_added):
+        self.n_ds_nodes += n_nodes_added
+        # This assumes that the ltqs of this node and all of its siblings are already correct
+        if self.isRoot:
+            return
+        else:
+            self.parentNode.add_n_nodes_upstream(n_nodes_added)
+
+    # Used
     def getLtqsUponMerge(self):
         # ltqsChilds, ltqsVarsChilds, tChilds = self.getInfoChildren()
         self.ltqs, W_g = findNodeLtqsGivenLeafs(childNodes=self.childNodes, return_wbar_gi=False)
@@ -692,17 +749,24 @@ class TreeNode:
             info = child.gatherInfoDepthFirstGeneral(info)
         return info
 
+    def reset_version_numbers(self, version_attr_str):
+        setattr(self, version_attr_str, -1)
+        for child in self.childNodes:
+            child.reset_version_numbers(version_attr_str)
+
     def deleteParentsWithOneChild(self, recalc_ltqs=True):
         toBeDeleted = []
         toBeAdded = []
         for ind, child in enumerate(self.childNodes):
             child.deleteParentsWithOneChild()
-            if (len(child.childNodes) == 1) and (not child.isCell):
+            if (len(child.childNodes) <= 1) and (not child.isCell):
                 toBeDeleted.append(ind)
-                gchild = child.childNodes[0]
-                toBeAdded.append(gchild)
-                gchild.tParent += child.tParent
-                gchild.parentNode = self
+                child.parentNode = None
+                if len(child.childNodes) == 1:
+                    gchild = child.childNodes[0]
+                    toBeAdded.append(gchild)
+                    gchild.tParent += child.tParent
+                    gchild.parentNode = self
         self.childNodes = [child for ind, child in enumerate(self.childNodes) if ind not in toBeDeleted]
         for child in toBeAdded:
             self.childNodes.append(child)
@@ -735,6 +799,7 @@ class TreeNode:
                         self.nodeId = child.nodeId
                     childrenToBeAdded += child.childNodes
                     childIndsToBeDeleted.append(ind)
+                    child.parentNode = None
         if len(childIndsToBeDeleted) > 0:
             for child in childrenToBeAdded:
                 child.parentNode = self
@@ -742,20 +807,28 @@ class TreeNode:
             self.childNodes += childrenToBeAdded
 
     # Used
-    def renumberNodes(self):
+    def renumberNodes(self, change_node_inds=False):
         # This function renumbers internal nodes to make these indices consistent again after nodes were deleted
-        # It assumes that the cells have nodeInds from 0 to nCells-1, and it doesn't change that
+        # If change_node_inds=True, it assumes that the cells have nodeInds from 0 to nCells - 1, and doesn't change it
+        # If change_node_inds=False, then this function is just re-counting the nodes for bs_glob.nNodes
         if self.isRoot:
             bs_glob.nNodes = bs_glob.nCells + 1
-            self.nodeInd = -1
-            self.nodeId = 'root'
-        for child in self.childNodes:
-            if not child.isLeaf:
-                child.renumberNodes()
+            if change_node_inds:
+                self.nodeInd = -1
+                self.nodeId = 'root'
         if not self.isRoot:
-            self.nodeInd = bs_glob.nNodes - 1
-            self.nodeId = 'internal_' + str(self.nodeInd)
-            bs_glob.nNodes += 1
+            is_cell = self.isCell if (self.isCell is not None) else self.isLeaf
+            if not is_cell:
+                bs_glob.nNodes += 1
+                if change_node_inds:
+                    # self.nodeInd = bs_glob.nNodes - 1
+                    self.nodeInd = bs_glob.max_node_ind + 1
+                    bs_glob.max_node_ind += 1
+                    self.nodeId = 'internal_' + str(self.nodeInd)
+            if self.nodeId is None:
+                self.nodeId = 'internal_' + str(self.nodeInd)
+        for child in self.childNodes:
+            child.renumberNodes(change_node_inds=change_node_inds)
 
     def renumber_verts(self, vertIndToNode, vert_count, include_nodeInd=False, old_ind_to_new_ind=None):
         if old_ind_to_new_ind is not None:
@@ -811,14 +884,7 @@ class TreeNode:
 
         post_ltqsCh, _ = getLtqsAsIfRoot_vectorized(ltqsChildren, WChildren, tChildren, xrAIRoot, WRoot)
         # Get posterior best guess for coordinates by integrating out everything but the root
-        # # TODO: Check if this for-loop can be vectorized
-        # post_ltqsCh = np.zeros_like(ltqsCh)
-        # WCh = 1 / ltqsVarsCh
-        # WRoot = 1/xrVarsAIRoot
-        # for ind in range(len(self.childNodes)):
-        #     post_ltqsCh[:, ind], _ = getLtqsAsIfRoot(ltqsCh[:, ind], WCh[:, ind], tChildren[ind], xrAIRoot, WRoot)
-        # # We center the ltq-information around the root
-        # post_ltqsCh -= xrAIRoot[:, None]
+        post_ltqsCh, _ = getLtqsAsIfRoot_vectorized(ltqsChildren, WChildren, tChildren, xrAIRoot, WRoot)
         return post_ltqsCh
 
     def addClosenessNNN(self, dist, src=np.nan):
@@ -834,7 +900,7 @@ class TreeNode:
 
     # Used
     def mergeDownstreamChildren(self, xrAsIfRoot_g, WAsIfRoot_g, sequential=True, verbose=False, ellipsoidSize=1.0,
-                                nChildNN=-1, kNN=5, mergeDownstream=True, tree=None):
+                                nChildNN=-1, kNN=5, mergeDownstream=True, tree=None, single_process=False):
         # If we update the node's position in the process, we keep the old position here. This will help in updating the
         # parent's position. Also, we store in the boolean "someMergeHappened" whether there was an update
         oldLtqs = None
@@ -845,7 +911,7 @@ class TreeNode:
                 mergeHappened, newLtqs, newLtqsVars, oldLtqsChild, oldLtqsVarsChild = child.mergeChildrenRecursive(
                     xrAsIfRoot_g, WAsIfRoot_g, sequential=sequential, verbose=verbose, ellipsoidSize=ellipsoidSize,
                     nChildNN=nChildNN, kNN=kNN,
-                    mergeDownstream=mergeDownstream, tree=tree)
+                    mergeDownstream=mergeDownstream, tree=tree, single_process=single_process)
                 if mergeHappened:  # If merge happened downstream, we need to recalculate W_g and ltqs of current node
                     someMergeHappened = True
                     xrAsIfRoot_g, WAsIfRoot_g = getLtqsAfterChildUpdate(xrAsIfRoot_g, WAsIfRoot_g, child.tParent,
@@ -858,6 +924,7 @@ class TreeNode:
                         self.ltqs, W_g = getLtqsAfterChildUpdate(self.ltqs, self.getW(), child.tParent, oldLtqsChild,
                                                                  oldLtqsVarsChild, child.ltqs, child.getLtqsVars())
                         self.setLtqsVarsOrW(W_g=W_g)
+
         if someMergeHappened:
             if self.isRoot:
                 self.setLtqsVarsOrW(W_g=WAsIfRoot_g)
@@ -873,8 +940,7 @@ class TreeNode:
         oldLtqs = None
         oldLtqsVars = None
         someMergeHappened = False
-        for ind, child in enumerate(
-                self.childNodes):  # TODO: Make this for-loop by just using child-ind instead of childNodeInd
+        for ind, child in enumerate(self.childNodes):  # TODO: Do for-loop just using child-ind instead of childNodeInd
             if child.nodeInd == childNInd:
                 mergeHappened, newLtqs, newLtqsVars, oldLtqsChild, oldLtqsVarsChild = child.mergeChildrenRecursiveSingle(
                     xrAsIfRoot_g, WAsIfRoot_g, gchildNInd, sequential=sequential, verbose=verbose,
@@ -900,12 +966,12 @@ class TreeNode:
 
     # Used
     def mergeChildrenRecursive(self, parentLtqs, parentW_g, sequential=True, verbose=False, ellipsoidSize=1.0,
-                               mpiInfo=None, nChildNN=-1, kNN=5, mergeDownstream=True, tree=None):
+                               mpiInfo=None, nChildNN=-1, kNN=5, mergeDownstream=True, tree=None, single_process=False):
         """This function loops over all candidate pairs between nodes that are children of the root-node, and checks what
         the likelihood becomes when they are merged."""
         if mpiInfo is None:
             mpiInfo = mpi_wrapper.get_mpi_info()
-        if mpiInfo.rank == 0:
+        if (mpiInfo.rank == 0) or single_process:
             if not self.isRoot:
                 # Get the mean and precision of this node's posterior when all other node-positions are integrated out
                 xrAsIfRoot_g, WAsIfRoot_g = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, parentLtqs, parentW_g)
@@ -921,13 +987,13 @@ class TreeNode:
         # downstream change
         someMergeHappened, xrAsIfRoot_g, WAsIfRoot_g, oldLtqs, oldLtqsVars = self.mergeDownstreamChildren(
             xrAsIfRoot_g, WAsIfRoot_g, sequential=sequential, verbose=verbose, ellipsoidSize=ellipsoidSize,
-            nChildNN=nChildNN, kNN=kNN,
+            nChildNN=nChildNN, kNN=kNN, single_process=single_process,
             mergeDownstream=mergeDownstream, tree=tree)
 
         # Check whether we want to merge any of the children of this node
         nChild = len(self.childNodes)
         expNChild = 3 if self.isRoot else 2
-        if nChild == expNChild:
+        if nChild <= expNChild:
             return someMergeHappened, self.ltqs, self.getLtqsVars(), oldLtqs, oldLtqsVars
         # if (bs_glob.getHessStarTreeJax_jit is None) and (not sequential):
         #     bs_glob.getHessStarTreeJax_jit = jax.jit(getHessStarTreeJax)
@@ -937,7 +1003,8 @@ class TreeNode:
             oldLtqsVars = self.getLtqsVars().copy()
         changedSomething = self.mergeChildrenUB(xrAsIfRoot_g, WAsIfRoot_g, sequential=sequential, verbose=verbose,
                                                 ellipsoidSize=ellipsoidSize, nChildNN=nChildNN, kNN=kNN,
-                                                mergeDownstream=mergeDownstream, tree=tree)
+                                                mergeDownstream=mergeDownstream, tree=tree,
+                                                singleProcess=single_process)
         if mpiInfo.rank == 0:
             someMergeHappened = (len(self.childNodes) < nChild) or changedSomething or someMergeHappened
         else:
@@ -947,8 +1014,8 @@ class TreeNode:
     # Used
     def mergeChildrenRecursiveSingle(self, parentLtqs, parentW_g, gchildNInd, sequential=True, verbose=False,
                                      ellipsoidSize=1.0, singleProcess=False, random=False, runConfigs_inherited=None):
-        """This function loops over all candidate pairs between nodes that are children of the root-node, and checks what
-        the likelihood becomes when they are merged."""
+        """This function loops over all candidate pairs between nodes that are children of the root-node, and checks
+        what the likelihood becomes when they are merged."""
         if not self.isRoot:
             # Get the mean and precision of this node's posterior when all other node-positions are integrated out
             xrAsIfRoot_g, WAsIfRoot_g = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, parentLtqs, parentW_g)
@@ -1110,6 +1177,8 @@ class TreeNode:
                                                                                                        WAsIfRoot_g)
             else:  # i.e. if mpiInfo.rank != 0. The process coming here already means this round will be parallel
                 # start_comm = time.time()
+                very_verbose = True
+                mp_print("This process is being used in the merge-children computation!", ALL_RANKS=True)
                 mpiInfoTmp = mpiInfo
                 infoTuple, tChildren, coordsTuple = self.receiveMergeChildrenInfo()
                 pairInfoTuple, UBInfo, runConfigs, chInfo = infoTuple
@@ -1134,6 +1203,7 @@ class TreeNode:
             pairs, nPairs, nNewPairs = pairInfoTuple
             myTasks = getMyTaskNumbers(nPairs, mpiInfoTmp.size, mpiInfoTmp.rank, skippingSteps=runConfigs['useUBNow'])
             nTasks = len(myTasks)
+
             # mp_print("Memory 1 ", psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ONLY_RANK=1)
 
             # if (manualMerges is not None) and (manualMergeCounter < (len(manualMerges) - 1)):
@@ -1364,8 +1434,9 @@ class TreeNode:
 
                 if (optNodeInd1 is None) and (not optimisedTimes):
                     if runConfigs['useUBNow']:
-                        mp_print("No pair could be merged that increased the loglikelihood. Trying again with new"
-                                 "UB estimates.")
+                        if verbose:
+                            mp_print("No pair could be merged that increased the loglikelihood. Trying again with new"
+                                     "UB estimates.")
                         runConfigs['useUBNow'] = False
                         runConfigs['getNewUB'] = True
                         runConfigs['getNewNN'] = True
@@ -1563,7 +1634,8 @@ class TreeNode:
                 # This means we will use nearest-neighbours
                 if runConfigs['getNewNN']:
                     # In this case we calculate new NNs
-                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'], verbose=verbose)
+                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'],
+                                                        verbose=verbose)
                     runConfigs['getNewNN'] = False
                     NNInfo['NNcounter'] = 0
                 else:
@@ -1576,8 +1648,9 @@ class TreeNode:
                     else:
                         # In this case we should add NN-pairs involving the ancestor
                         new_pairs, oldPairsList = self.get_new_nn_pairs(newAnc, NNInfo, runConfigs, UBInfo=UBInfo,
-                                                                        old_pairs_list=[oldPairs], xrAIRoot=xrAsIfRoot_g,
-                                                                         xrVarsAIRoot=xrVarsAsIfRoot_g)
+                                                                        old_pairs_list=[oldPairs],
+                                                                        xrAIRoot=xrAsIfRoot_g,
+                                                                        xrVarsAIRoot=xrVarsAsIfRoot_g)
                         oldPairs = oldPairsList[0]
                         # index, nns = getApproxNNs(newAnc.ltqs[:, None], index=NNInfo['index'],
                         #                           k=2 * runConfigs['kNN'],
@@ -1612,21 +1685,25 @@ class TreeNode:
                 else:
                     # so we re-use UBs, recalculate NNs
                     # First get all NNs
-                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'], verbose=verbose)
+                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'],
+                                                        verbose=verbose)
                     runConfigs['getNewNN'] = False
                     NNInfo['NNcounter'] = 0
                     # Then we test which UBs were already in the UB-pairs and which ones are new
                     existingUBPairs = []
                     existingUBs = []
+                    new_pairs_to_ind = {new_pair: ind for ind, new_pair in enumerate(new_pairs)}
+                    inds_to_be_del = []
                     for ind, pair in enumerate(map(tuple, np.array(UBInfo['pairs']))):
-                        try:
-                            newInd = new_pairs.index(pair)
+                        if pair in new_pairs:
+                            new_ind = new_pairs_to_ind[pair]
+                            # newInd = new_pairs.index(pair)
                             existingUBPairs.append(pair)
                             existingUBs.append(UBInfo['UBs'][ind])
-                            del new_pairs[newInd]
-                        except ValueError:
-                            # This pair is no longer in the NN-list
-                            pass
+                            inds_to_be_del.append(new_ind)
+
+                    new_pairs = [pair for ind, pair in enumerate(new_pairs) if ind != inds_to_be_del]
+
                     if len(existingUBPairs) == 0:
                         UBInfo['pairs'] = np.zeros((0, 2))
                     else:
@@ -1642,12 +1719,14 @@ class TreeNode:
                                  newAnc.nodeInd != child.nodeInd]
                     old_pairs = [*UBInfo['pairs']]
                 elif not runConfigs['getNewNN']:
-                    new_pairs = self.get_new_nn_pairs(newAnc, NNInfo, runConfigs, UBInfo=UBInfo, xrAIRoot=xrAsIfRoot_g, xrVarsAIRoot=xrVarsAsIfRoot_g)
+                    new_pairs = self.get_new_nn_pairs(newAnc, NNInfo, runConfigs, UBInfo=UBInfo, xrAIRoot=xrAsIfRoot_g,
+                                                      xrVarsAIRoot=xrVarsAsIfRoot_g)
                     old_pairs = list(map(tuple, UBInfo['pairs']))
                 else:
                     # so we re-use UBs, recalculate NNs
                     # First get all NNs
-                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'], verbose=verbose)
+                    new_pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, xrVarsAsIfRoot_g, NNInfo, runConfigs['kNN'],
+                                                        verbose=verbose)
                     runConfigs['getNewNN'] = False
                     NNInfo['NNcounter'] = 0
 
@@ -1667,15 +1746,34 @@ class TreeNode:
                     # Then we test which UBs were already in the UB-pairs and which ones are new
                     existingUBPairs = []
                     existingUBs = []
+
+                    # start = time.time()
+                    new_pairs_to_ind = {new_pair: ind for ind, new_pair in enumerate(new_pairs)}
+                    inds_to_be_del = []
                     for ind, pair in enumerate(map(tuple, np.array(UBInfo['pairs']))):
-                        try:
-                            newInd = new_pairs.index(pair)
+                        if pair in new_pairs:
+                            new_ind = new_pairs_to_ind[pair]
+                            # newInd = new_pairs.index(pair)
                             existingUBPairs.append(pair)
                             existingUBs.append(UBInfo['UBs'][ind])
-                            del new_pairs[newInd]
-                        except ValueError:
-                            # This pair is no longer in the NN-list
-                            pass
+                            inds_to_be_del.append(new_ind)
+
+                    new_pairs = [pair for ind, pair in enumerate(new_pairs) if ind != inds_to_be_del]
+                    # for ind, pair in enumerate(map(tuple, np.array(UBInfo['pairs']))):
+                    #     try:
+                    #         newInd = new_pairs.index(pair)
+                    #         existingUBPairs.append(pair)
+                    #         existingUBs.append(UBInfo['UBs'][ind])
+                    #         del new_pairs[newInd]
+                    #     except ValueError:
+                    #         # This pair is no longer in the NN-list
+                    #         pass
+
+                    # print("This took {} seconds.".format(time.time() - start))
+                    # print(existingUBPairs[-5:])
+                    # print(existingUBs[-5:])
+                    # print(inds_to_be_del)
+
                     if len(existingUBPairs) == 0:
                         UBInfo['pairs'] = np.zeros((0, 2))
                     else:
@@ -1746,8 +1844,6 @@ class TreeNode:
         #             pairs, NNInfo = self.getNNPairs(xrAsIfRoot_g, NNInfo, verbose=verbose)
         #             boolArgs['getNewNN'] = False
         #             NNInfo['NNcounter'] = 0
-        #             # TODO: Take these new pairs and select the pairs for which UB exists, put them in UB['pairs'] with
-        #             #  corresponding UB['dLogLs']. New pairs go into pairs, which will be treated first.
         #     else:
         #         # If no NNs are used, just pair the new ancestor to all existing root-children
         #         pairs = [(newAnc.nodeInd, child.nodeInd) for child in self.childNodes[:-1]]
@@ -1838,7 +1934,7 @@ class TreeNode:
         # of pairs, in the order that we want to consider them.
         runConfigs['obtainedNewPairs'] = runConfigs['getNewUB'] or runConfigs['getNewNN']
         start_new_pairs = time.time()
-        pairs, nPairs, nNewPairs = self.getNewPairs(xrAsIfRoot_g, 1/WAsIfRoot_g, runConfigs, NNInfo=NNInfo,
+        pairs, nPairs, nNewPairs = self.getNewPairs(xrAsIfRoot_g, 1 / WAsIfRoot_g, runConfigs, NNInfo=NNInfo,
                                                     newAnc=newAnc, verbose=verbose, oldPairs=oldPairs,
                                                     UBInfo=UBInfo, specialChild=specialChild, chInfo=chInfo,
                                                     del_node_inds=del_node_inds)
@@ -2020,7 +2116,8 @@ class TreeNode:
         start = time.time()
 
         # We first gather all ltq-information about the children
-        post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1/xrVarsAIRoot, minimum_time=1e-4)
+        # post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot) # SARAH: Before I added min time
+        post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot, minimum_time=1e-4) # SARAH fix
         # We center the ltq-information around the root
         post_ltqsCh -= xrAIRoot[:, None]
         NNInfo['subtracted_mean'] = xrAIRoot
@@ -2086,7 +2183,8 @@ class TreeNode:
         # other nodes to compensate for no other nodes adding connections to ancestor
         if update_nn_index:
             # We first gather all ltq-information about the children
-            post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot, minimum_time=1e-4)
+            # post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot) # SARAH: before adding min_time
+            post_ltqsCh = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot, minimum_time=1e-4) # SARAH FIX
             # We center the ltq-information around the root
             post_ltqsCh -= xrAIRoot[:, None]
             NNInfo['subtracted_mean'] = xrAIRoot
@@ -2103,10 +2201,14 @@ class TreeNode:
             NNInfo['leafToChild'] = {nodeInd: nodeInd for nodeInd in nodeInds}
 
         # Get the posterior coordinates for the new node
-        # post_ltqs = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot, minimum_time=1e-4)
-        t_parent = max(new_node.tParent, 1e-4)
+        # post_ltqs = self.get_posterior_info_children(xrAIRoot, 1 / xrVarsAIRoot)
+        # post_ltqs, _ = getLtqsAsIfRoot_vectorized(new_node.ltqs[:, None], new_node.getW()[:, None], new_node.tParent,
+        #                                           xrAIRoot, 1 / xrVarsAIRoot) # SARAH before adding new_time=1e-4
+
+        t_parent = max(new_node.tParent, 1e-4) # SARAH new
         post_ltqs, _ = getLtqsAsIfRoot_vectorized(new_node.ltqs[:, None], new_node.getW()[:, None], t_parent, xrAIRoot,
-                                                  1 / xrVarsAIRoot)
+                                                  1 / xrVarsAIRoot) # SARAH new
+
         post_ltqs = post_ltqs.flatten()
 
         # post_ltqs_old = lik_to_post_coords(new_node.ltqs, new_node.getLtqsVars())
@@ -2117,7 +2219,8 @@ class TreeNode:
 
         nns = np.array(index.IDs)[nns]
         # Make list of unique neighbors that are not the node itself
-        non_unique_partners = np.array([NNInfo['leafToChild'][nb] for nb in nns[0, :] if NNInfo['leafToChild'][nb] != new_node.nodeInd])
+        non_unique_partners = np.array(
+            [NNInfo['leafToChild'][nb] for nb in nns[0, :] if NNInfo['leafToChild'][nb] != new_node.nodeInd])
         seen = set()
         partners = []
         for item in non_unique_partners:
@@ -2207,8 +2310,10 @@ class TreeNode:
         runConfigs['nChildNN'] = nChildNN
         runConfigs['nChildUB'] = nChildUB
         runConfigs['kNN'] = kNN
-        NNInfo = {'NNcounter': 0, 'conn_mat': lil_array((2 * bs_glob.nCells, 2 * bs_glob.nCells), dtype=bool),
-                  'subtracted_mean': None}
+        # We initialize NNInfo, even if NNs are not used, to prevent bugs, but initializing the lil_array takes time
+        NNInfo = {'NNcounter': 0, 'conn_mat': None, 'subtracted_mean': None}
+        if runConfigs['useNN']:
+            NNInfo['conn_mat'] = lil_array((2 * bs_glob.nCells, 2 * bs_glob.nCells), dtype=bool)
 
         # Determine how we communicate data between processes (mem-friendly, using memmap) or not
         runConfigs['n_mem_friendly'] = n_mem_friendly
@@ -2246,7 +2351,7 @@ class TreeNode:
         timeOptInfo = {'doTimeOpt': False, 'timeOptRoundsAgo': 0}
         if specialChild:
             timeOptInfo['timeOptRoundsAgo'] = 1
-        runConfigs['redoTimeAt'] = int(chInfo['nChild'] * redoTimeFrac)
+        runConfigs['redoTimeAt'] = max(int(chInfo['nChild'] * redoTimeFrac), 10)
         runConfigs['redoNNAt'] = int(chInfo['nChild'] * redoNNFrac)
         # if manualMerges is not None:
         #     manualMergeCounter = -1
@@ -2264,7 +2369,7 @@ class TreeNode:
                     tmp_tree_ind = tmpTreeInd + 1
                 else:
                     tmp_tree_ind = 0
-        breakOut = False
+        breakOut = False or (chInfo['nChild'] <= chInfo['expNChild'])
         pairsDoneInfo = {'totalPairsDone': 0, 'pairsDoneList': []}
 
         initNoneVars = (newAnc, del_node_inds, oldRoot, UBInfo, pairs)
@@ -2339,7 +2444,7 @@ class TreeNode:
             # optTimes in the first calculation))
             optTimes = getOptTimesSingleDLogLWrapper(xrAsIfRoot_g, WAsIfRoot_g, optChild1, optChild2,
                                                      sequential=sequential, verbose=verbose, tol=1e-9)
-            newTDict = {optNodeInd1: optTimes[0], optNodeInd2: optTimes[1], bs_glob.nNodes - 1: optTimes[2]}
+            newTDict = {optNodeInd1: optTimes[0], optNodeInd2: optTimes[1], bs_glob.max_node_ind + 1: optTimes[2]}
 
         # Communicate merge information with other computing processes
         # if mpiInfo.size > 1:
@@ -2381,12 +2486,12 @@ class TreeNode:
                 #                                            self.childNodes[nodeIndToChildInd[ancNodeInd]].celltype))
                 mp_print("\nAdding %d as child of %d with the following times: root -> %d = %f, %d -> %d = %f. "
                          "Increase in loglikelihood: %f per gene.\n" % (
-                             gchildInds[0], ancNodeInd, ancNodeInd, newTDict[bs_glob.nNodes - 1], ancNodeInd,
+                             gchildInds[0], ancNodeInd, ancNodeInd, newTDict[bs_glob.max_node_ind + 1], ancNodeInd,
                              gchildInds[0], newTDict[gchildInds[0]], dLogLOpt / bs_glob.nGenes),
                          ALL_RANKS=singleProcess)
         else:
             # Create new node that will be added as ancestor of the children with nodeInd1, nodeInd2
-            ancNodeInd = bs_glob.nNodes - 1
+            ancNodeInd = bs_glob.max_node_ind + 1
             newNode = TreeNode(nodeInd=ancNodeInd)
             newNode.childNodes = []
             gchildInds = [nodeInd1, nodeInd2]
@@ -2396,8 +2501,9 @@ class TreeNode:
                                                      self.childNodes[nodeIndToChildInd[nodeInd2]].nodeId))
                 mp_print(
                     "Merging nodes " + str(nodeInd1) + " and " + str(nodeInd2) + " into ancestor " + str(
-                        bs_glob.nNodes - 1) + ', with times ' + str([newTDict[nodeInd1], newTDict[nodeInd2], newTDict[
-                        bs_glob.nNodes - 1]]) + '. Increase in loglikelihood: ' + str(
+                        bs_glob.max_node_ind + 1) + ', with times ' + str(
+                        [newTDict[nodeInd1], newTDict[nodeInd2], newTDict[
+                            bs_glob.max_node_ind + 1]]) + '. Increase in loglikelihood: ' + str(
                         dLogLOpt / bs_glob.nGenes) + ' per gene.', ALL_RANKS=singleProcess)
 
                 # TODO: Remove this later. Only uncomment this for printing cell-annotations
@@ -2454,7 +2560,7 @@ class TreeNode:
         #     plot_ciphers = False
 
         # We add the optimal time from the new ancestor to the root
-        newNode.tParent = newTDict[bs_glob.nNodes - 1]
+        newNode.tParent = newTDict[bs_glob.max_node_ind + 1]
         # We get the ltqs of the ancestor based on the ltqs of the two merged children
         # TODO: Maybe do the following more efficiently by updating the node-ltqs already above
         newNode.getLtqsUponMerge()
@@ -2516,7 +2622,7 @@ class TreeNode:
         self.childNodes = [child for ind, child in enumerate(self.childNodes) if ind not in delInds]
         if not addAsChild:
             self.childNodes.append(newNode)
-            bs_glob.nNodes += 1
+            bs_glob.max_node_ind += 1
 
         # If one of children was added below the other. Ask if it wants to merge with one of the other grand-children
         if addAsChild and mergeDownstream:
@@ -2578,6 +2684,8 @@ class TreeNode:
 
     def getAIRootInfo(self, ltqsParent, W_gParent):
         if self.isRoot:
+            if self.ltqs is None:
+                self.getLtqsComplete(mem_friendly=True)
             ltqsAIRoot = self.ltqs.copy()
             WAIRoot = self.getW().copy()
         else:
@@ -2587,15 +2695,38 @@ class TreeNode:
         for child in self.childNodes:
             child.getAIRootInfo(ltqsAIRoot, WAIRoot)
 
-    def getAIRootUpstream(self):
+    def getAIRootUpstream(self, as_if_root_version=None):
+        if (as_if_root_version is not None) and (self._AIRoot_version == as_if_root_version):
+            return
         if self.isRoot:
             self.ltqsAIRoot = self.ltqs.copy()
             self.setLtqsVarsOrW(W_g=self.getW().copy(), AIRoot=True)
         else:
-            self.parentNode.getAIRootUpstream()
-            self.ltqsAIRoot, WAIRoot = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, self.parentNode.ltqsAIRoot,
+            self.parentNode.getAIRootUpstream(as_if_root_version=as_if_root_version)
+            self.ltqsAIRoot, WAIRoot = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent,
+                                                       self.parentNode.ltqsAIRoot,
                                                        self.parentNode.getW(AIRoot=True))
             self.setLtqsVarsOrW(W_g=WAIRoot, AIRoot=True)
+        if as_if_root_version is not None:
+            self._AIRoot_version = as_if_root_version
+
+    def clear_AIRoot(self):
+        self.ltqsAIRoot = None
+        self._W_gAIRoot = None
+        self._ltqsVarsAIRoot = None
+        self._AIRoot_version = -1
+        for child in self.childNodes:
+            child.clear_AIRoot()
+
+    def keep_one_ltqsvars_or_W(self, keep_ltqsvars=True):
+        if keep_ltqsvars:
+            if self._ltqsVars is not None:
+                self._W_g = None
+        else:
+            if self._W_g is not None:
+                self._ltqsVars = None
+        for child in self.childNodes:
+            child.keep_one_ltqsvars_or_W(keep_ltqsvars=keep_ltqsvars)
 
     def getNodeList(self, nodeList, returnLeafs=True, returnRoot=True):
         if self.isLeaf and not returnLeafs:
@@ -2635,34 +2766,312 @@ class TreeNode:
                 edgeList = child.getEdgesComplete(edgeList, src=self.nodeInd, indMap=indMap)
         return edgeList
 
+    def do_spr_search(self, ltqs_cand_g, ltqsVars_cand_g, dlogl_self=None, prev_dlogl=-1e9,
+                      prev_node_ind=None, opt_node=None, opt_t=None, opt_dlogl=-1e9, as_if_root_version=None,
+                      spr_target_version=None, do_local_search=True, search_tol=2, search_count=0):
+
+        search_count += 1
+        # First calculate the loglikelihood when adding the candidate on this node
+        if dlogl_self is None:
+            # We only enter this if-statement if we do not get this information from the parent process, which is when
+            # the search actually starts at this node
+            dlogl_self, opt_t_self = self.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
+                                                             as_if_root_version=as_if_root_version,
+                                                             spr_target_version=spr_target_version)
+
+            # If this node is better than anything we've seen before, replace the opt-info
+            if dlogl_self > opt_dlogl:
+                opt_dlogl = dlogl_self
+                opt_node = self
+                opt_t = opt_t_self
+
+            # Make sure prev_dlogl is keeping track of the highest dlogl seen in this search
+            if dlogl_self > prev_dlogl:
+                prev_dlogl = dlogl_self
+
+        # Loop over neighbors, except for the node that you're coming from; calculate the dlogls for those targets
+        added_neighbor = [self.parentNode] if (self.parentNode is not None) else []
+        targets_info = []  # Will contain tuples (target_node, target_dlogl)
+        for target in self.childNodes + added_neighbor:
+            if target.nodeInd == prev_node_ind:
+                continue
+            dlogl_target, opt_t_target = target.get_dlogl_spr_move(ltqs_cand_g, ltqsVars_cand_g,
+                                                                   as_if_root_version=as_if_root_version,
+                                                                   spr_target_version=spr_target_version)
+            targets_info.append((target, dlogl_target))
+
+            # We keep track of two things:
+            # - opt_dlogl. This is the dlogl for the optimal target that we've ever seen for this candidate
+            # - prev_dlogl. This captures the highest dlogl that we've seen during *this* search (i.e. starting from
+            # this initial point)
+            # If this target is better than anything we've seen before, replace the opt-info
+            if dlogl_target > opt_dlogl:
+                opt_dlogl = dlogl_target
+                opt_node = target
+                opt_t = opt_t_target
+
+            # If this node is better than previous in the search starting from this initial point, replace that info
+            if dlogl_target > prev_dlogl:
+                prev_dlogl = dlogl_target
+
+        # Now, we loop over the targets again, and only for those nodes that are within a tolerance below prev_dlogl,
+        # we continue the search.
+        for target, dlogl_target in targets_info:
+            if dlogl_target < prev_dlogl - search_tol:
+                continue
+            opt_node, opt_dlogl, opt_t, search_count = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g,
+                                                                            dlogl_self=dlogl_target,
+                                                                            prev_dlogl=prev_dlogl,
+                                                                            prev_node_ind=self.nodeInd,
+                                                                            opt_node=opt_node, opt_t=opt_t,
+                                                                            opt_dlogl=opt_dlogl,
+                                                                            as_if_root_version=as_if_root_version,
+                                                                            spr_target_version=spr_target_version,
+                                                                            do_local_search=do_local_search,
+                                                                            search_tol=search_tol,
+                                                                            search_count=search_count)
+
+        return opt_node, opt_dlogl, opt_t, search_count
+
+    def detach_subtree(self, candidate):
+        cand_node_ind = candidate.nodeInd
+        orig_t = candidate.tParent
+        ltqs_cand_g = candidate.ltqs
+        ltqsVars_cand_g = candidate.getLtqsVars(AIRoot=False)
+        wbar_cand_g = 1 / (orig_t + ltqsVars_cand_g)
+
+        self.childNodes = [child for child in self.childNodes if child.nodeInd != cand_node_ind]
+        candidate.parentNode = None
+
+        # Update the ltq-coordinates (non-ai-root) as well for removing the node
+        ltqs_wo_old_parent_g, ltqsVars_wo_old_parent_g = subtract_contrib_ltqs(self.ltqs, self.getW(AIRoot=False),
+                                                                               ltqs_cand_g, wbar_cand_g)
+        self.ltqs = ltqs_wo_old_parent_g
+        self.setLtqsVarsOrW(ltqsVars=ltqsVars_wo_old_parent_g)
+        # Then update everything upstream of the parent, up to the root
+        self.setLtqsUpstream()
+        # Also update the n_ds_node variables upstream of the old_parent
+        n_nodes_in_subtree = candidate.n_ds_nodes
+        self.add_n_nodes_upstream(-n_nodes_in_subtree)
+
+        return cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g
+
+    def add_subtree(self, candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g):
+        self.childNodes.append(candidate)
+        self.isLeaf = False
+        candidate.parentNode = self
+        candidate.tParent = opt_t
+
+        # Replace the new parent ltqs (not AIRoot), by adding the contribution of the added candidate
+        wbar_cand_g = 1 / (opt_t + ltqsVars_cand_g)
+        ltqs_w_new_parent_g, ltqsVars_w_new_parent_g = add_contrib_ltqs(self.ltqs,
+                                                                        self.getW(AIRoot=False),
+                                                                        ltqs_cand_g, wbar_cand_g)
+
+        self.ltqs = ltqs_w_new_parent_g
+        self.setLtqsVarsOrW(ltqsVars=ltqsVars_w_new_parent_g)
+        # Then update everything upstream of the parent, up to the root
+        self.setLtqsUpstream()
+
+        # Also update the n_ds_node variables upstream of the old_parent
+        if self.n_ds_nodes is not None:
+            n_nodes_in_subtree = candidate.n_ds_nodes
+            self.add_n_nodes_upstream(n_nodes_in_subtree)
+
+    def get_dlogl_spr_move(self, ltqs_cand_g, ltqsVars_cand_g, as_if_root_version=None, spr_target_version=None):
+        if self._spr_target_version == spr_target_version:
+            return self._spr_target_dlogl, self._spr_target_opt_t
+        # First, we have to get the coords at the target as if it's the root. The below function only calculates
+        # these coords for nodes between the target and the real root, and stores them for later use
+        self.getAIRootUpstream(as_if_root_version=as_if_root_version)
+
+        # Then, finally, we are ready to go.
+        opt_t, converged = getOptTime2LeafTree(ltqs1_g=self.ltqsAIRoot, ltqsVars1_g=self.getLtqsVars(AIRoot=True),
+                                               ltqs2_g=ltqs_cand_g, ltqsVars2_g=ltqsVars_cand_g, tol=1e-4)
+        # opt_t = orig_ti
+        if not converged:
+            logger.warning("Somehow, the optimization of the branch length in an SPR move diverged, setting branch "
+                           "length to 1.")
+            opt_t = 1
+
+        dlogl_target = getLoglik2LeafTree(ltqs1_g=self.ltqsAIRoot, ltqsVars1_g=self.getLtqsVars(AIRoot=True),
+                                          ltqs2_g=ltqs_cand_g, ltqsVars2_g=ltqsVars_cand_g, t=opt_t)
+        if spr_target_version is not None:
+            self._spr_target_version = spr_target_version
+            self._spr_target_dlogl = dlogl_target
+            self._spr_target_opt_t = opt_t
+        return dlogl_target, opt_t
+
+    def get_twin_parent(self):
+        ancNodeInd = bs_glob.max_node_ind + 1
+        bs_glob.max_node_ind += 1
+        new_parent = TreeNode(nodeInd=ancNodeInd)
+        new_parent.ltqs = self.ltqs.copy()
+        new_parent.setLtqsVarsOrW(ltqsVars=self.getLtqsVars().copy())
+        new_parent.tParent = self.tParent
+        new_parent.nodeId = 'internal_{}'.format(ancNodeInd)
+        if self.n_ds_nodes is not None:
+            new_parent.n_ds_nodes = 1
+        bs_glob.nNodes += 1
+
+        # New node is created, now add "opt_node" as child
+        new_parent.childNodes = [self]
+        new_parent.isLeaf = False
+        self.tParent = 0.
+        new_parent.parentNode = self.parentNode
+        self.parentNode = new_parent
+
+        # Also, replace opt_node in the child-nodes of the original parent
+        gparent = new_parent.parentNode
+        gparent.childNodes = [child for ind, child in enumerate(gparent.childNodes) if
+                              child.nodeInd != self.nodeInd]
+        gparent.childNodes.append(new_parent)
+
+        # Since we're effectively adding a node, we should add the n_ds_nodes-values on the upstream nodes
+        if self.n_ds_nodes is not None:
+            new_parent.add_n_nodes_upstream(1)
+
+        return new_parent
+
+    def get_tree_info(self, edge_lst, dist_lst, vert_info, int_counter):
+        """
+        Function that works per node, recursively. Should build up the lists edge_lst, dist_lst, and the dict vert_info.
+        """
+        if (self.nodeId is None) or (self.nodeId[:9] == 'internal_'):
+            self.nodeId = "internal_%d" % int_counter
+            int_counter += 1
+
+        vert_info[self.vert_ind] = (self.nodeInd, self.nodeId)
+
+        for child in self.childNodes:
+            edge_lst.append([self.vert_ind, child.vert_ind])
+            dist_lst.append(child.tParent)
+            edge_lst, dist_lst, vert_info, int_counter = child.get_tree_info(edge_lst, dist_lst, vert_info, int_counter)
+
+        return edge_lst, dist_lst, vert_info, int_counter
+
+    def store_coords(self, ltqs_vg, ltqs_vars_vg):
+        ltqs_vg[self.vert_ind] = self.ltqs
+        ltqs_vars_vg[self.vert_ind] = self.getLtqsVars()
+        for child in self.childNodes:
+            child.store_coords(ltqs_vg, ltqs_vars_vg)
+
+    def store_coords_posterior(self, ltqs_vg, ltqs_vars_vg, geneDiffusionScaling, variances=None):
+
+        if geneDiffusionScaling == 'geneVariances':
+            # This means we have to undo the rescaling by variance that was done before
+            node_ltqs_post = self.ltqsAIRoot * np.sqrt(variances)
+            node_ltqsVars_post = self.getLtqsVars(AIRoot=True) * variances
+        else:
+            # This means we have to undo the rescaling by *average* variance that was done before
+            node_ltqs_post = self.ltqsAIRoot * np.sqrt(geneDiffusionScaling)
+            node_ltqsVars_post = self.getLtqsVars(AIRoot=True) * geneDiffusionScaling
+
+        ltqs_vg[self.vert_ind] = node_ltqs_post
+        ltqs_vars_vg[self.vert_ind] = node_ltqsVars_post
+        for child in self.childNodes:
+            child.store_coords_posterior(ltqs_vg, ltqs_vars_vg, geneDiffusionScaling=geneDiffusionScaling,
+                                         variances=variances)
+
+    def store_coords_posterior_memfriendly(self, ltqs_vg, ltqs_vars_vg, ltqs_parent, W_g_parent,
+                                           geneDiffusionScaling, variances=None):
+        if self.isRoot:
+            ltqs_ai_root = self.ltqs.copy()
+            W_ai_root = self.getW().copy()
+        else:
+            ltqs_ai_root, W_ai_root = getLtqsAsIfRoot(self.ltqs, self.getW(), self.tParent, ltqs_parent, W_g_parent)
+        for child in self.childNodes:
+            child.store_coords_posterior_memfriendly(ltqs_vg, ltqs_vars_vg, ltqs_ai_root, W_ai_root,
+                                                     geneDiffusionScaling, variances=variances)
+
+        if geneDiffusionScaling == 'geneVariances':
+            # This means we have to undo the rescaling by variance that was done before
+            node_ltqs_post = ltqs_ai_root * np.sqrt(variances)
+            node_ltqsVars_post = (1 / W_ai_root) * variances
+        else:
+            # This means we have to undo the rescaling by *average* variance that was done before
+            node_ltqs_post = ltqs_ai_root * np.sqrt(geneDiffusionScaling)
+            node_ltqsVars_post = (1 / W_ai_root) * geneDiffusionScaling
+
+        ltqs_vg[self.vert_ind] = node_ltqs_post
+        ltqs_vars_vg[self.vert_ind] = node_ltqsVars_post
+
+    def clear_memory(self, verbose=True, mem_friendly=False):
+        # print_memory("Starting to clear memory.")
+        mem_friendly = mem_friendly or bs_glob.mem_friendly
+        self.clear_AIRoot()
+        if mem_friendly:
+            self.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
+        print_memory("Finished clearing memory.")
+
 
 class Tree:
     root = None
     loglik = None
     starryYN = None
     nNodes = None
+    max_node_ind = None
 
     vert_ind_to_node = None
 
     def __init__(self):
         self.root = TreeNode(nodeInd=-1, isRoot=True, nodeId='root')
         bs_glob.nNodes = 1
+        # bs_glob.max_node_ind = -1
+        # self.max_node_ind = -1
 
     def __repr__(self):
         return "Tree(root=%r\n\nloglik=%r,nNodes=%r)" % (self.root, self.loglik, self.nNodes)
 
+    def initialize_star_tree(self, ltqs, ltqsvars, metadata, opt_times=True, verbose=False):
+        self.buildTree(ltqs, ltqsvars, metadata.cellIds)
+
+        # TODO: Remove eventually, only uncomment this for making animations
+        # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
+        #     self.to_newick(use_ids=True,
+        #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
+        #     bs_glob.nwk_counter += 1
+
+        # Do initial optimisation of diffusion times along branches of star-tree
+        start_timeopt = time.time()
+        if opt_times:
+            t_star, opt_loglik, W_g, self.root.ltqs = optimiseTStar(ltqs, ltqsvars, verbose=verbose)
+            self.root.setLtqsVarsOrW(W_g=W_g)
+        else:
+            t_star = np.ones(bs_glob.nCells)
+            opt_loglik = -1e9
+
+        d_timeopt = time.time() - start_timeopt
+        self.root.assignTs(t_star)
+
+        if verbose and opt_times:
+            mp_print("Initial optimisation of times with EM took " + str(d_timeopt) + " seconds.")
+            mp_print("Loglikelihood after time optimization is: " + str(
+                self.calcLogLComplete(mem_friendly=True, loglikVarCorr=metadata.loglikVarCorr)) + '\n')
+
+        # TODO: Remove eventually, only uncomment this for making animations
+        # if (mpiInfo.rank == 0) and bs_glob.nwk_counter:
+        #     self.to_newick(use_ids=True,
+        #                         results_path=os.path.join(bs_glob.nwk_folder, 'tree_{}.nwk'.format(bs_glob.nwk_counter)))
+        #     bs_glob.nwk_counter += 1
+
     # Used
     def buildTree(self, ltqs, ltqsVars, cellIds):
         self.root.childNodes = []
-        for ind in range(bs_glob.nCells):
+        n_cells = len(cellIds)
+        for ind in range(n_cells):
             self.root.childNodes.append(
                 TreeNode(nodeInd=ind, childNodes=[], isLeaf=True, ltqs=ltqs[:, ind], tParent=1,
                          ltqsVars=ltqsVars[:, ind], nodeId=cellIds[ind], isCell=True))
-        bs_glob.nNodes = bs_glob.nCells + 1
+        bs_glob.nNodes = n_cells + 1
+        bs_glob.max_node_ind = n_cells - 1
+        self.nNodes = bs_glob.nNodes
+        self.max_node_ind = bs_glob.max_node_ind
 
     def copy_tree_topology(self):
         tree_copy = Tree()
         tree_copy.nNodes = self.nNodes
+        tree_copy.max_node_ind = self.max_node_ind
         tree_copy.root = self.root.copy_node_topology()
         return tree_copy
 
@@ -2701,9 +3110,194 @@ class Tree:
                                                                                                         nodeIndToNode)
         return edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
 
+    def store_tree_info_and_coords(self, tree_folder, coords_folder=None, verbose=False, store_posterior_ltqs=False,
+                                   geneDiffusionScaling=None, variances=None):
+        """
+        Should store coordinates of all nodes, and return lists that capture the tree structure.
+
+        :param coords_folder: Gives path to where coordinates should be stored.
+        :param verbose:
+        :param store_posterior_ltqs: Whether coordinates should be AIRoot (as-if-root) for each node
+        :param geneDiffusionScaling: Whether coordinates were rescaled in preprocessing or not
+        :param variances: (Optional) variances with which they were rescaled
+
+        :return edge_lst: List of 2-lists, one for each edge, giving the vert-indices for the edge
+        :return dist_lst: Gives the corresponding distances for each edge
+        :return vert_info: For each vertex, this is a dictionary from vert_ind to tuple (node_ind, vert_id)
+        """
+        start = time.time()
+        # print_memory("Start getEdgeVertInfo")
+        # edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
+        # edge_list, dist_list, orig_vert_names, starryYN, nodeIndToNode
+        edge_lst = []
+        dist_lst = []
+        vert_info = {}
+
+        if self.root.nodeId is None:
+            self.root.nodeId = 'root'
+
+        # First make sure each node has a vert_ind that is depth-first increasing
+        _, vert_count = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
+
+        if self.nNodes != vert_count:
+            mp_print("Watch out, the number of nodes stored in tree.nNodes is not equal to the number I just counted.",
+                     WARNING=True)
+            self.nNodes = vert_count
+            bs_glob.nNodes = vert_count
+
+        int_counter = 0
+        # Then do depth-search run to get edge_list, dist_list
+        edge_lst, dist_lst, vert_info, int_counter = self.root.get_tree_info(edge_lst, dist_lst, vert_info, int_counter)
+
+        with open(os.path.join(tree_folder, 'edgeInfo.txt'), "w") as file:
+            for ind, edge in enumerate(edge_lst):
+                file.write('%d\t%d\t%.8e\n' % (edge[0], edge[1], dist_lst[ind]))
+        with open(os.path.join(tree_folder, 'vertInfo.txt'), "w") as file:
+            file.write("vertInd\tnodeInd\tvertName\n")
+            for vert in vert_info:
+                file.write('%d\t%d\t%s\n' % (vert, vert_info[vert][0], vert_info[vert][1]))
+
+        # Finally, we do another depth-first search to store the coordinates at the rows given by the vert_inds
+        if coords_folder is not None:
+            # First, we need to make sure that ltqs are calculated at the nodes
+            if self.root.ltqs is None:
+                self.root.getLtqsComplete(mem_friendly=bs_glob.mem_friendly)
+
+            # We initialize the filenames first
+            if not store_posterior_ltqs:
+                ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'ltqsVars_vertByGene.npy')
+            else:
+                ltqs_file = os.path.join(coords_folder, 'posterior_ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'posterior_ltqsVars_vertByGene.npy')
+
+            # If memory-friendly mode, we reserve a memmap-region and write row-by-row
+            if bs_glob.mem_friendly:
+                # Pre-allocate room for the matrices that we are going to write on the disk
+                ltqs = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+',
+                                                 shape=(self.nNodes, bs_glob.nGenes))
+                ltqs_vars = np.lib.format.open_memmap(ltqsVars_file, dtype='float64', mode='w+',
+                                                      shape=(self.nNodes, bs_glob.nGenes))
+            else:
+                # If not mem-friendly, we just build up a numpy array and store it at once. This may be slightly faster.
+                # TODO: Test if we can get rid of this option alltogether
+                ltqs = np.zeros((self.nNodes, bs_glob.nGenes))
+                ltqs_vars = np.zeros((self.nNodes, bs_glob.nGenes))
+
+            if not store_posterior_ltqs:
+                # In this case, simply loop through the nodes and store the ltqs in the arrays
+                self.root.store_coords(ltqs, ltqs_vars)
+            else:
+                # In this case, we should calculate the posterior-coordinates at each node
+                if not bs_glob.mem_friendly:
+                    # In this case, first get all the posterior-LTQs at the nodes, then store them all in the array
+                    self.root.getAIRootInfo(None, None)
+                    self.root.store_coords_posterior(ltqs, ltqs_vars, geneDiffusionScaling=geneDiffusionScaling,
+                                                     variances=variances)
+                else:
+                    # In this case, get posterior-LTQs, but delete them once you don't need them anymore.
+                    self.root.store_coords_posterior_memfriendly(ltqs, ltqs_vars, None, None,
+                                                                 geneDiffusionScaling=geneDiffusionScaling,
+                                                                 variances=variances)
+
+            if bs_glob.mem_friendly:
+                del ltqs
+                del ltqs_vars
+            else:
+                np.save(ltqs_file, ltqs, allow_pickle=False)
+                np.save(ltqsVars_file, ltqs_vars, allow_pickle=False)
+            print_memory("Wrote ltqs and ltqsVars to file")
+        mp_print("Storing tree in folder took %.2f seconds." % (time.time() - start))
+
+        return edge_lst, dist_lst, vert_info
+
+    def getEdgeVertInfo_memfriendly(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
+                                    geneDiffusionScaling=None, variances=None):
+        print_memory("Start getEdgeVertInfo")
+        edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
+        # print_memory("Got Tree")
+        if coords_folder is not None:
+            if not store_posterior_ltqs:
+                ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'ltqsVars_vertByGene.npy')
+            else:
+                ltqs_file = os.path.join(coords_folder, 'posterior_ltqs_vertByGene.npy')
+                ltqsVars_file = os.path.join(coords_folder, 'posterior_ltqsVars_vertByGene.npy')
+            # Pre-allocate room for the matrices that we are going to write on the disk
+            ltqs_mm = np.lib.format.open_memmap(ltqs_file, dtype='float64', mode='w+',
+                                                shape=(self.nNodes, bs_glob.nGenes))
+            ltqs_vars_mm = np.lib.format.open_memmap(ltqsVars_file, dtype='float64', mode='w+',
+                                                     shape=(self.nNodes, bs_glob.nGenes))
+        vertInfo = {}
+        nodeIndToVertInd = {}
+        vertIndCounter = 0
+
+        if coords_folder is not None:
+            # if store_posterior_ltqs:
+            #     self.root.getAIRootInfo(None, None)
+            start = time.time()
+            ltqs = []
+            ltqsVars = []
+            for edge in edgeList:
+                for ind, nodeInd in enumerate(edge):
+                    if nodeInd not in nodeIndToVertInd:
+                        nodeIndToVertInd[nodeInd] = vertIndCounter
+                        vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
+                        if verbose and (vertIndCounter % 1000 == 0):
+                            mp_print("Writing coords of vertex %d to file." % vertIndCounter)
+                            # print_memory("Getting coords at vert {}".format(vertIndCounter))
+                        if not store_posterior_ltqs:
+                            ltqs_mm[vertIndCounter] = nodeIndToNode[nodeInd].ltqs
+                            ltqs_vars_mm[vertIndCounter] = nodeIndToNode[nodeInd].getLtqsVars()
+                            # ltqs.append(nodeIndToNode[nodeInd].ltqs)
+                            # ltqsVars.append(nodeIndToNode[nodeInd].getLtqsVars())
+                        else:
+                            if geneDiffusionScaling == 'geneVariances':
+                                # This means we have to undo the rescaling that was done before
+                                node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(variances)
+                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * variances
+                            else:
+                                node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(geneDiffusionScaling)
+                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(
+                                    AIRoot=True) * geneDiffusionScaling
+                            ltqs.append(node_ltqs_post)
+                            ltqsVars.append(node_ltqsVars_post)
+                        # ltqsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].ltqs)) + '\n')
+                        # varsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].getLtqsVars())) + '\n')
+                        vertIndCounter += 1
+                    vertInd = nodeIndToVertInd[nodeInd]
+                    edge[ind] = vertInd
+            del ltqs_mm
+            del ltqs_vars_mm
+            print_memory("Wrote ltqs and ltqsVars to file")
+            # print_memory("Got all ltqs in a list")
+            # ltqs = np.vstack(ltqs)
+            # np.save(ltqs_file, ltqs, allow_pickle=False)
+            # print_memory("Stored ltqs")
+            # del ltqs
+            # print_memory("Deleted ltqs")
+            # ltqsVars = np.vstack(ltqsVars)
+            # np.save(ltqsVars_file, ltqsVars, allow_pickle=False)
+            # print_memory("Stored ltqsVars")
+            # del ltqsVars
+            # print_memory("Deleted ltqsVars")
+            mp_print("Printing to file took %.2f seconds." % (time.time() - start))
+        else:
+            for edge in edgeList:
+                for ind, nodeInd in enumerate(edge):
+                    if nodeInd not in nodeIndToVertInd:
+                        nodeIndToVertInd[nodeInd] = vertIndCounter
+                        vertInfo[vertIndCounter] = (nodeInd, nodeIndToVertId[nodeInd])
+                        vertIndCounter += 1
+                    vertInd = nodeIndToVertInd[nodeInd]
+                    edge[ind] = vertInd
+        return edgeList, distList, vertInfo
+
     def getEdgeVertInfo(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
                         geneDiffusionScaling=None, variances=None):
+        print_memory("Start getEdgeVertInfo")
         edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
+        # print_memory("Got Tree")
         if coords_folder is not None:
             if not store_posterior_ltqs:
                 ltqs_file = os.path.join(coords_folder, 'ltqs_vertByGene.npy')
@@ -2738,7 +3332,8 @@ class Tree:
                                 node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * variances
                             else:
                                 node_ltqs_post = nodeIndToNode[nodeInd].ltqsAIRoot * np.sqrt(geneDiffusionScaling)
-                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(AIRoot=True) * geneDiffusionScaling
+                                node_ltqsVars_post = nodeIndToNode[nodeInd].getLtqsVars(
+                                    AIRoot=True) * geneDiffusionScaling
                             ltqs.append(node_ltqs_post)
                             ltqsVars.append(node_ltqsVars_post)
                         # ltqsfile.write('\t'.join(np.char.mod('%.8e', nodeIndToNode[nodeInd].ltqs)) + '\n')
@@ -2746,10 +3341,17 @@ class Tree:
                         vertIndCounter += 1
                     vertInd = nodeIndToVertInd[nodeInd]
                     edge[ind] = vertInd
+            print_memory("Got all ltqs in a list")
             ltqs = np.vstack(ltqs)
-            ltqsVars = np.vstack(ltqsVars)
             np.save(ltqs_file, ltqs, allow_pickle=False)
+            print_memory("Stored ltqs")
+            del ltqs
+            print_memory("Deleted ltqs")
+            ltqsVars = np.vstack(ltqsVars)
             np.save(ltqsVars_file, ltqsVars, allow_pickle=False)
+            print_memory("Stored ltqsVars")
+            del ltqsVars
+            print_memory("Deleted ltqsVars")
             mp_print("Printing to file took %.2f seconds." % (time.time() - start))
         else:
             for edge in edgeList:
@@ -2777,6 +3379,7 @@ class Tree:
             loglik = self.root.prefactor
         else:
             loglik = self.root.prefactor + loglikVarCorr
+        self.loglik = loglik
         return loglik
 
     # Used
@@ -3032,6 +3635,9 @@ class Tree:
                 nodeIndToNode[edge[1]] = childNode
                 candidatesList.append(childNode)
                 self.nNodes += 1
+                if edge[1] > bs_glob.max_node_ind:
+                    bs_glob.max_node_ind = edge[1]
+                    self.max_node_ind = bs_glob.max_node_ind
             childNode = nodeIndToNode[edge[1]]
             childNode.tParent = edge[2]
             childNode.parentNode = parentNode
@@ -3046,6 +3652,7 @@ class Tree:
             parentNode.childNodes.append(childNode)
 
         # Recalculate ltqs of all ancestors in the subtree
+        # print(mostUSNode.nodeInd)
         mostUSNode.getLtqsNoneOnly()
         # Recalculate ltqs of everything that is upstream of subtree
         mostUSNode.setLtqsUpstream()
@@ -3075,8 +3682,8 @@ class Tree:
         # This mostUSNode will be the starting point in returning the changed sub-tree in the larger tree. Therefore,
         # we need to store which children of the mostUSNode are being reconfigured, and which are not
         processYN, tree, usNode, dsNodeCopy, mostUSNode, \
-                treeIndToOrigInd, mostUSInfo = self.buildTreeNNN(dsNode, returnMostUSInfo=returnEdgelist,
-                                                                 mem_friendly=mem_friendly, random=random)
+        treeIndToOrigInd, mostUSInfo = self.buildTreeNNN(dsNode, returnMostUSInfo=returnEdgelist,
+                                                         mem_friendly=mem_friendly, random=random)
         if not processYN:
             if returnEdgelist:
                 return None, None, None
@@ -3091,10 +3698,13 @@ class Tree:
         tree.root.childNodes = tree.root.childNodes[1:] + tree.root.childNodes[0].childNodes
         bs_glob.nNodes -= 1
 
-        # Do mergeChildren-routine to greedily approximate the optimal tree for this small startree
+        # Do mergeChildren-routine to greedily approximate the optimal tree for this small star-tree
+        old_max_node_ind = bs_glob.max_node_ind
         tree.optTimes(verbose=False, singleProcess=singleProcess, tol=1e-4)  # TODO: Test if you want to do this.
         tree.root.mergeChildrenUB(tree.root.ltqs, tree.root.getW(), sequential=True,
                                   verbose=False, singleProcess=singleProcess, random=random)
+        # Only increase max_node_ind when this re-order is truly processed
+        bs_glob.max_node_ind = old_max_node_ind
 
         if trackCloseness:
             dsNode.cumClosenessNNN = 0.
@@ -3161,29 +3771,29 @@ class Tree:
         nUSnb = len(usNeighbours)
         tree = Tree()
         bs_glob.nNodes = 2 + nDSnb + nUSnb
-        treeIndToOrigInd = {-1: usNode.nodeInd}
-        tree.root = TreeNode(nodeInd=-1, childNodes=[], isLeaf=False, isRoot=True,
+        treeIndToOrigInd = {usNode.nodeInd: usNode.nodeInd}
+        tree.root = TreeNode(nodeInd=usNode.nodeInd, childNodes=[], isLeaf=False, isRoot=True,
                              ltqs=None, ltqsVars=None, isCell=usNode.isCell)
-        treeIndToOrigInd[bs_glob.nNodes - 2] = dsNode.nodeInd
-        dsNodeCopy = TreeNode(nodeInd=bs_glob.nNodes - 2, childNodes=[], isLeaf=False, isRoot=False,
+        treeIndToOrigInd[bs_glob.max_node_ind + 1] = dsNode.nodeInd
+        dsNodeCopy = TreeNode(nodeInd=dsNode.nodeInd, childNodes=[], isLeaf=False, isRoot=False,
                               ltqs=None, ltqsVars=None, isCell=False,
                               tParent=dsNode.tParent, parentNode=tree.root)
         tree.root.childNodes.append(dsNodeCopy)
         for ind, nb in enumerate(usNeighbours):
-            treeIndToOrigInd[ind] = nb.nodeInd
-            tree.root.childNodes.append(TreeNode(nodeInd=ind, childNodes=[], isLeaf=True, isRoot=False,
+            treeIndToOrigInd[nb.nodeInd] = nb.nodeInd
+            tree.root.childNodes.append(TreeNode(nodeInd=nb.nodeInd, childNodes=[], isLeaf=True, isRoot=False,
                                                  ltqs=usNeighboursLtqs[:, ind], ltqsVars=usNeighboursLtqsVars[:, ind],
                                                  isCell=True, tParent=usTParents[ind]))
         mostUSNode = tree.root.childNodes[-1] if (usNode.parentNode is not None) else tree.root
 
         for ind, nb in enumerate(dsNeighbours):
-            treeIndToOrigInd[ind + nUSnb] = nb.nodeInd
-            dsNodeCopy.childNodes.append(TreeNode(nodeInd=ind + nUSnb, childNodes=[], isLeaf=True, isRoot=False,
+            treeIndToOrigInd[nb.nodeInd] = nb.nodeInd
+            dsNodeCopy.childNodes.append(TreeNode(nodeInd=nb.nodeInd, childNodes=[], isLeaf=True, isRoot=False,
                                                   ltqs=dsNeighboursLtqs[:, ind], ltqsVars=dsNeighboursLtqsVars[:, ind],
                                                   isCell=True, tParent=dsTParents[ind]))
         # How many ancestors do we expect: for n leaves, we have max. n-2 ancestors. So add some nodeInds if necessary
         for ind in range(nDSnb + nUSnb - 4):
-            treeIndToOrigInd[ind + nDSnb + nUSnb + 1] = self.nNodes - 1 + ind
+            treeIndToOrigInd[bs_glob.max_node_ind + 2 + ind] = bs_glob.max_node_ind + 1 + ind
         return True, tree, usNode, dsNodeCopy, mostUSNode, treeIndToOrigInd, mostUSInfo
 
     def get_vert_ind_to_node_DF(self, update=False):
@@ -3232,6 +3842,19 @@ class Tree:
         vertIndToNode, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
         self.vert_ind_to_node = vertIndToNode
         self.root.storeParent()
+
+    def get_cluster_centers(self, cell_ids=None, n_clusters=None):
+        # Do min-pdist clustering to get branches that would be cut in the clustering procedure. As cluster-centers,
+        # we'll just take the upstream-nodes of these branches
+        nwk_str = self.to_newick(use_ids=True)
+        # mindist_edges will contain a list of tuples (downstream-node-id, upstream-node-id)
+        _, mindist_edges = get_min_pdists_clustering_from_nwk_str(tree_nwk_str=nwk_str, n_clusters=n_clusters,
+                                                                  cell_ids=cell_ids,
+                                                                  get_cell_ids_all_splits=False,
+                                                                  node_id_to_n_cells=None,
+                                                                  verbose=False)
+        cluster_center_node_ids = [md_edge[1] for md_edge in mindist_edges]
+        return cluster_center_node_ids
 
     def set_mindist_root(self, cell_ids):
         # Find parent-node "the_parent" and index of "the_child" that are on both ends of the branch that would be cut
@@ -3382,6 +4005,664 @@ class Tree:
                         curr_node.childNodes = []
                 curr_node = None
         self.root = level_to_nodes[0][0]
+        self.max_node_ind = self.root.get_max_node_ind(-np.inf)
+        bs_glob.max_node_ind = self.max_node_ind
+
+    def remove_two_child_root(self, change_node_inds=False):
+        if len(self.root.childNodes) > 2:
+            return
+        found_better_root = False
+        for child in self.root.childNodes:
+            if child.isLeaf or (len(child.childNodes) < 2):
+                continue
+            found_better_root = True
+            break
+
+        if not found_better_root:
+            node_list = self.getNodeListBF()
+            for child in node_list:
+                if child.isRoot:
+                    continue
+                if (not child.isLeaf) and (len(child.childNodes) >= 2):
+                    found_better_root = True
+                    break
+
+        # In this case, set the root to this child
+        vertIndToNode, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
+        self.vert_ind_to_node = vertIndToNode
+        self.root.storeParent()
+
+        self.reset_root(new_root_ind=child.vert_ind)
+
+        vertIndToNode, self.nNodes = self.root.renumber_verts(vertIndToNode={}, vert_count=0, include_nodeInd=False)
+        self.vert_ind_to_node = vertIndToNode
+        self.root.storeParent()
+
+        self.root.deleteParentsWithOneChild()
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes(change_node_inds=change_node_inds)
+        self.nNodes = bs_glob.nNodes
+
+    def do_spr_moves(self, max_moves=None, select_cand='random', select_target='random', do_local_search=True,
+                     do_postprocessing=True, min_branch_length=-1, verbose=False, freq_cutoff=None, cand_list=None,
+                     only_scan=False, mem_friendly=False, skip_prepare_tree=False):
+        """
+
+        :param max_moves: When we do random moves, this sets the number of SPR-moves
+        :param seed: Random seed
+        :param select_cand: Sets the strategy with which we pick candidate-nodes to move. For now, options are
+        "random", "long_branches_first", or "list"
+        :param select_target: Sets the strategy with which we pick the first target-place to attach the pruned subtree.
+        For now, options are "random", "root", "cluster_centers", "all".
+        :param do_local_search: Determines whether we do a greedy search around the target to find the best target.
+        :param do_postprocessing: Experimental for now. Resolves created polytomies immediately, but doesn't seem to
+        help much, and can be replaced by re-doing starry nodes after the whole SPR-procedure.
+        :param freq_cutoff: If not None, we keep track of how many successes we have per 1000 tries, and we only keep
+        going until we have more than 1000 * freq_cutoff successes
+        :param cand_list: If select_cand=='list', then this list should give node-indices that should be tested
+        :param only_scan: If True, this function should not change the tree, only detect successful candidates
+        :return:
+        """
+
+        """Initialize some values"""
+        if select_target == 'all':
+            do_local_search = False
+        if max_moves is None:
+            max_moves = bs_glob.nNodes
+        successful_moves = 0
+        unsuccessful_moves = 0
+        remain_cands = []
+        returned_moves = 0
+        as_if_root_version = 0
+        spr_target_version = 0
+
+        # Determine how often to clean the stored AIRoot-values, to free some memory
+        n_free_mem = int(bs_glob.nNodes / 10)
+
+        self.root.reset_version_numbers('_AIRoot_version')
+        self.root.reset_version_numbers('_spr_target_version')
+
+        n_moves = -1
+        dlogl_threshold = 1e-6 * bs_glob.nGenes * bs_glob.nCells if bs_glob.nCells is not None \
+            else 1e-6 * bs_glob.nGenes * bs_glob.nNodes
+
+        """Prepare the tree"""
+        # nChildren = self.root.gatherInfoDepthFirst([])
+        if not skip_prepare_tree:
+            orig_loglik = self.prepare_tree_spr_moves()
+        else:
+            orig_loglik = np.nan if (self.loglik is None) else self.loglik
+
+        # Store at every node how many nodes are downstream (including itself). Will need it for picking candidates
+        self.root.get_ds_node_counts()
+
+        # If we don't select random candidates, list them here by sorting by branch length
+        cands_list = None
+        if select_cand == 'long_branches_first':
+            nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            # Sort them such that tParent (connecting branch length) is descending
+            sorted_time_node_tuples = [(node.tParent, node) for node in
+                                       nodesList if (not node.isRoot) and (node.tParent > min_branch_length)]
+            sorted_time_node_tuples.sort(key=lambda x: x[0], reverse=True)
+            cands_list = [time_node_tuple[1] for time_node_tuple in sorted_time_node_tuples]
+            max_moves = min(len(cands_list), max_moves)
+
+        if select_cand == 'list':
+            nodes_list = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            node_ind_to_node = {node.nodeInd: node for node in nodes_list}
+            cands_list = [node_ind_to_node[node_ind] for node_ind in cand_list if node_ind in node_ind_to_node]
+            max_moves = min(len(cands_list), max_moves)
+
+        if select_target == 'cluster_centers':
+            n_clusters = int(np.log(bs_glob.nCells)) if bs_glob.nCells is not None else np.log(bs_glob.nCells)
+            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_clusters)
+            nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
+        else:
+            cluster_centers = None
+
+        total_dlogl_increase = 0
+
+        n_print = int(min(100, max_moves / 10))
+
+        negdlogl_nodeind_tuples = None
+        if only_scan:
+            negdlogl_nodeind_tuples = []
+
+        last_n_successes = None
+        orig_t = None
+
+        while n_moves < max_moves - 1:
+            n_moves += 1
+            spr_target_version += 1
+
+            if n_moves == n_print:
+                mp_print("Performing SPR move {} out of {}. "
+                         "Results so far: {} successes, {} loglikelihood-change, "
+                         "current original branch length: {}".format(n_moves, max_moves,
+                                                                     successful_moves, total_dlogl_increase,
+                                                                     orig_t))
+                # TODO: Remove this memory measurement maybe
+                print_memory("n_moves: {}".format(n_moves))
+
+                n_print *= 2
+
+            """Select child to be moved"""
+            candidate, old_parent = self.select_spr_candidate(select_cand=select_cand,
+                                                              cands_list=cands_list,
+                                                              n_moves=n_moves)
+
+            if candidate is None:
+                unsuccessful_moves += 1
+                continue
+
+            """Remove the candidate from the tree"""
+            cand_node_ind, orig_t, ltqs_cand_g, ltqsVars_cand_g = old_parent.detach_subtree(candidate)
+            # Discard all as_if_root-information by updating the version
+            as_if_root_version += 1
+
+            # Get the loglikelihood change for the old position
+            old_parent.getAIRootUpstream(as_if_root_version=as_if_root_version)
+            dlogl_orig_pos = getLoglik2LeafTree(ltqs1_g=old_parent.ltqsAIRoot,
+                                                ltqsVars1_g=old_parent.getLtqsVars(AIRoot=True),
+                                                ltqs2_g=ltqs_cand_g, ltqsVars2_g=ltqsVars_cand_g, t=orig_t)
+
+            """Select target-node to start the search for a good target"""
+            # The targets-object returned is a list, which either has 1 or multiple nodes. We run the SPR search on
+            # all these targets and select the best one
+            targets = self.select_spr_targets(select_target=select_target, old_parent=old_parent,
+                                              cluster_centers=cluster_centers)
+            opt_node = None
+            opt_dlogl = -np.inf
+            opt_t = None
+            for target in targets:
+                """Check the change in loglikelihood when adding to target"""
+                opt_node, opt_dlogl, opt_t, search_count = target.do_spr_search(ltqs_cand_g, ltqsVars_cand_g,
+                                                                                prev_dlogl=-np.inf,
+                                                                                prev_node_ind=None, opt_node=opt_node,
+                                                                                opt_t=opt_t,
+                                                                                opt_dlogl=opt_dlogl,
+                                                                                as_if_root_version=as_if_root_version,
+                                                                                spr_target_version=spr_target_version,
+                                                                                do_local_search=do_local_search,
+                                                                                search_count=0)
+
+            # If we only scan for successful moves, then just place the candidate at orig position,
+            # store the information for successful moves, and move to next round
+            if only_scan:
+                if ((dlogl_orig_pos + dlogl_threshold) < opt_dlogl) and (opt_node.nodeInd != old_parent.nodeInd):
+                    # If move is successful (increase logl + not adding cell at same parent node as before)
+                    successful_moves += 1
+                    negdlogl_nodeind_tuples.append((-(opt_dlogl - dlogl_orig_pos), candidate.nodeInd))
+
+            # Check if dlogl-improvement is gained. Otherwise, just place it back at its original position
+            found_new_parent = False
+            if ((dlogl_orig_pos + dlogl_threshold) > opt_dlogl) or only_scan:
+                if opt_node.nodeInd == old_parent.nodeInd:
+                    returned_moves += 1
+                elif not only_scan:
+                    unsuccessful_moves += 1
+                opt_node = old_parent
+                opt_t = orig_t
+                found_new_parent = False
+                if verbose:
+                    logger.info("SPR-move {} unsuccessful:, "
+                                "loglikelihood increase was {}.".format(n_moves, opt_dlogl - dlogl_orig_pos))
+            else:
+                if opt_node.nodeInd == old_parent.nodeInd:
+                    returned_moves += 1
+                    found_new_parent = False
+                    # logger.info("SPR-move {} returned: leaving node {} as child of {}. "
+                    #              "Time-optimization led to loglikelihood increase "
+                    #              "of: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
+                    #                               opt_dlogl - dlogl_orig_pos))
+                else:
+                    successful_moves += 1
+                    found_new_parent = True
+                    if verbose:
+                        logger.info("SPR-move {} success: moving node {} as child of {}. "
+                                    "Loglikelihood increase: {}.".format(n_moves, candidate.nodeInd, opt_node.nodeInd,
+                                                                         opt_dlogl - dlogl_orig_pos))
+                total_dlogl_increase += (opt_dlogl - dlogl_orig_pos)
+
+            """Perform move"""
+            # Make sure to add new node if adding it downstream of a leaf
+            if opt_node.isLeaf:
+                # In this case, create a new node that is basically a copy of "opt_node", but is the parent of the original
+                # node in the tree with a zero branch length connecting them.
+                new_parent = opt_node.get_twin_parent()
+            else:
+                new_parent = opt_node
+
+            # Add the candidate node on the tree, and update the coordinates
+            new_parent.add_subtree(candidate, opt_t, ltqs_cand_g, ltqsVars_cand_g)
+            as_if_root_version += 1
+
+            if n_moves % n_free_mem == 0:
+                self.root.clear_AIRoot()
+                # print_memory("Freed memory kept by old posterior-node-coordinate values.")
+                if mem_friendly:
+                    self.root.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
+                    # print_memory("Freed memory kept by double storage of variance and precision.")
+
+            if do_postprocessing and found_new_parent and len(new_parent.childNodes) > 2:
+                # if found_new_parent and len(new_parent.childNodes) > 2:
+                # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
+                # likelihood increases when we add an ancestor for the candidate with some other child
+
+                # First get the coordinates of new_parent as if it's the root
+                new_parent.getAIRootUpstream(as_if_root_version=as_if_root_version)
+                changedSomething = new_parent.mergeChildrenUB(new_parent.ltqsAIRoot, new_parent.getW(AIRoot=True),
+                                                              sequential=False, verbose=False, random=False,
+                                                              specialChild=candidate.nodeInd,
+                                                              singleProcess=True, mergeDownstream=False)
+
+                if changedSomething:  # Now the ltqs upstream of the new_parent should be updated again
+                    new_parent.setLtqsUpstream()
+                    as_if_root_version += 1
+                    new_parent.storeParent()
+                    # Also update the n_ds_node variables upstream of the old_parent
+                    old_n_ds_nodes = new_parent.n_ds_nodes
+                    new_parent.get_ds_node_counts()
+                    added_n_ds_nodes = new_parent.n_ds_nodes - old_n_ds_nodes
+                    if added_n_ds_nodes != 0:
+                        if not new_parent.isRoot:
+                            new_parent.parentNode.add_n_nodes_upstream(added_n_ds_nodes)
+                        # for ch in new_parent.childNodes:
+                        #     if ch.parentNode is None:
+                        #         ch.parentNode = new_parent
+                        #         for gch in ch.childNodes:
+                        #             gch.parentNode = ch
+                        #     if ch.nodeId is None:
+                        #         ch.nodeId = 'internal_{}'.format(ch.nodeInd)
+
+            # If we run with a frequency cutoff and we did N_CHECK moves. Check whether we need to exit
+            N_CHECK = 1000
+            if (freq_cutoff is not None) and (n_moves % N_CHECK == 0):
+                if last_n_successes is not None:
+                    if (successful_moves - last_n_successes) < freq_cutoff * N_CHECK:
+                        max_moves = n_moves + 1
+                        if cands_list is None:
+                            mp_print("Frequency cutoff is for now only allowed with long_branches_first strategy.",
+                                     ERROR=True)
+                        else:
+                            mp_print("In the last {} tries, only {} successes were detected. "
+                                     "Therefore switching to mode in which we scan all SPR-candidates in parallel, "
+                                     "before processing them.".format(N_CHECK, successful_moves - last_n_successes))
+                            remain_cand_nodes = cands_list[n_moves + 1:]
+                            remain_cands = [cand.nodeInd for cand in remain_cand_nodes]
+                last_n_successes = successful_moves
+
+        if only_scan:
+            mp_print("Tried {} SPR-candidates, and found {} successful candidates.".format(len(cands_list),
+                                                                                           successful_moves),
+                     ALL_RANKS=True)
+            return negdlogl_nodeind_tuples
+
+        # TODO: Remove this additional likelihood calculation
+        self.nNodes = bs_glob.nNodes
+        mp_print("The {} SPR-moves led to an increase of {} "
+                 "of the tree loglikelihood.".format(n_moves + 1, total_dlogl_increase))
+        if not np.isnan(orig_loglik):
+            mp_print("Total loglikelihood should now thus be {} (not accounting for any resolved polytomies), "
+                     "and is {} according to the normal loglik "
+                     "calculation.".format(orig_loglik + total_dlogl_increase,
+                                           self.calcLogLComplete(mem_friendly=True, recalc=True)))
+        mp_print("Move statistics:\n"
+                 "Successful: {}\n"
+                 "Failed: {}\n"
+                 "Returned to initial point: {}".format(successful_moves, unsuccessful_moves, returned_moves))
+
+        return successful_moves, total_dlogl_increase, remain_cands
+
+    def prepare_tree_spr_moves(self):
+        self.remove_two_child_root()
+        self.root.deleteParentsWithOneChild()
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes(change_node_inds=False)
+        self.nNodes = bs_glob.nNodes
+
+        self.root.storeParent()
+        # TODO: Only do this when necessary?
+        self.root.getLtqsComplete(mem_friendly=True)
+        orig_loglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
+        return orig_loglik
+
+    def do_spr_postprocessing(self, change_node_inds=False, only_time_opt=False, verbose=False, only_cleanup=False):
+        """
+        IMPORTANT: This function should be run without parallelization. Otherwise, one has to guarantee that the tree
+        topologies match on all processes, which we cannot at the moment.
+
+        This function should be run after the SPR moves. It will resolve do
+        - re-optimize all branch lengths
+        - resolve polytomies by doing the mergeChildrenUB-function on all nodes recursively
+        - re-optimize all branch lengths again
+
+        :return:
+        """
+        # Clean up the tree first
+        self.remove_two_child_root(change_node_inds=change_node_inds)
+        self.root.deleteParentsWithOneChild()
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes(change_node_inds=change_node_inds)
+        self.nNodes = bs_glob.nNodes
+        self.root.storeParent()
+        self.root.clear_memory()
+        self.root.reset_version_numbers('_AIRoot_version')
+
+        if only_cleanup:
+            return
+
+        # Do first re-optimization of times
+        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-3)
+        # Clean up the tree before resolving polytomies
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes
+        self.nNodes = bs_glob.nNodes
+
+        if only_time_opt:
+            return
+
+        self.root.getAIRootInfo(None, None)
+
+        self.root.mergeChildrenRecursive(self.root.ltqs, self.root.getW(), sequential=False, verbose=verbose,
+                                         ellipsoidSize=1.0, single_process=True, mergeDownstream=True, tree=self,
+                                         nChildNN=50, kNN=10)
+        self.root.renumberNodes(change_node_inds=change_node_inds)  # Some nodes were merged, need to re-count the nodes
+        self.nNodes = bs_glob.nNodes
+        self.root.storeParent()
+        self.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-4)
+
+    def select_spr_candidate(self, select_cand='random', cands_list=None, n_moves=None,
+                             get_remainder=False):
+        if select_cand == 'random':
+            no_cand = True
+            n_candidates = self.root.n_ds_nodes
+            while no_cand:
+                cand_ind = np.random.randint(1, n_candidates)
+                candidate = self.root.select_nth_node_df(cand_ind, 0)
+                old_parent = candidate.parentNode
+                if len(old_parent.childNodes) >= 2:
+                    no_cand = False
+        elif select_cand in ['long_branches_first', 'list']:
+            candidate = cands_list[n_moves]
+            if candidate.parentNode is None:
+                return None, None
+            old_parent = candidate.parentNode
+            if len(old_parent.childNodes) < 2:
+                return None, None
+            if old_parent.isRoot and (len(old_parent.childNodes) < 3):
+                return None, None
+
+            # If we reach this point, we have found a good candidate
+        return candidate, old_parent
+
+    def select_spr_targets(self, select_target='random', old_parent=None, cluster_centers=None, all_nodes_list=None,
+                           cluster_centers_guaranteed=False):
+        if select_target == 'root':
+            return [self.root]
+        elif select_target == 'cluster_centers':
+            # Always include the old_parent as an option
+            available_cluster_centers = []
+            if old_parent is not None:
+                available_cluster_centers.append(old_parent)
+
+            if cluster_centers_guaranteed:
+                available_cluster_centers += cluster_centers
+                return available_cluster_centers
+
+            for clst_center in cluster_centers:
+                upstream_parent = clst_center
+                while upstream_parent.parentNode is not None:
+                    upstream_parent = upstream_parent.parentNode
+                if upstream_parent.isRoot:
+                    available_cluster_centers.append(clst_center)
+            return available_cluster_centers
+        elif select_target == 'all':
+            all_nodes_list = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            return all_nodes_list
+        else:  # select_target == 'random'
+            # We take anything still remaining in the main tree, except the original parent of the candidate
+            no_cand = True
+            n_candidates = self.root.n_ds_nodes
+            counter = 0
+            while no_cand:
+                target_ind = np.random.randint(n_candidates)
+                target = self.root.select_nth_node_df(target_ind, 0)
+                if (old_parent is None) or (target.nodeInd != old_parent.nodeInd):
+                    no_cand = False
+                counter += 1
+                if counter > 1e9:
+                    logger.warning("Something went wrong. Can't find a random target for an SPR move!")
+                    target = None
+                    no_cand = False
+        return [target]
+
+    def getNodeListBF(self):
+        nodeList = [self.root]
+        queue = [self.root]
+        while len(queue):
+            node = queue.pop(0)
+            for child in node.childNodes:
+                nodeList.append(child)
+                queue.append(child)
+        return nodeList
+
+    def add_cells(self, ltqs_to_add_cg, ltqsvars_to_add_cg, cell_ids, growth_before_cleanup=.1,
+                  select_target='cluster_centers', resolve_polytomies_immediately=True, scdata=None, tmp_folder=None,
+                  tmp_tree_ind=0, search_tol=2, n_centers=None, only_count_search_moves=False):
+        """
+
+        :param ltqs_to_add_cg: Numpy array (cells x genes) with coordinates of cells that should be added to the tree
+        :param ltqsvars_to_add_cg: Numpy array (cells x genes) with corresponding uncertainties
+        :param growth_before_cleanup: Fraction of growth of number of nodes before we do a cleanup of the tree
+        (resolving polytomies + optimizing branch lengths)
+        :param spr_strategy: Determines how we search for where to add the node.
+        :return:
+        """
+        # TODO: Turn this off
+        very_verbose = False
+        # We initialize some variables, and do a first clean-up of the tree
+        growth_bf_small_cleanup = .1
+
+        as_if_root_version = 0
+        spr_target_version = 0
+        self.root.reset_version_numbers('_AIRoot_version')
+        self.root.reset_version_numbers('_spr_target_version')
+        total_dlogl_decrease = 0
+
+        """Prepare the tree"""
+        # nChildren = self.root.gatherInfoDepthFirst([])
+        self.remove_two_child_root()
+        self.root.deleteParentsWithOneChild()
+        self.root.mergeZeroTimeChilds()
+        self.root.renumberNodes(change_node_inds=False)
+        self.nNodes = bs_glob.nNodes
+
+        self.root.storeParent()
+        self.root.getLtqsComplete(mem_friendly=True)
+        orig_loglik = self.calcLogLComplete(mem_friendly=True, recalc=False)
+
+        n_to_add_total = ltqs_to_add_cg.shape[0]
+        tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
+        n_before_cleanup = int(np.ceil(growth_before_cleanup * tree_size))
+        n_bf_small_cleanup = int(np.ceil(growth_bf_small_cleanup * tree_size))
+
+        # If select_target is cluster_centers, we get cluster-centers here, which will be used as start-points for the
+        # tree-based search of where to put the new cells
+        if select_target == 'cluster_centers':
+            if n_centers is None:
+                n_cntrs = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
+            else:
+                n_cntrs = n_centers
+            cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_cntrs + 1)
+            nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+            cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
+        else:
+            cluster_centers = None
+
+        n_print = 100
+        n_added = 0
+        # counts_search_moves = []
+        total_search_moves = 0
+        start_adding = time.time()
+        for n_added in range(n_to_add_total):
+            if n_added == n_print:
+                # if True:
+                mp_print("Seconds since start: {}. "
+                         "Adding cell {} out of {}: {:.2f}%.".format(time.time() - start_adding,
+                                                                     n_added + 1, n_to_add_total,
+                                                                     100 * (n_added + 1) / n_to_add_total))
+                mp_print("Total number of searches done: {}".format(total_search_moves))
+                # mp_print("Current memory usage is ",
+                #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
+                print_memory("n_added: {}".format(n_added))
+                n_print *= 2
+
+            # Create TreeNode that can be added
+            ltqs = ltqs_to_add_cg[n_added, :]
+            ltqsvars = ltqsvars_to_add_cg[n_added, :]
+            cell_id = cell_ids[n_added]
+            cand_node_ind = bs_glob.max_node_ind + 1
+            bs_glob.max_node_ind += 1
+            self.max_node_ind += 1
+            bs_glob.nNodes += 1
+            self.nNodes += 1
+            candidate = TreeNode(nodeInd=cand_node_ind, childNodes=[], parentNode=None, isLeaf=True, isRoot=False,
+                                 ltqs=ltqs, ltqsVars=ltqsvars, tParent=None, nodeId=cell_id, isCell=True, vert_ind=None)
+
+            """Select target-node to start the search for a good target"""
+            # The targets-object returned is a list, which either has 1 or multiple nodes. We run the SPR search on
+            # all these targets and select the best one
+            targets = self.select_spr_targets(select_target=select_target, old_parent=None,
+                                              cluster_centers=cluster_centers, cluster_centers_guaranteed=True)
+
+            # Use SPR-strategy to find target for adding the node
+            opt_node = None
+            opt_dlogl = -np.inf
+            opt_t = None
+            for target in targets:
+                """Check the change in loglikelihood when adding to target"""
+                opt_node, opt_dlogl, opt_t, search_count = target.do_spr_search(ltqs, ltqsvars, prev_dlogl=-np.inf,
+                                                                                prev_node_ind=None, opt_node=opt_node,
+                                                                                opt_t=opt_t,
+                                                                                opt_dlogl=opt_dlogl,
+                                                                                as_if_root_version=as_if_root_version,
+                                                                                spr_target_version=spr_target_version,
+                                                                                do_local_search=True,
+                                                                                search_tol=search_tol,
+                                                                                search_count=0)
+                total_search_moves += search_count
+                # counts_search_moves.append(search_count)
+
+            # Add the node to the tree structure
+            # if only_count_search_moves:
+            #     as_if_root_version += 1
+            #     spr_target_version += 1
+            #     continue
+            """Perform move"""
+            # Keep track of loglikelihood decrease for a sanity check
+            total_dlogl_decrease += opt_dlogl
+
+            # Make sure to add new node if adding it downstream of a leaf
+            if opt_node.isLeaf:
+                # In this case, create a new node that is basically a copy of "opt_node", but is the parent of the original
+                # node in the tree with a zero branch length connecting them.
+                new_parent = opt_node.get_twin_parent()
+            else:
+                new_parent = opt_node
+
+            if very_verbose:
+                mp_print("Adding cell {} downstream of {} with branch length {}".format(candidate.nodeId,
+                                                                                        opt_node.nodeId, opt_t))
+
+            # Add the candidate node on the tree, and update the coordinates
+            new_parent.add_subtree(candidate, opt_t, ltqs, ltqsvars)
+            as_if_root_version += 1
+            spr_target_version += 1
+            bs_glob.nCells += 1
+            scdata.metadata.nCells += 1
+            scdata.metadata.cellIds.append(cell_id)
+            # TODO: Eventually check if I want to remove this
+            if resolve_polytomies_immediately and (len(new_parent.childNodes) > 2):
+                # Check if candidate (that is attached to node) still wants to sit on a downstream branch, i.e., if the
+                # likelihood increases when we add an ancestor for the candidate with some other child
+
+                # First get the coordinates of new_parent as if it's the root
+                new_parent.getAIRootUpstream(as_if_root_version=as_if_root_version)
+                changedSomething = new_parent.mergeChildrenUB(new_parent.ltqsAIRoot, new_parent.getW(AIRoot=True),
+                                                              sequential=False, verbose=False, random=False,
+                                                              specialChild=candidate.nodeInd,
+                                                              singleProcess=True, mergeDownstream=False)
+                if changedSomething:  # Now the ltqs upstream of the new_parent should be updated again
+                    new_parent.setLtqsUpstream()
+                    as_if_root_version += 1
+                    new_parent.storeParent()
+                    # Also update the n_ds_node variables upstream of the old_parent
+                    # old_n_ds_nodes = new_parent.n_ds_nodes
+                    # new_parent.get_ds_node_counts()
+                    # added_n_ds_nodes = new_parent.n_ds_nodes - old_n_ds_nodes
+                    # if (added_n_ds_nodes != 0) and (not new_parent.isRoot):
+                    #     new_parent.parentNode.add_n_nodes_upstream(added_n_ds_nodes)
+
+            # Increase metadata (nNodes, ...?)
+
+            if n_added in [n_before_cleanup, n_bf_small_cleanup]:
+                tree_size = bs_glob.nCells if (bs_glob.nCells is not None) else self.nNodes
+
+                if n_added != n_before_cleanup:
+                    only_cleanup = True
+                    mp_print("Performing small cleanup and calculating new cluster-centers. "
+                             "Current number of cells: {}".format(tree_size))
+                else:
+                    only_cleanup = False
+                    mp_print("Round of adding cells took {} seconds.".format(time.time() - start_adding))
+                    start_postprocessing = time.time()
+                    mp_print("Performing intermediate time-optimization and calculating new cluster-centers. "
+                             "Current number of cells: {}".format(tree_size))
+
+                if not only_cleanup:
+                    n_before_cleanup += int(np.ceil(growth_before_cleanup * tree_size))
+                    n_before_cleanup = min(n_before_cleanup, n_to_add_total - 1)
+                n_bf_small_cleanup += int(np.ceil(growth_bf_small_cleanup * tree_size))
+                n_bf_small_cleanup = min(n_bf_small_cleanup, n_to_add_total - 1)
+                self.do_spr_postprocessing(change_node_inds=False, verbose=False, only_cleanup=only_cleanup,
+                                           only_time_opt=resolve_polytomies_immediately)
+                if not only_cleanup:
+                    mp_print("Round of re-optimizing times took {} seconds.".format(time.time() - start_postprocessing))
+                    start_cluster_centers = time.time()
+
+                if select_target == 'cluster_centers':
+                    if n_centers is None:
+                        n_cntrs = int(np.log(bs_glob.nNodes)) if bs_glob.nNodes is not None else np.log(bs_glob.nCells)
+                    else:
+                        n_cntrs = n_centers
+                    cluster_center_node_ids = self.get_cluster_centers(cell_ids=None, n_clusters=n_cntrs + 1)
+                    nodesList = self.root.getNodeList([], returnRoot=True, returnLeafs=True)
+                    cluster_centers = [node for node in nodesList if node.nodeId in cluster_center_node_ids]
+
+                if not only_cleanup:
+                    mp_print("Round of getting new cluster centers took {} seconds.".format(
+                        time.time() - start_cluster_centers))
+
+                    if (scdata is not None) and (tmp_folder is not None):
+                        scdata.storeTreeInFolder(os.path.join(tmp_folder, 'added_%d' % tmp_tree_ind),
+                                                 with_coords=False, verbose=True, cleanup_tree=False)
+                        remove_tree_folders(tmp_folder, removeDir=False, notRemove=tmp_tree_ind, base='added')
+                        tmp_tree_ind += 1
+
+                start_adding = time.time()
+
+        # if only_count_search_moves:
+        #     np.savetxt(scdata.result_path('counts_search_moves.txt'), np.array(counts_search_moves), fmt='%d')
+        #     exit()
+        self.nNodes = bs_glob.nNodes
+        logger.info("The {} added cells led to a decrease of {} "
+                    "of the tree loglikelihood.".format(n_added + 1, total_dlogl_decrease))
+        logger.info("Not taking account intermediate resolving of polytomies: total loglikelihood should now be {}, "
+                    "and it is {} according to the normal loglik "
+                    "calculation.".format(orig_loglik + total_dlogl_decrease,
+                                          self.calcLogLComplete(mem_friendly=True, recalc=True)))
 
 
 def getNewUBInfo(xrAsIfRoot_g, WAsIfRoot_g, epsx, epsW, alldLogLsUB, UBInfo, allPairsUB, oldRoot, del_node_inds,
@@ -3465,8 +4746,8 @@ def initializeTask(indTask, myTasks, pairs, nodeIndToChildInd, verbose, mpiInfo,
     # still appears in pairs-list. It seems faster to skip over it here than to update pairs-list
     if (not skip) and (ind1 == ind2):
         skip = True
-        logging.error("nodeInd1: {}, nodeInd2: {}".format(nodeInd1, nodeInd2))
-        logging.error(
+        logger.error("nodeInd1: {}, nodeInd2: {}".format(nodeInd1, nodeInd2))
+        logger.error(
             "There's a mistake somewhere. We are trying to calculate the merging likelihood of a node with itself. "
             "This is now skipped!")
     if skip:
@@ -3551,7 +4832,9 @@ def optimiseT3LeafStar(ltqs_gi, ltqsVars_gi, t0_i, verbose=False):
 def optimiseT3LeafStarSequential(ltqs_gi, ltqsVars_gi, t0_i, tol=None, verbose=False):
     # Optimise t12, total diffusion time between the two cells as if these are not connected to the root
     # if t12Opt is None:
-    t12Opt, converged = getOptTime2LeafTree(ltqs_gi, ltqsVars_gi, tol=tol)
+    # t12Opt, converged = getOptTime2LeafTree(ltqs_gi, ltqsVars_gi, tol=tol)
+    t12Opt, converged = getOptTime2LeafTree(ltqs1_g=ltqs_gi[:, 0], ltqsVars1_g=ltqsVars_gi[:, 0], ltqs2_g=ltqs_gi[:, 1],
+                                            ltqsVars2_g=ltqsVars_gi[:, 1], tol=tol)
     if not converged:
         return None, None, None, False
     # Fix t12 = t1a + t2a and optimise t1a < t12 and tar.
@@ -3578,11 +4861,17 @@ def optimiseT3LeafStarSequential(ltqs_gi, ltqsVars_gi, t0_i, tol=None, verbose=F
 #     optRes.x[1] = np.exp(optRes.x[1])
 #     return -optRes.fun, optRes.x, t12Opt, optRes.success
 
+def getLoglik2LeafTree(ltqs1_g, ltqsVars1_g, ltqs2_g, ltqsVars2_g, t):
+    totalVars_g = ltqsVars1_g + ltqsVars2_g + t
+    sqDists_g = (ltqs1_g - ltqs2_g) ** 2
+    loglik = -np.sum(np.log(totalVars_g) + sqDists_g / totalVars_g)
+    return loglik
+
 
 # Used
-def getOptTime2LeafTree(ltqs_gi, ltqsVars_gi, tol=1e-7):
-    summedLtqsVars_g = ltqsVars_gi[:, 0] + ltqsVars_gi[:, 1]
-    sqDists_g = (ltqs_gi[:, 0] - ltqs_gi[:, 1]) ** 2
+def getOptTime2LeafTree(ltqs1_g, ltqsVars1_g, ltqs2_g, ltqsVars2_g, tol=1e-7):
+    summedLtqsVars_g = ltqsVars1_g + ltqsVars2_g
+    sqDists_g = (ltqs1_g - ltqs2_g) ** 2
     lb_bracket = 0
     ub_bracket = lb_bracket + 1
     value_lb = der2LeafTree(lb_bracket, summedLtqsVars_g, sqDists_g)
@@ -3671,7 +4960,7 @@ def logLGradStarTreeLogLambdaSingleGene(logLambda, t_i, ltqs_i, ltqsVars_i, nCel
 # Used
 def optimiseTStar(ltqs_gi, ltqsVars_gi, nChilds=None, verbose=False):
     if nChilds is None:
-        nChilds = bs_glob.nCells
+        nChilds = ltqs_gi.shape[1]
     t_i = np.ones(nChilds)
     tnew_i = np.zeros(nChilds)
     converged = False
@@ -3842,8 +5131,7 @@ def estimateDerBasedDLogLUB(rootInfo, tOpt, ltqs_gi=None, ltqsVars_gi=None, wir_
             newLogLik, tOpt, converged = optimiseT3LeafStar(ltqs_gi, ltqsVars_gi, tOpt, verbose=False)
         if not converged:
             # Now exiting. If this happens often, I can also just say that these pairs get very low likelihood.
-            mp_print("Times cannot be optimized for this pair, probably too many noisy genes are taken into account. "
-                     "Try running Bonsai with higher zscore-cutoff.", WARNING=True)
+            mp_print("Times cannot be optimized for this pair.", WARNING=True)
             newLogLik = -np.inf
 
         wbar_gi = np.column_stack((wbar1_g, wbar2_g, 1 / ltqsVarsR))
@@ -3998,8 +5286,14 @@ def getLtqsAsIfRoot(nodeLtqs_g, nodeW_g, tConn, rootLtqs_g, rootW_g):
     # TODO: Check if this can be done more efficiently
     wbarNode_g = 1 / (tConn + 1 / nodeW_g)
     rootMinusNodeW_g = rootW_g - wbarNode_g
-    rootMinusNodeLtqs_g = (rootLtqs_g * rootW_g - wbarNode_g * nodeLtqs_g) / rootMinusNodeW_g
+    # TODO: Check if this check can be done faster
+    if np.max(rootMinusNodeW_g) < 1e-12:
+        # In this case, the parent's ltqs are fully determined by the current node, so subtracting that
+        # contribution will give a uniform distribution, and adding that to the current node will have no
+        # effect. We can thus just set the AIRoot-coordinates to the same as the normal LTQs
+        return nodeLtqs_g.copy(), nodeW_g.copy()
 
+    rootMinusNodeLtqs_g = (rootLtqs_g * rootW_g - wbarNode_g * nodeLtqs_g) / rootMinusNodeW_g
     wbarRoot_g = 1 / (tConn + 1 / rootMinusNodeW_g)
     nodePlusRootW_g = nodeW_g + wbarRoot_g
     nodePlusRootLtqs_g = (nodeLtqs_g * nodeW_g + wbarRoot_g * rootMinusNodeLtqs_g) / nodePlusRootW_g
@@ -4054,14 +5348,6 @@ def calcSingleDLogL(xrAsIfRoot_g, WAsIfRoot_g, ltqs1, ltqsVars1, wbar1_g, tOld1,
         newLogLik, optTimes, t12Opt, converged = optimiseT3LeafStarSequential(ltqs_gi, ltqsVars_gi, t0_i, verbose=False,
                                                                               tol=tol)
 
-        # TODO: REMOVE THIS!
-        # newLogLik_Old, optTimes_Old, t12Opt_Old, converged_Old = optimiseT3LeafStarSequentialOld(ltqs_gi, ltqsVars_gi,
-        #                                                                                          t0_i,
-        #                                                                                          verbose=False, tol=tol)
-        # if np.max(np.abs(optTimes - optTimes_Old)) > 1e-6:
-        #     mp_print("New optTimes: {}, differ from old optTimes {}.".format(optTimes, optTimes_Old), DEBUG=True)
-        #     mp_print("New loglik: {}, differ from old loglik {}.".format(newLogLik, newLogLik_Old), DEBUG=True)
-
         if converged:
             optTimes = [optTimes[0], t12Opt - optTimes[0], optTimes[1]]
         else:
@@ -4072,10 +5358,9 @@ def calcSingleDLogL(xrAsIfRoot_g, WAsIfRoot_g, ltqs1, ltqsVars1, wbar1_g, tOld1,
 
     if not converged:
         # Now exiting. If this happens often, I can also just say that these pairs get very low likelihood.
-        mp_print("Times cannot be optimized for this pair, probably too many noisy genes are taken into account. "
-                 "Try running Bonsai with higher zscore-cutoff.", WARNING=True)
+        mp_print("Times cannot be optimized for this pair.", WARNING=True)
         newLogLik = -np.inf
-        optTimes = None
+        optTimes = calcTInit(tOld1, tOld2, False)
     if onlyTimes:
         return optTimes
     # Then calculate three-leaf star-tree likelihood with leafs (ltqs1, t1 + ltqsVars1) (ltqs2, t2 + ltqsVars2)
@@ -4207,3 +5492,21 @@ def lik_to_post_coords_old(ltqs_lik, ltqsVars_lik):
     if vectorYN:
         return ltqs_post.flatten()
     return ltqs_post
+
+
+def subtract_contrib_ltqs(parent_ltqs_g, parent_W_g, child_ltqs_g, child_wbar_g):
+    # Calculate node position without contribution of this child
+    ltqsTimesWAsIfRoot_g = parent_ltqs_g * parent_W_g
+    WWOChild = parent_W_g - child_wbar_g
+    parents_ltqs_wo_g = (ltqsTimesWAsIfRoot_g - child_wbar_g * child_ltqs_g) / WWOChild
+    parents_ltqsVars_wo_g = 1 / WWOChild
+    return parents_ltqs_wo_g, parents_ltqsVars_wo_g
+
+
+def add_contrib_ltqs(parent_ltqs_g, parent_W_g, child_ltqs_g, child_wbar_g):
+    # Calculate node position without contribution of this child
+    ltqsTimesWAsIfRoot_g = parent_ltqs_g * parent_W_g
+    WWChild = parent_W_g + child_wbar_g
+    parents_ltqs_wo_g = (ltqsTimesWAsIfRoot_g + child_wbar_g * child_ltqs_g) / WWChild
+    parents_ltqsVars_wo_g = 1 / WWChild
+    return parents_ltqs_wo_g, parents_ltqsVars_wo_g

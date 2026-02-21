@@ -230,6 +230,25 @@ and
 
 **Warning: if you are running these commands through an SSH-connection, your link will not be correct. In that case you should do something like `http://<ADDRESS_OF_MY_SSH_NODE>:8243/`**, where 1234 matches the port that is reported to you in the print-messages, and that you could have picked yourself using the `--port` argument.
 
+## Backbone-based *Bonsai*: for the largest datasets
+For reconstructing *Bonsai*-trees on datasets of over a million cells, we developed a backbone-based version of *Bonsai*. It comprises the following steps:
+1) Preprocessing of the data
+2) A normal *Bonsai*-tree-reconstruction on a subset of `n_initial_cells` cells, which will be used as a backbone
+3) Placing remaining cells until the backbone has grown by a certain factor (`growth_factor_guide`), or until all cells were added.
+4) Refining the resulting tree using a normal *Bonsai*-run.
+
+If not all cells were added, i.e. `n_initial_cells * growth_factor_guide` is smaller than the number of cells in the dataset, then we will use the result of Step 4 as a backbone, and continue at step 3.
+
+### Parallellizing Backbone-based *Bonsai*
+It is in principle possible to run backbone-based *Bonsai* on a single CPU which may be nice for testing purposes. In this case, one can set the argument `--return_commands False`, and just run `backbone_based_bonsai/backbone_based_bonsai.py` with the arguments-of-choice. 
+
+However, this does not make sense for large datasets. In that case, one should first run `backbone_based_bonsai.py` **on a single CPU**, but set `--return_commands True`. In this case, a file will be created in the Bonsai-results folder that is called `iterative_build_commands.txt`. In this file, each line contains a run command that can be used in a normal MPI-call (similar as described in [Running Bonsai using parallel computation](https://github.com/dhdegroot/Bonsai-data-representation/blob/main/README.md#running-bonsai-using-parallel-computation)).
+It will be helpful to know the rough computational requirements for the various steps:
+1) Preprocessing -> limited time, significant memory requirement, benefits from parallellization
+2) Backbone-tree -> limited time and memory requirements, depending on the number of initial cells in the backbone, benefits from parallelization.
+3) Adding cells -> significant time and memory requirement, can use only a single CPU
+4) Refining the resulting tree -> significant time and memory requirement, benefits from parallellization
+
 ## Example 1: Your first *Bonsai* run
 To test if *Bonsai* is set-up correctly, let's run it on a very small dataset of 64 cells. The output from *Sanity* for this dataset is stored in `Bonsai-data-representation/examples/example_data/simulated_binary_6_gens_samplingNoise`. 
 Let's create a YAML-file with the correct run configurations first. To keep things organized, we can store the YAML-file in the `1_simple_example`-folder:
@@ -414,6 +433,6 @@ Decides whether we look for intermediate results from previous runs or not. Thes
 
 ## Optional downstream analyses
 In *Bonsai-scout*, we, next to interactive visualization, offer 1) tree-based clustering, 2) marker gene/feature detection, and 3) calculating the average features for different groups. The necessary code is provided in the `downstream_analyses`-subfolder. 
-* Tree-based clustering. One can use the function `get_min_pdists_clustering_from_nwk_str_new` in the file `get_clusters_max_diameter.py` to perform minimal-distance clustering based on a tree given by a Newick-string. These clusters are also provided in *Bonsai-scout* and can there be downloaded by clicking the correct button.
+* Tree-based clustering. One can use the function `get_min_pdists_clustering_from_nwk_str` in the file `get_clusters_max_diameter.py` to perform minimal-distance clustering based on a tree given by a Newick-string. These clusters are also provided in *Bonsai-scout* and can there be downloaded by clicking the correct button.
 * Calculating marker genes. See the Methods-section of the *Bonsai*-publication for an extensive description of the marker gene calculation. The marker genes can be calculated in *Bonsai-scout*, but for large datasets this calculation can take too long. In that case, one can download the necessary information on the selected groups in a `.json`-file. This `.json`-file can be used to run `calc_marker_genes.py`.
 * Averaging over groups. Given a group of objects and the posterior feature-values (including error-bars) that *Bonsai* has calculated, one can use `average_over_groups_wrapper.py` to calculate the group's mean feature value and the group variance. Note that this can deviate from the naive mean and variance, because this script takes into account the uncertainty on the inferred feature values.
