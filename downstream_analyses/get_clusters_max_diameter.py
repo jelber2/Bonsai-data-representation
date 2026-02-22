@@ -1027,7 +1027,7 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                         leaf_ids_tree.append(node.nodeId)
             clusters[ind_tree] = leaf_ids_tree
         # Store current clustering in dictionary of clusterings
-        clustering_name = 'annot_cluster_n{}'.format(len(tree_ensmbl))
+        clustering_name = 'annot_bnsi_cluster_n{}'.format(len(tree_ensmbl))
         all_clusterings[clustering_name] = clusters.copy()
 
     if verbose:
