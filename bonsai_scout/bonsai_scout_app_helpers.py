@@ -94,12 +94,12 @@ def get_feature_info_display(bonvis_data, feature_path):
         if variance_vals.max() < .01:
             neg_pow = -int(np.floor(np.log10(variance_vals.max())))
             variance_vals_norm = variance_vals * 10 ** neg_pow
-            print(neg_pow)
+            # print(neg_pow)
         else:
             neg_pow = 0
             variance_vals_norm = variance_vals
         variance_header = 'variances (*10^(-{})'.format(neg_pow) if neg_pow > 0 else 'variances'
-        print(variance_header)
+        # print(variance_header)
         feature_display = pd.DataFrame({'ids': json.loads(feature_hdf.attrs['gene_ids']),
                                         variance_header: variance_vals_norm})
         feature_display.sort_values(by=variance_header, axis=0, ascending=False, inplace=True)

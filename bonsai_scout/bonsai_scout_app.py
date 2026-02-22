@@ -889,6 +889,7 @@ def server(input, output, session: Session):
                 bv_objct.bonvis_fig.set_small_type_cutoff(annot_info, cutoff)
                 # Invalidate old node style to re-draw the figure
                 bv_objct.old_node_style += '_old'
+                node_style.set(curr_annot_label + '_old')
 
             node_style.set(curr_annot_label)
 

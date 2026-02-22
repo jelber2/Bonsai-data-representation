@@ -721,8 +721,8 @@ class Bonvis_figure:
         # Get some information on verts with one cell
         if plot_unit == 'cells':
             self.single_obj['obj_inds'] = np.asarray(self.bonvis_metadata.cell_info['single_at_vert'], dtype=int)
-            print(self.single_obj['obj_inds'])
-            print(cell_to_vert)
+            # print(self.single_obj['obj_inds'])
+            # print(cell_to_vert)
             self.single_obj['vert_inds'] = cell_to_vert[self.single_obj['obj_inds']]
             # In this case self.single_obj['obj_inds'] gives me the cell-inds corresponding to the cells
             # at nodes with only one cell
