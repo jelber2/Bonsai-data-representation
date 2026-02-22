@@ -229,7 +229,11 @@ class BonvisObject:
         pattern = re.compile(r"annot_bnsi_cluster_n(\d+)")
         self.max_n_clusters = max((int(m.group(1)) for s in annot_alts_set if (m := pattern.search(s))),
                                   default=None)
-
+        if self.max_n_clusters is None:
+            # This is for backwards-compatibility
+            pattern = re.compile(r"annot_cluster_n(\d+)")
+            self.max_n_clusters = max((int(m.group(1)) for s in annot_alts_set if (m := pattern.search(s))),
+                                      default=None)
         self.old_orig = np.array([0, 0])
         self.old_node_style = self.bonvis_fig.bonvis_settings.node_style['annot_info'].label
         self.old_size_style = self.init_size_style

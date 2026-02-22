@@ -161,6 +161,10 @@ class Celltype_info:
                     continue
                 if annot_alt.startswith('annot_bnsi_cluster_'):
                     continue
+                if annot_alt.startswith('annot_cluster_n'):
+                    # FOr backwards-compatibility. Bonsai-clusters are no longer named like this, but old files coming from
+                    # bonsai_scout_preprocess can still contain them.
+                    continue
                 annot_info_alt = self.annot_infos[annot_alt]
                 if annot_info_alt.cats is None:
                     continue
