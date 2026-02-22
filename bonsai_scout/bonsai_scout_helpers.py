@@ -103,7 +103,7 @@ class Celltype_info:
                 cats = None
                 color_type = 'sequential'
             elif info_key.startswith('annot_'):
-                if (info_object == 'cluster_info_dict') and (not re.fullmatch(r'annot_cluster_n\d+', info_key)):
+                if (info_object == 'cluster_info_dict') and (not re.fullmatch(r'annot_bnsi_cluster_n\d+', info_key)):
                     cats, counts = np.unique(info_dict_curr[info_key], return_counts=True)
                     order = np.argsort(-counts)
                     cats = list(cats[order])
@@ -150,6 +150,33 @@ class Celltype_info:
             else:
                 new_dict[label] = self_dict[label]
         return new_dict
+    
+    def get_init_annot(self):
+        init_annot = 'annot_default'
+        if len(self.annot_alts) > 1:
+            # possible_init_annots = [annot for annot in self.annot_alts if annot != 'annot_default']
+            annot_tuples = []
+            for annot_alt in self.annot_alts:
+                if annot_alt == 'annot_default':
+                    continue
+                if annot_alt.startswith('annot_bnsi_cluster_'):
+                    continue
+                annot_info_alt = self.annot_infos[annot_alt]
+                if annot_info_alt.cats is None:
+                    continue
+                annot_tuples.append((annot_alt, len(annot_info_alt.cats)))
+            if len(annot_tuples) > 0:
+                # Select "cellTypeName" first, if not present, "Celltype", then the one with fewest categories
+                sorted_annots = sorted(annot_tuples, key=lambda x: (not x[0].lower().startswith("annot_celltypename"),
+                                                                    not x[0].lower().startswith("annot_celltype"),
+                                                                    abs(x[1]-10)))
+                init_annot = sorted_annots[0][0]
+            elif 'annot_default' in self.annot_alts:
+                init_annot = 'annot_default'
+            else:
+                init_annot = self.annot_alts[0]
+        # init_annot = possible_init_annots[0] if len(possible_init_annots) else self.annot_alts[0]
+        return init_annot
 
 
 class Verttype_info:
@@ -371,6 +398,10 @@ class Bonvis_settings:
                  load_settings_path=None):
         if load_settings_path is not None:
             self.from_json(load_settings_path)
+            # For backwards-compatibility, if selected annotation is a Bonsai-clustering, replace it
+            if self.node_style['annot_info'].info_key.startswith('annot_cluster_n') or self.node_style['annot_info'].info_key.startswith('annot_bnsi_cluster_'):
+                init_annot = self.celltype_info.get_init_annot()
+                self.set_annot(annot_label=init_annot)
             return
         # if bonvis_data_hdf_path is not None:
         #     self.bonvis_data = h5py.File(bonvis_data_hdf_path, 'r')
@@ -389,24 +420,7 @@ class Bonvis_settings:
                                            gradient_type=self.node_style['gradient_type'])
         # if len(self.celltype_info.annot_alts) > 1:
         #     possible_init_annots = [annot for annot in self.celltype_info.annot_alts if annot != 'annot_default']
-        possible_init_annots = []
-        if len(self.celltype_info.annot_alts) > 1:
-            possible_init_annots = [annot_key for annot_key, annot_info in self.celltype_info.annot_infos.items()
-                                    if not annot_info.hidden]
-            annot_tuples = []
-            for annot_key, annot_info in self.celltype_info.annot_infos.items():
-                if annot_info.hidden:
-                    continue
-                if annot_info.cats is None:
-                    continue
-                annot_tuples.append((annot_key, len(annot_info.cats)))
-            if len(annot_tuples) > 0:
-                # Select "cellTypeName" first, if not present, "Celltype", then the one with fewest categories
-                sorted_annots = sorted(annot_tuples, key=lambda x: (not x[0].lower().startswith("annot_celltypename"),
-                                                                    not x[0].lower().startswith("annot_celltype"),
-                                                                    abs(x[1]-10)))
-                possible_init_annots = [sorted_annots[0][0]]
-        init_annot = possible_init_annots[0] if len(possible_init_annots) else self.celltype_info.annot_alts[0]
+        init_annot = self.celltype_info.get_init_annot()
         self.set_annot(annot_label=init_annot)
         self.set_size_style(annot_label='cell_number')
         self.edge_style = {'color': gray, 'linewidth': .25}
