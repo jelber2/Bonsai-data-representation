@@ -161,6 +161,10 @@ class Celltype_info:
                     continue
                 if annot_alt.startswith('annot_bnsi_cluster_'):
                     continue
+                if annot_alt.startswith('annot_cluster_n'):
+                    # FOr backwards-compatibility. Bonsai-clusters are no longer named like this, but old files coming from
+                    # bonsai_scout_preprocess can still contain them.
+                    continue
                 annot_info_alt = self.annot_infos[annot_alt]
                 if annot_info_alt.cats is None:
                     continue
@@ -721,8 +725,8 @@ class Bonvis_figure:
         # Get some information on verts with one cell
         if plot_unit == 'cells':
             self.single_obj['obj_inds'] = np.asarray(self.bonvis_metadata.cell_info['single_at_vert'], dtype=int)
-            print(self.single_obj['obj_inds'])
-            print(cell_to_vert)
+            # print(self.single_obj['obj_inds'])
+            # print(cell_to_vert)
             self.single_obj['vert_inds'] = cell_to_vert[self.single_obj['obj_inds']]
             # In this case self.single_obj['obj_inds'] gives me the cell-inds corresponding to the cells
             # at nodes with only one cell
