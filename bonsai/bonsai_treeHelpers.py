@@ -1178,7 +1178,7 @@ class TreeNode:
             else:  # i.e. if mpiInfo.rank != 0. The process coming here already means this round will be parallel
                 # start_comm = time.time()
                 very_verbose = True
-                mp_print("This process is being used in the merge-children computation!", ALL_RANKS=True)
+                # mp_print("This process is being used in the merge-children computation!", ALL_RANKS=True)
                 mpiInfoTmp = mpiInfo
                 infoTuple, tChildren, coordsTuple = self.receiveMergeChildrenInfo()
                 pairInfoTuple, UBInfo, runConfigs, chInfo = infoTuple
