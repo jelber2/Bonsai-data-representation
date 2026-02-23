@@ -493,7 +493,7 @@ cell_id_to_node_id = {scData.metadata.cellIds[cell_ind]: node_ids[vert_ind] for 
 cs_id_to_node_id = {scData.metadata.csIds[cs_ind]: node_ids[vert_ind] for cs_ind, vert_ind in
                     scData.csIndToVertInd.items()}
 
-# all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
+# all_clusterings is a dictionary with keys 'Bnsi_cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
 # We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
 node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
                             vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}

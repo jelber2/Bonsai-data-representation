@@ -856,9 +856,9 @@ def server(input, output, session: Session):
     @reactive.event(input.go_clustering)
     def _():
         if input.clustering_method() == 'distance':
-            cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+            cluster_node_style = "Bnsi_cluster_n{}".format(input.n_clusters())
         elif input.clustering_method() == 'annotation':
-            cluster_node_style = "Cluster_" + input.annot_for_clustering()
+            cluster_node_style = "Bnsi_cluster_" + input.annot_for_clustering()
             bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
             annot_info = get_clustering_annot_info(bv_objct)
             if (not hasattr(annot_info, 'small_type_cutoff')) or (input.small_cluster_cutoff() != annot_info.small_type_cutoff):
@@ -1364,9 +1364,9 @@ def server(input, output, session: Session):
     def _():
         bv_objct = bv_objcts[(user_id, session.input[".clientdata_url_search"].get())]
         if input.clustering_method() == 'distance':
-            cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+            cluster_node_style = "Bnsi_cluster_n{}".format(input.n_clusters())
         elif input.clustering_method() == 'annotation':
-            cluster_node_style = "Cluster_" + input.annot_for_clustering()
+            cluster_node_style = "Bnsi_cluster_" + input.annot_for_clustering()
 
         # Set nodestyle to cluster-node style
         node_style.set(cluster_node_style)
@@ -1379,9 +1379,9 @@ def server(input, output, session: Session):
         # Get annot-info object 
         celltype_info = bv_objct.bonvis_fig.bonvis_settings.celltype_info
         if input.clustering_method() == 'distance':
-            cluster_node_style = "Cluster_n{}".format(input.n_clusters())
+            cluster_node_style = "Bnsi_cluster_n{}".format(input.n_clusters())
         elif input.clustering_method() == 'annotation':
-            cluster_node_style = "Cluster_" + input.annot_for_clustering()
+            cluster_node_style = "Bnsi_cluster_" + input.annot_for_clustering()
         annot_info = [annot_info for annot, annot_info in celltype_info.annot_infos.items() if
                       annot_info.label.lower() == cluster_node_style.lower()]
         if len(annot_info) == 1:
