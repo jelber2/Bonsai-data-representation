@@ -610,7 +610,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 n_counter += 1
                 # First decide whether you pick a merge or a split
                 pick_split = random.random() > 0.5
-                if pick_split:
+                if (pick_split and (n_probs_split > 0)) or (n_probs_merge == 0):
                     sampled_ind = np.random.choice(n_probs_split, p=sampling_probs_split)
                     node = node_list_split[sampled_ind]
                 else:  # pick_merge
