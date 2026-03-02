@@ -94,12 +94,12 @@ def get_feature_info_display(bonvis_data, feature_path):
         if variance_vals.max() < .01:
             neg_pow = -int(np.floor(np.log10(variance_vals.max())))
             variance_vals_norm = variance_vals * 10 ** neg_pow
-            print(neg_pow)
+            # print(neg_pow)
         else:
             neg_pow = 0
             variance_vals_norm = variance_vals
         variance_header = 'variances (*10^(-{})'.format(neg_pow) if neg_pow > 0 else 'variances'
-        print(variance_header)
+        # print(variance_header)
         feature_display = pd.DataFrame({'ids': json.loads(feature_hdf.attrs['gene_ids']),
                                         variance_header: variance_vals_norm})
         feature_display.sort_values(by=variance_header, axis=0, ascending=False, inplace=True)
@@ -188,7 +188,7 @@ class BonvisObject:
             if hasattr(annot_info, 'hidden') and annot_info.hidden:
                 continue
             self.annotation_dict[annot_info.label] = annot_info.label
-            clustering_name = 'annot_cluster_' + annot_info.info_key[6:] if annot_info.info_key.startswith('annot_') else annot_info.info_key
+            clustering_name = 'annot_bnsi_cluster_' + annot_info.info_key[6:] if annot_info.info_key.startswith('annot_') else annot_info.info_key
             if (annot_info.cats is not None) and (clustering_name in annot_alts_set):
                 self.clustering_annotation_dict[annot_info.label] = annot_info.label
 
@@ -226,10 +226,14 @@ class BonvisObject:
         self.init_feature_path = self.bonvis_fig.bonvis_settings.node_style['feature_path']
         self.feature_display = get_feature_info_display(self.bonvis_fig.bonvis_data,
                                                         self.bonvis_fig.bonvis_settings.node_style['feature_path'])
-        pattern = re.compile(r"annot_cluster_n(\d+)")
+        pattern = re.compile(r"annot_bnsi_cluster_n(\d+)")
         self.max_n_clusters = max((int(m.group(1)) for s in annot_alts_set if (m := pattern.search(s))),
                                   default=None)
-
+        if self.max_n_clusters is None:
+            # This is for backwards-compatibility
+            pattern = re.compile(r"annot_cluster_n(\d+)")
+            self.max_n_clusters = max((int(m.group(1)) for s in annot_alts_set if (m := pattern.search(s))),
+                                      default=None)
         self.old_orig = np.array([0, 0])
         self.old_node_style = self.bonvis_fig.bonvis_settings.node_style['annot_info'].label
         self.old_size_style = self.init_size_style

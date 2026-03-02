@@ -1322,7 +1322,7 @@ class SCData:
 def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_intermediate=False):
     """
 
-    :param strategy: Current options are 'determ_random_determ', 'deterministic', 'deterministic_exhaustive'.
+    :param strategy: Current options are 'large_tree', 'long_branch_sorted', 'super_sure'.
     This relates to what kind of SPR-moves we propose in what order.
     :return:
     """
@@ -1374,7 +1374,7 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_in
                      "(at the cost of some memory usage) for the SPR-moves."
                      "Now, this process will wait to see whether it can help in the postprocessing.", ALL_RANKS=True)
 
-    if strategy == 'determ_random_determ':
+    if strategy == 'long_branch_sorted':
         if output_present[0]:
             mp_print("Found results for first SPR moveset in {}. Skipping first moveset.".format(scdata_path))
         else:
@@ -1390,7 +1390,6 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_in
             scData = None
             gc.collect()
 
-        # TODO: REVERT THIS?
         # if output_present[1]:
         #     mp_print("Found results for second SPR moveset in {}. Skipping first moveset.".format(scdata_path))
         # else:
@@ -1447,47 +1446,6 @@ def do_spr_moveset(scdata_path, args, strategy='determ_random_determ', pickup_in
                                                   select_cand='long_branches_first',
                                                   select_target='cluster_centers',
                                                   max_moves=None)
-        # info_dict = self.do_spr_moves_with_postprocessing(args=args,
-        #                                                   select_cand='long_branches_first',
-        #                                                   select_target='all',
-        #                                                   max_moves=2000,
-        #                                                   moves_id='C_random_T_random',
-        #                                                   tracking=tracking, info_dict=info_dict)
-
-    elif strategy == 'deterministic_exhaustive':
-        scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                  select_cand='long_branches_first',
-                                                  select_target='all',
-                                                  max_moves=10000)
-
-    elif strategy == 'deterministic':
-        if output_present[0]:
-            mp_print("Found results for first SPR moveset in {}. Skipping first moveset.".format(scdata_path))
-        else:
-            scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                      select_cand='long_branches_first',
-                                                      select_target='cluster_centers',
-                                                      max_moves=10000)
-
-            scdata_path = store_scdata_and_communicate_path(scData, specific_results_folder='spr_intermediates',
-                                                            general_results_folder=args.results_folder,
-                                                            prefix=output_prefixes[0])
-            scData = None
-            gc.collect()
-
-        scData = do_spr_moves_with_postprocessing(scdata_path, args=args,
-                                                  select_cand='long_branches_first',
-                                                  select_target='cluster_centers',
-                                                  max_moves=10000)
-
-    # if (mpi_info.rank == 0) and tracking:
-    #     info_dict['total_time'] = time.time() - orig_time
-    #     final_logl = scData.tree.calcLogLComplete(mem_friendly=True)
-    #     info_dict['total_loglik_change'] = final_logl - orig_loglik
-    #     mp_print("Loglikelihood of final tree is {}".format(final_logl))
-    #
-    #     with open(os.path.join(output_folder, "spr_info_strategy_{}.json".format(strategy)), "w") as f:
-    #         json.dump(info_dict, f, indent=4)
 
     return scData
 

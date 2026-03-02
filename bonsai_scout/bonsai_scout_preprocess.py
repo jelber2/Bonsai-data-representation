@@ -493,7 +493,7 @@ cell_id_to_node_id = {scData.metadata.cellIds[cell_ind]: node_ids[vert_ind] for 
 cs_id_to_node_id = {scData.metadata.csIds[cs_ind]: node_ids[vert_ind] for cs_ind, vert_ind in
                     scData.csIndToVertInd.items()}
 
-# all_clusterings is a dictionary with keys 'Cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
+# all_clusterings is a dictionary with keys 'Bnsi_cluster_n=..' and as vals lists of lists of cs-IDs which give the clusters
 # We need to convert this into a pandas dataframe with index the cs_ids and entries the cluster-assignments as "cl_{}"
 node_ids_multiple_cs_ids = {vert_ind_to_node_id[vert_ind]: [scData.metadata.csIds[cs_ind] for cs_ind in cs_inds] for
                             vert_ind, cs_inds in scData.vertIndToCsInds.items() if len(cs_inds) > 1}
@@ -547,9 +547,9 @@ if args.perform_annot_guided_clustering:
                                                                                      random_sampling=True,
                                                                                      tracking_path=tracking_path,
                                                                                      max_moves=1000, cutting_tol=1e-4,
-                                                                                     prohibit_small_clsts=True)
+                                                                                     prohibit_small_clsts=False)
         if len(cut_edges):  # i.e. we discard the trivial clusterings
-            clustering_name = 'annot_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
+            clustering_name = 'annot_bnsi_cluster_' + annot_id[6:] if annot_id.startswith('annot_') else annot_id
             cl_df_annot = get_cluster_assignments(all_clusterings={clustering_name: clusters},
                                                   node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
             cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]

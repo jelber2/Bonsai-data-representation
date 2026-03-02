@@ -96,7 +96,7 @@ def get_annotation_based_clustering_from_nwk_str(tree_nwk_str, annotation_dict, 
     :return:
     """
     cluster_tree = Cluster_Tree()
-    cluster_tree.from_newick_string(nwk_str=tree_nwk_str)  # Works
+    cluster_tree.from_newick_string(nwk_str=tree_nwk_str)
     clusters, cut_edges, mut_info = get_annotation_based_clustering_random(cluster_tree,
                                                                            cell_id_to_node_id=cell_id_to_node_id,
                                                                            annotation_dict=annotation_dict,
@@ -610,7 +610,7 @@ def get_annotation_based_clustering_random(cluster_tree, annotation_dict, cell_i
                 n_counter += 1
                 # First decide whether you pick a merge or a split
                 pick_split = random.random() > 0.5
-                if pick_split:
+                if (pick_split and (n_probs_split > 0)) or (n_probs_merge == 0):
                     sampled_ind = np.random.choice(n_probs_split, p=sampling_probs_split)
                     node = node_list_split[sampled_ind]
                 else:  # pick_merge
@@ -1027,7 +1027,7 @@ def get_min_pdists_clustering(cluster_tree, n_clusters, cell_ids=None, get_cell_
                         leaf_ids_tree.append(node.nodeId)
             clusters[ind_tree] = leaf_ids_tree
         # Store current clustering in dictionary of clusterings
-        clustering_name = 'annot_cluster_n{}'.format(len(tree_ensmbl))
+        clustering_name = 'annot_bnsi_cluster_n{}'.format(len(tree_ensmbl))
         all_clusterings[clustering_name] = clusters.copy()
 
     if verbose:

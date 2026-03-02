@@ -20,14 +20,21 @@ from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_
     convert_dict_to_named_tuple, str2bool, read_ids, write_ids
 
 parser = ArgumentParser(
-    description='Starts from cell-data and a tree on which some of the cells are already placed. Cells that are not on'
-                'the tree but are in the data will be placed one by one on the tree.')
+    description='This script provides a way of running backbone-based-Bonsai, consisting of the steps'
+                '1) Preprocess the data'
+                '2) Build a normal Bonsai-tree on a subset of the data as a backbone'
+                '3) Grow this backbone by a factor "growth_factor_guide" (or just add all remaining cells)'
+                '4) Refine the tree using Bonsai.'
+                ''
+                'There are a few arguments that one can set below. Importantly, if you run this script with '
+                'return_commands=False, it will try to run the whole calculation with just a single CPU. If you set'
+                'return_commands=True, it will just print out the commands to a file, which you can then use to run'
+                'the separate steps with more optimized computational resources.')
 
 parser.add_argument('--config_filepath', type=str, default=None,
                     help='Absolute (or relative to "bonsai-development") path to YAML-file that contains all arguments'
                          'needed to run Bonsai.')
 
-# TODO: To be moved to config-file
 parser.add_argument('--select_target', type=str, default='cluster_centers',
                     help="This will determine what strategy we follow for the "
                          "spr-moves. Current options are 'root', 'cluster_centers', 'exhaustive'")
@@ -67,35 +74,32 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
 parser.add_argument('--seed', type=int, default=1231,
                     help="Sets the random seed necessary for getting the subset of cells.")
 
-parser.add_argument('--debug_mode', type=str2bool, default=False,
-                    help='Print additional information that may sometimes slow down the calculations.')
-
 args = parser.parse_args()
 
 # TODO: Make sure that Run_configs initialization just copies all arguments that were originally in args
 pickup_intermediate = args.pickup_intermediate
-growth_before_cleanup = args.growth_before_cleanup
-select_target = args.select_target
-iterative_cell_lists = args.iterative_cell_lists
-n_initial_cells = args.n_initial_cells
-return_commands = args.return_commands
-config_filepath = args.config_filepath
-growth_factor_guide = args.growth_factor_guide
+# growth_before_cleanup = args.growth_before_cleanup
+# select_target = args.select_target
+# iterative_cell_lists = args.iterative_cell_lists
+# n_initial_cells = args.n_initial_cells
+# return_commands = args.return_commands
+# config_filepath = args.config_filepath
+# growth_factor_guide = args.growth_factor_guide
+# search_tol = args.search_tol
 seed = args.seed
-debug_mode = args.debug_mode
-search_tol = args.search_tol
+args_to_copy = ['growth_before_cleanup', 'select_target', 'iterative_cell_lists', 'n_initial_cells', 'return_commands',
+                'config_filepath', 'growth_factor_guide', 'search_tol']
 
-args = Run_Configs(args.config_filepath)
+args = Run_Configs(args.config_filepath, args=args, args_to_copy=args_to_copy)
 
-args.search_tol = search_tol
-args.debug_mode = debug_mode
-args.select_target = select_target
-args.iterative_cell_lists = iterative_cell_lists
-args.growth_before_cleanup = growth_before_cleanup
-args.n_initial_cells = n_initial_cells
-args.return_commands = return_commands
-args.config_filepath = config_filepath
-args.growth_factor_guide = growth_factor_guide
+# args.search_tol = search_tol
+# args.select_target = select_target
+# args.iterative_cell_lists = iterative_cell_lists
+# args.growth_before_cleanup = growth_before_cleanup
+# args.n_initial_cells = n_initial_cells
+# args.return_commands = return_commands
+# args.config_filepath = config_filepath
+# args.growth_factor_guide = growth_factor_guide
 if pickup_intermediate:
     args.pickup_intermediate = True
 
@@ -109,7 +113,7 @@ mpi_rank, mpi_size = startMPI(verbose=True)
 start_all = time.time()
 
 if mpi_rank != 0:
-    mp_print("The script 'bonsai_iterative_build.py' is not designed to use multiple CPUs in all steps."
+    mp_print("The script 'backbone_based_bonsai.py' is not designed to use multiple CPUs in all steps."
              "Instead, please run this script with the command '--return_commands True'. "
              "It will then return the commands in a text-file "
              "(and printed out on the console) that you can then run yourself using multiple CPUs.",
@@ -202,7 +206,7 @@ for subset_ind, subset in enumerate(subsets):
 # Run the script that will read in and preprocess *all* the data, and create the star-tree for the first guide-tree
 subset_results_folders = [scdata_subsets[ind].metadata.results_folder for ind in range(len(scdata_subsets)-1)]
 subset_results_folders = ','.join(subset_results_folders)
-preprocess_cmd = ['bonsai_iterative_build/bonsai_iterative_first_split.py',
+preprocess_cmd = ['backbone_based_bonsai/bonsai_iterative_first_split.py',
                   '--config_filepath', args.config_filepath,
                   '--subset_results_folder', subset_results_folders]
 
@@ -275,7 +279,6 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
     bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
                           '--config_filepath', config_filepath,
                           '--step', 'all',
-                          '--spr_strategy', 'large_tree',
                           '--pickup_intermediate', 'True']
 
     if not args.return_commands:
@@ -320,7 +323,7 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
     mp_print(output1.stderr)
 
     add_cells_seed = np.random.randint(1e6)
-    add_cells_cmd = ['bonsai_iterative_build/bonsai_add_cells.py',
+    add_cells_cmd = ['backbone_based_bonsai/bonsai_add_cells.py',
                      '--config_filepath', config_filepath_add,
                      '--guide_tree_folder', results_dir_subset,
                      '--cells_to_be_added', os.path.join(new_non_refined_folder, 'starting_cell_ids.txt'),
@@ -329,7 +332,7 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
                      '--select_target', args.select_target,
                      '--search_tol', str(args.search_tol),
                      '--seed', str(add_cells_seed),
-                     '--debug_mode', str(args.debug_mode)]
+                     '--pickup_intermediate', str(args.pickup_intermediate)]
     # TODO: Add arguments '--nodes_to_add_to', '--cels_to_be_added' later
 
     if not args.return_commands:
@@ -358,7 +361,6 @@ for subset_ind, scdata_subset in enumerate(scdata_subsets):
 # bonsai_subset1_cmd = ['bonsai/bonsai_main.py',
 #                       '--config_filepath', config_filepath,
 #                       '--step', 'all',
-#                       '--spr_strategy', 'large_tree',
 #                       '--pickup_intermediate', 'True']
 #
 # if not args.return_commands:

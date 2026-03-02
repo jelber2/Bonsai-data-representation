@@ -103,7 +103,7 @@ class Celltype_info:
                 cats = None
                 color_type = 'sequential'
             elif info_key.startswith('annot_'):
-                if (info_object == 'cluster_info_dict') and (not re.fullmatch(r'annot_cluster_n\d+', info_key)):
+                if (info_object == 'cluster_info_dict') and (not re.fullmatch(r'annot_bnsi_cluster_n\d+', info_key)):
                     cats, counts = np.unique(info_dict_curr[info_key], return_counts=True)
                     order = np.argsort(-counts)
                     cats = list(cats[order])
@@ -150,6 +150,37 @@ class Celltype_info:
             else:
                 new_dict[label] = self_dict[label]
         return new_dict
+    
+    def get_init_annot(self):
+        init_annot = 'annot_default'
+        if len(self.annot_alts) > 1:
+            # possible_init_annots = [annot for annot in self.annot_alts if annot != 'annot_default']
+            annot_tuples = []
+            for annot_alt in self.annot_alts:
+                if annot_alt == 'annot_default':
+                    continue
+                if annot_alt.startswith('annot_bnsi_cluster_'):
+                    continue
+                if annot_alt.startswith('annot_cluster_n'):
+                    # FOr backwards-compatibility. Bonsai-clusters are no longer named like this, but old files coming from
+                    # bonsai_scout_preprocess can still contain them.
+                    continue
+                annot_info_alt = self.annot_infos[annot_alt]
+                if annot_info_alt.cats is None:
+                    continue
+                annot_tuples.append((annot_alt, len(annot_info_alt.cats)))
+            if len(annot_tuples) > 0:
+                # Select "cellTypeName" first, if not present, "Celltype", then the one with fewest categories
+                sorted_annots = sorted(annot_tuples, key=lambda x: (not x[0].lower().startswith("annot_celltypename"),
+                                                                    not x[0].lower().startswith("annot_celltype"),
+                                                                    abs(x[1]-10)))
+                init_annot = sorted_annots[0][0]
+            elif 'annot_default' in self.annot_alts:
+                init_annot = 'annot_default'
+            else:
+                init_annot = self.annot_alts[0]
+        # init_annot = possible_init_annots[0] if len(possible_init_annots) else self.annot_alts[0]
+        return init_annot
 
 
 class Verttype_info:
@@ -371,6 +402,10 @@ class Bonvis_settings:
                  load_settings_path=None):
         if load_settings_path is not None:
             self.from_json(load_settings_path)
+            # For backwards-compatibility, if selected annotation is a Bonsai-clustering, replace it
+            if self.node_style['annot_info'].info_key.startswith('annot_cluster_n') or self.node_style['annot_info'].info_key.startswith('annot_bnsi_cluster_'):
+                init_annot = self.celltype_info.get_init_annot()
+                self.set_annot(annot_label=init_annot)
             return
         # if bonvis_data_hdf_path is not None:
         #     self.bonvis_data = h5py.File(bonvis_data_hdf_path, 'r')
@@ -389,24 +424,7 @@ class Bonvis_settings:
                                            gradient_type=self.node_style['gradient_type'])
         # if len(self.celltype_info.annot_alts) > 1:
         #     possible_init_annots = [annot for annot in self.celltype_info.annot_alts if annot != 'annot_default']
-        possible_init_annots = []
-        if len(self.celltype_info.annot_alts) > 1:
-            possible_init_annots = [annot_key for annot_key, annot_info in self.celltype_info.annot_infos.items()
-                                    if not annot_info.hidden]
-            annot_tuples = []
-            for annot_key, annot_info in self.celltype_info.annot_infos.items():
-                if annot_info.hidden:
-                    continue
-                if annot_info.cats is None:
-                    continue
-                annot_tuples.append((annot_key, len(annot_info.cats)))
-            if len(annot_tuples) > 0:
-                # Select "cellTypeName" first, if not present, "Celltype", then the one with fewest categories
-                sorted_annots = sorted(annot_tuples, key=lambda x: (not x[0].lower().startswith("annot_celltypename"),
-                                                                    not x[0].lower().startswith("annot_celltype"),
-                                                                    abs(x[1]-10)))
-                possible_init_annots = [sorted_annots[0][0]]
-        init_annot = possible_init_annots[0] if len(possible_init_annots) else self.celltype_info.annot_alts[0]
+        init_annot = self.celltype_info.get_init_annot()
         self.set_annot(annot_label=init_annot)
         self.set_size_style(annot_label='cell_number')
         self.edge_style = {'color': gray, 'linewidth': .25}
@@ -707,8 +725,8 @@ class Bonvis_figure:
         # Get some information on verts with one cell
         if plot_unit == 'cells':
             self.single_obj['obj_inds'] = np.asarray(self.bonvis_metadata.cell_info['single_at_vert'], dtype=int)
-            print(self.single_obj['obj_inds'])
-            print(cell_to_vert)
+            # print(self.single_obj['obj_inds'])
+            # print(cell_to_vert)
             self.single_obj['vert_inds'] = cell_to_vert[self.single_obj['obj_inds']]
             # In this case self.single_obj['obj_inds'] gives me the cell-inds corresponding to the cells
             # at nodes with only one cell
@@ -1135,11 +1153,13 @@ class Bonvis_figure:
             else:
                 if node_style['verts_masked'] is None:
                     verts_masked = []
-                    if node_style['cells_masked'] is not None:
+                    if (node_style['cells_masked'] is not None) and (len(node_style['cells_masked']) != 0):
                         cell_ind_to_vert_ind = np.array(
                             self.bonvis_metadata.cell_info['cell_info_dict']['cell_ind_to_vert_ind'])
                         verts_masked = list(cell_ind_to_vert_ind[np.array(node_style['cells_masked'])])
                         verts_masked = np.union1d(verts_masked, self.bonvis_metadata.cell_info['int_vert_inds'])
+                    elif node_style['cells_masked'] is not None: # avoid problematic array indexing for empty mask
+                        verts_masked = self.bonvis_metadata.cell_info['int_vert_inds']
                     cell_to_celltype = cell_to_celltype.astype(str)
                     cell_to_celltype[verts_masked] = np.nan
                     cell_to_color[verts_masked] = masked_color
@@ -1419,9 +1439,9 @@ class Bonvis_figure:
                 cell_ids=self.bonvis_metadata.cs_ids, node_id_to_n_cells=node_id_to_n_cells)
         elif footfall:
             logger.debug("Performing maximal footfall clustering!")
-            clusters_list, cut_edges = get_footfall_clustering_from_nwk_str(
+            clusters_list, cut_edges = get_min_pdists_clustering_from_nwk_str(
                 tree_nwk_str=self.bonvis_metadata.tree_info['nwk_str'],
-                n_clusters=cluster_param, cell_ids=self.bonvis_metadata.cell_ids)
+                n_clusters=cluster_param, cell_ids=self.bonvis_metadata.cell_ids, footfall=True)
         else:
             logger.debug("Performing max-diameter clustering")
             clusters_list = get_max_diam_clustering_from_nwk_str(tree_nwk_str=self.bonvis_metadata.tree_info['nwk_str'],
@@ -1434,8 +1454,7 @@ class Bonvis_figure:
         # self.number_of_clusters_found = len(clusters_list)
         # logger.debug(self.number_of_clusters_found)
         # get clusters to cluster-idx
-        cl_dict = get_cluster_assignments(clusters_list=clusters_list)
-
+        cl_dict = get_cluster_assignments(all_clusterings=clusters_list)
         # get cluster annotation
         # cmap = get_celltype_colors_new(colortype='gradient_colormap', gradientType=gradient_type)
         # n_cells = len(cell_info_dict[next(iter(cell_info_dict))])
@@ -1449,17 +1468,17 @@ class Bonvis_figure:
         # cats = list(set(cl_dict.values()))
         # cats = list(np.sort(list(set(cl_dict.values()))))
         # natural sorting
-        cats = natsorted(list(set(cl_dict.values())))
-
+        # cats = natsorted(list(set(cl_dict.values())))
+        cats = natsorted(cl_dict.iloc[:, -1].dropna().unique())
         n_clusters = len(cats)
         cluster_colors = get_celltype_colors_new(n_clusters, colortype=colortype)
         annot_to_color = {cat: cluster_colors(ind) for ind, cat in enumerate(cats)}
         cbar_info = {'cmap': None, 'vmin': None, 'vmax': None, 'log': None}
         if min_pdists or footfall:
-            label = "Cluster_n={}".format(cluster_param)  # TODO change this
+            label = "Bnsi_cluster_n={}".format(cluster_param)  # TODO change this
             info_key = "annot_cl_n={}".format(cluster_param)  # TODO?
         else:
-            label = "Cluster_diam={}".format(cluster_param)  # TODO change this
+            label = "Bnsi_cluster_diam={}".format(cluster_param)  # TODO change this
             info_key = "annot_cl_diam={}".format(cluster_param)  # TODO?
 
         if cut_edges is not None:
@@ -1471,13 +1490,15 @@ class Bonvis_figure:
                                    info_key=info_key)
 
         # convert to right order
-        cs_id_to_ind = {cs_id: ind for ind, cs_id in enumerate(cl_dict)}
+        # cs_id_to_ind = {cs_id: ind for ind, cs_id in enumerate(cl_dict)}
+        cs_id_to_ind = {cs_id: ind for ind, cs_id in enumerate(cl_dict.index)}
         cs_inds = np.array([cs_id_to_ind[cs_id] for cs_id in self.bonvis_metadata.cs_ids])
 
-        annot_df = pd.DataFrame({"cb_name": cl_dict.keys(),
-                                 "clustering_tmp": cl_dict.values()})
+        #annot_df = pd.DataFrame({"cb_name": cl_dict.keys(),
+        #                         "clustering_tmp": cl_dict.values()})
+        annot_df = cl_dict
         annotation_df = annot_df.iloc[cs_inds, :]
-        self.bonvis_metadata.cs_info['cs_info_dict'][info_key] = annotation_df['clustering_tmp'].tolist()
+        self.bonvis_metadata.cs_info['cs_info_dict'][info_key] = annotation_df.iloc[:, -1].tolist()
         # logger.debug(annotation_df)
 
         self.bonvis_settings.set_annot(annot_info=cl_annot)
@@ -2120,7 +2141,8 @@ def update_marker_genes_df(run_with_vars, marker_genes_tuple):
         marker_genes = calc_marker_genes_error_bars_approx2(indices1=ds_cell_inds_1, indices2=ds_cell_inds_2,
                                                             means=means,
                                                             vars=vars, gene_ids=gene_ids, n_points_total=n_points,
-                                                            n_marker_genes=10)
+                                                            min_marker_genes=10,
+                                                            marker_cutoff=.9)
     else:
         # ds_cell_inds_1, ds_cell_inds_2, n_cells, gene_ids, ranks_per_gene, variation_features, cells_wo_nan = marker_genes_tuple
         bonvis_data_path, ds_cell_inds_1, ds_cell_inds_2, n_cells, gene_ids, ranks_per_gene_path, variation_features, cells_wo_nan = marker_genes_tuple
@@ -2129,14 +2151,16 @@ def update_marker_genes_df(run_with_vars, marker_genes_tuple):
         if ds_cell_inds_2 is None:
             print("Starting the calc_marker_genes_single")
             marker_genes = calc_marker_genes_single(ds_cell_inds_1, n_cells, gene_ids, ranks_per_gene,
-                                                    n_marker_genes=10,
+                                                    min_marker_genes=10,
+                                                    marker_cutoff=.9,
                                                     gene_subset=variation_features)
         else:
             print("Starting the calc_marker_genes_double")
             ds_cell_inds_2 = np.intersect1d(ds_cell_inds_2, cells_wo_nan)
             marker_genes = calc_marker_genes_double(ds_cell_inds_1, ds_cell_inds_2, n_cells, gene_ids,
                                                     ranks_per_gene,
-                                                    n_marker_genes=10,
+                                                    min_marker_genes=10,
+                                                    marker_cutoff=.9,
                                                     gene_subset=variation_features)
 
     marker_genes_df = pd.DataFrame.from_dict(marker_genes, orient='index', columns=['marker_scores'])

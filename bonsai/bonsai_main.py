@@ -35,13 +35,6 @@ parser.add_argument('--pickup_intermediate', type=str2bool, default=False,
                          'for the furthest developed tree reconstruction, and pick it up from there. If this argument'
                          'is True, it over-rules the same argument in bonsai_config.yaml, and the other way around.')
 
-# TODO: To be moved to config file
-parser.add_argument('--spr_strategy', type=str, default='determ_random_determ',
-                    help="Move to general config-file later. This will determine what strategy we follow for the "
-                         "spr-moves. Current options are 'large_tree', 'determ_random_determ', 'deterministic', "
-                         "'deterministic_exhaustive', 'super_sure'."
-                         "NOTE: Only large_tree allows for parallelization, the rest will only use 1 CPU.")
-
 # TODO: To be removed
 parser.add_argument('--store_all_nwk_folder', type=str, default='',
                     help='REMOVE LATER! This will slow down the program by storing a newick file after every change to'
@@ -126,7 +119,6 @@ parser.add_argument('--print_annotations', type=str, default='',
 args = parser.parse_args()
 
 pickup_intermediate = args.pickup_intermediate
-spr_strategy = args.spr_strategy
 # TODO: Remove
 store_all_nwk_folder = args.store_all_nwk_folder
 print_annotations = args.print_annotations
@@ -440,7 +432,8 @@ if args.step in ['core_calc', 'all']:
         print_memory("Ready to start SPR moves")
 
         # Do the actual moves here:
-        scData = do_spr_moveset(scdata_path, args, strategy=spr_strategy, pickup_intermediate=args.pickup_intermediate)
+        scData = do_spr_moveset(scdata_path, args, strategy=args.spr_strategy,
+                                pickup_intermediate=args.pickup_intermediate)
         print_memory("Done with SPR moves")
         if (scData is not None) and (scData.tree is not None):
             scData.tree.root.clear_memory()
@@ -682,4 +675,4 @@ if args.step in ['metadata', 'all']:
                 remove_tree_folders(redundant_folder, removeDir=True)
 
 mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
-print_memory("Memory peak after the whole calculation")
+print_memory("Memory usage after the whole calculation")

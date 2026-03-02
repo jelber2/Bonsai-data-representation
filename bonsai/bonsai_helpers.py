@@ -48,7 +48,7 @@ plt.set_loglevel(level='warning')
 class Run_Configs:
     config_yaml = None
 
-    def __init__(self, yaml_filepath=None, step=None, create_empty_configs=False):
+    def __init__(self, yaml_filepath=None, args=None, args_to_copy=None, step=None, create_empty_configs=False):
 
         pars_defaults = {'step': 'all',
                          'dataset': 'new_dataset',
@@ -70,7 +70,8 @@ class Run_Configs:
                          'skip_nnn_reordering': False,
                          'skip_reorder_edges': False,
                          'pickup_intermediate': False,
-                         'tmp_folder': None}
+                         'tmp_folder': None,
+                         'spr_strategy': 'large_tree'}
 
         if create_empty_configs:
             for label in pars_defaults:
@@ -95,6 +96,11 @@ class Run_Configs:
                 setattr(self, label, self.config_yaml[label])
             else:
                 setattr(self, label, pars_defaults[label])
+
+        if (args_to_copy is not None) and (args is not None):
+            for label in args_to_copy:
+                if hasattr(args, label):
+                    setattr(self, label, getattr(args, label))
 
         # The following run-configurations are still used in Bonsai, but can no longer be set by users. Instead,
         # picking up intermediate results is only done through --pickup_intermediate and providing the correct
@@ -1175,7 +1181,7 @@ def print_memory(location=None):
     # print("Current shared memory usage is ",
     #       psutil.Process(os.getpid()).memory_info().shared / 1024 ** 2, " MB.")
     current, peak = tracemalloc.get_traced_memory()
-    # tracemalloc.reset_peak()
+    tracemalloc.reset_peak()
     message += "Current-mem: {} MB, Peak-mem since last: {} MB".format(current / 1000 ** 2, peak / 1000 ** 2)
     # mp_print("Python data segment =",
     #       resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2, "MB", ALL_RANKS=True)

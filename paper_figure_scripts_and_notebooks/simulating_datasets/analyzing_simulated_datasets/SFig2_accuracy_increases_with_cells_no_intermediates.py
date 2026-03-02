@@ -8,7 +8,6 @@ import csv
 import matplotlib.pyplot as plt
 from natsort import natsorted
 from scipy.spatial.distance import squareform
-import seaborn as sns
 import logging
 FORMAT = '%(asctime)s %(funcName)s %(levelname)s %(message)s'
 log_level = logging.WARNING

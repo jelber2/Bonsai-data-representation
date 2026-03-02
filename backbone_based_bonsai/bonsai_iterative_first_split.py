@@ -17,7 +17,7 @@ from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_
     convert_dict_to_named_tuple, str2bool, print_memory
 
 parser = ArgumentParser(
-    description='First script to be called in bonsai_iterative_build.py.'
+    description='First script to be called in backbone_based_bonsai.py.'
                 'Creates a first star-tree on a first subset of the data. Preprocesses all the data to store the'
                 'preprocessed data in the results-folder of all subsets already.')
 
@@ -104,4 +104,4 @@ for ind_subset, subset_folder in enumerate(subset_folders):
 
 mp_print("Reading, filtering, and storing data took " + str(time.time() - start_all) + " seconds.")
 mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
-print_memory("Memory peak after the whole calculation")
+print_memory("Memory usage after the whole calculation")
