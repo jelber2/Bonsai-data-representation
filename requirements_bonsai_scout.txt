@@ -11,3 +11,4 @@ tables==3.9.2
 h5py==3.11.0
 ruamel.yaml==0.18.6
 natsort==8.4.0
+psutil==7.1.3
