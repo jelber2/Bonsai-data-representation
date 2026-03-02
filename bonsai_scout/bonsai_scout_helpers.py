@@ -389,6 +389,17 @@ class Bonvis_settings:
                                            gradient_type=self.node_style['gradient_type'])
         # if len(self.celltype_info.annot_alts) > 1:
         #     possible_init_annots = [annot for annot in self.celltype_info.annot_alts if annot != 'annot_default']
+        possible_init_annots = [annot_key for annot_key, annot_info in self.celltype_info.annot_infos.items()
+                                if not annot_info.hidden]
+        annot_tuples = []
+        for annot_key, annot_info in self.celltype_info.annot_infos.items():
+            if annot_info.hidden:
+                continue
+            if annot_info.cats is None:
+                continue
+            annot_tuples.append((annot_key, len(annot_info.cats)))
+
+
         possible_init_annots = []
         if len(self.celltype_info.annot_alts) > 1:
             possible_init_annots = [annot_key for annot_key, annot_info in self.celltype_info.annot_infos.items()
