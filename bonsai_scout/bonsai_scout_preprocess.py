@@ -519,10 +519,12 @@ if args.perform_annot_guided_clustering:
             if annot_id.startswith('annot_num'):
                 continue
 
+        cell2cs = None
         if annot_info.info_object == 'cell_info_dict':
             cell_to_celltype = cell_info_dict[annot_id]
             to_be_clst_ids = scData.metadata.cellIds
             id_to_node_id = cell_id_to_node_id
+            cell2cs = cell_id_to_cs_id[1].to_dict()
         elif annot_info.info_object == 'cs_info_dict':
             cell_to_celltype = cs_info_dict[annot_id]
             to_be_clst_ids = scData.metadata.csIds
@@ -552,7 +554,7 @@ if args.perform_annot_guided_clustering:
                                                   node_ids_multiple_cs_ids=node_ids_multiple_cs_ids)
             cl_df_annot = cl_df_annot.loc[metadata_dict['csIds']]
             # Process annot-based clustering results
-            cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict)
+            cl_df_annot = process_annot_based_clsts(cl_df_annot, cell2annot=annotation_dict, cell2cs=cell2cs)
             all_cl_dfs.append(cl_df_annot)
 
 cl_df = pd.concat(all_cl_dfs, axis=1)
