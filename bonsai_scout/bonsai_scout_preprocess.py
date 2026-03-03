@@ -505,9 +505,7 @@ cl_df = process_annot_based_clsts(cl_df, cell2annot=None)
 all_cl_dfs = [cl_df]
 
 if args.perform_annot_guided_clustering:
-    # TODO: REMOVE THIS! AND TEST THIS EXTENSIVELY
-    #  Test if it works with nan
-    #  Test if it works with cellstates
+    mp_print("Starting annotation-guided clustering.")
 
     for annot_id, annot_info in celltype_info.annot_infos.items():
         if annot_info.color_type != 'categorical':
