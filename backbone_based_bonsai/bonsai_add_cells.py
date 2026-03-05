@@ -123,7 +123,7 @@ if (mpiRank == 0) and args.pickup_intermediate and os.path.exists(tmp_folder):
 if not tmp_found:
     # If no intermediate result is present, take the guide tree here. Otherwise take the intermediate result.
     tmp_tree_ind = 0
-    scdata_guide = loadReconstructedTreeAndData(args, guide_tree_folder, all_genes=all_genes, get_cell_info=False,
+    scdata_guide = loadReconstructedTreeAndData(args, args.guide_tree_folder, all_genes=all_genes, get_cell_info=False,
                                                 reprocess_data=False, all_ranks=True, rel_to_results=True,
                                                 get_data=False, no_data_needed=True, get_posterior_ltqs=False,
                                                 otherRanksMinimalInfo=True)
@@ -176,8 +176,8 @@ guide_cell_inds = np.unique(guide_cell_inds)
 non_guide_cell_inds = np.setdiff1d(np.arange(scdata_all_cells.metadata.nCells), guide_cell_inds)
 # Select subset of non_guide-cells that we want to add based on the "cells_to_be_added"-argument
 cell_id_list_after_adding = []
-if (cells_to_be_added is not None) and os.path.exists(os.path.abspath(cells_to_be_added)):
-    cells_to_be_added = os.path.abspath(cells_to_be_added)
+if (args.cells_to_be_added is not None) and os.path.exists(os.path.abspath(args.cells_to_be_added)):
+    cells_to_be_added = os.path.abspath(args.cells_to_be_added)
     # cell_ids_to_be_added = []
     cell_inds_to_add = []
     with open(cells_to_be_added, 'r') as file:
