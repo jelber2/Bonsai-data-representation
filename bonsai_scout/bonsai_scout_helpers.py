@@ -2935,6 +2935,7 @@ def rename_clusters_fast(cluster_series, annot_col=None):
         )
 
     # map back to original series
+
     return new_names
 
 
