@@ -69,7 +69,7 @@ parser.add_argument('--seed', type=int, default=1231,
 args = parser.parse_args()
 np.random.seed(args.seed)
 
-args = Run_Configs(args.config_filepath)
+# args = Run_Configs(args.config_filepath)
 args_to_copy = ['preprocessed_data_folder', 'growth_before_cleanup', 'select_target', 'guide_tree_folder',
                 'cells_to_be_added', 'pickup_intermediate', 'search_tol']
 args = Run_Configs(args.config_filepath, args=args, args_to_copy=args_to_copy)

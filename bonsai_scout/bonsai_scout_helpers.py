@@ -150,7 +150,7 @@ class Celltype_info:
             else:
                 new_dict[label] = self_dict[label]
         return new_dict
-    
+
     def get_init_annot(self):
         init_annot = 'annot_default'
         if len(self.annot_alts) > 1:
@@ -2902,7 +2902,7 @@ def rename_clusters_fast(cluster_series, annot_col=None):
         freq = (
             tmp
             .groupby("cluster")["annot"]
-            .value_counts(normalize=True)
+            .value_counts(normalize=True, dropna=False)
             .mul(100)
             .round()
             .astype(int)
@@ -2935,22 +2935,45 @@ def rename_clusters_fast(cluster_series, annot_col=None):
         )
 
     # map back to original series
-    return cluster_series.map(new_names)
+
+    return new_names
 
 
-def process_annot_based_clsts(cl_df, cell2annot=None):
+def process_annot_based_clsts(cl_df, cell2annot=None, cell2cs=None):
     start = time.time()
-    df = cl_df.copy()
-    if cell2annot is not None:
-        df["annotation"] = cl_df.index.map(cell2annot)
-        cluster_cols = df.columns.drop("annotation")
-        annot_col = df['annotation']
+    if cell2cs is None:
+        cell_df = cl_df.copy()
     else:
-        cluster_cols = df.columns
-        annot_col = None
-    for col in cluster_cols:
-        df[col] = rename_clusters_fast(df[col], annot_col)
-    print("Processing cluster names took {} seconds.".format(time.time() - start))
+        df_mapping = pd.DataFrame.from_dict(cell2cs, orient="index", columns=["cs_id"])
+        df_mapping.index.name = "cell_id"
+        cell_df = df_mapping.merge(cl_df, left_on="cs_id", right_index=True, how="left")
+        cell_df = cell_df.drop(columns=["cs_id"])
     if cell2annot is not None:
-        df = df.drop(columns='annotation')
-    return df
+        cell_df["annotation"] = cell_df.index.map(cell2annot)
+        cluster_cols = cell_df.columns.drop("annotation")
+        annot_col = cell_df['annotation']
+    else:
+        cluster_cols = cell_df.columns
+        annot_col = None
+    new_cl_df = cl_df.copy()
+    for col in cluster_cols:
+        new_names_map = rename_clusters_fast(cell_df[col], annot_col)
+        new_cl_df[col] = new_cl_df[col].map(new_names_map)
+    print("Processing cluster names took {} seconds.".format(time.time() - start))
+    # if cell2annot is not None:
+    #     df = df.drop(columns='annotation')
+    # if cell_id_to_node_id is not None:
+    #     df["node_id"] = df.index.map(cell_id_to_node_id)
+    #     cluster_cols = df.columns
+    #     # Check if any cluster-IDs are inconsistent for cells with the same node
+    #     # for node_id, sub in df.groupby("node_id"):
+    #     #     inconsistent = (sub[cluster_cols].nunique(dropna=False) > 1)
+    #     #     if inconsistent.any():
+    #     #         bad_cols = list(cluster_cols[inconsistent])
+    #     #         print(
+    #     #             f"Inconsistent cluster IDs for node {node_id} "
+    #     #             f"in columns: {bad_cols}"
+    #     #         )
+    #     df = df.drop(columns="node_id").groupby(df["node_id"]).first()
+    #     df.index.name = "node_id"
+    return new_cl_df
