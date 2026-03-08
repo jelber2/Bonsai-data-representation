@@ -5,9 +5,9 @@ from pathlib import Path
 import os, sys, psutil, gc
 
 # TODO: Remove this later maybe
-import tracemalloc
-
-tracemalloc.start()
+# import tracemalloc
+#
+# tracemalloc.start()
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
@@ -15,7 +15,7 @@ sys.path.append(parent_dir)
 os.chdir(parent_dir)
 
 from bonsai.bonsai_helpers import Run_Configs, remove_tree_folders, find_latest_tree_folder_new, str2bool, \
-    print_memory, store_scdata_and_communicate_path
+    store_scdata_and_communicate_path
 
 parser = ArgumentParser(
     description='Infers a cell-tree to approximate the distances in gene expression space between cells in single'
@@ -157,7 +157,7 @@ SEQUENTIAL = True
 STORED_GREEDY_RESULT = False
 
 start_all = time.time()
-print_memory("Start")
+# print_memory("Start")
 
 # Make sure that args.results_folder is set:
 sc_data = SCData(onlyObject=True, dataset=args.dataset, results_folder=args.results_folder)
@@ -213,7 +213,7 @@ if args.step in ['preprocess', 'all']:
     if args.step in ['preprocess']:
         exit()
 
-print_memory("After preprocessing.")
+# print_memory("After preprocessing.")
 
 if args.step in ['core_calc', 'all']:
     if scData is None:
@@ -429,12 +429,12 @@ if args.step in ['core_calc', 'all']:
                                                         general_results_folder=args.results_folder)
         scData = None
         gc.collect()
-        print_memory("Ready to start SPR moves")
+        # print_memory("Ready to start SPR moves")
 
         # Do the actual moves here:
         scData = do_spr_moveset(scdata_path, args, strategy=args.spr_strategy,
                                 pickup_intermediate=args.pickup_intermediate)
-        print_memory("Done with SPR moves")
+        # print_memory("Done with SPR moves")
         if (scData is not None) and (scData.tree is not None):
             scData.tree.root.clear_memory()
 
@@ -675,4 +675,4 @@ if args.step in ['metadata', 'all']:
                 remove_tree_folders(redundant_folder, removeDir=True)
 
 mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
-print_memory("Memory usage after the whole calculation")
+# print_memory("Memory usage after the whole calculation")

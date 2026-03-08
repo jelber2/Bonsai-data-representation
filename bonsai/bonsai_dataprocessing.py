@@ -1556,18 +1556,18 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
         scdata_path_parallelphase = store_scdata_and_communicate_path(scData,
                                                                       specific_results_folder='spr_intermediates')
 
-        print_memory("Stored the tree before parallel-phase of SPR moves")
+        # print_memory("Stored the tree before parallel-phase of SPR moves")
         scData = None
         if mpi_info.rank == 0:
             del df_nodes_list
         gc.collect()
-        print_memory("Removed old scData-object before parallel-phase of SPR moves")
+        # print_memory("Removed old scData-object before parallel-phase of SPR moves")
 
         scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                               reprocess_data=False, all_genes=False, get_cell_info=False,
                                               all_ranks=True, rel_to_results=False, verbose=False)
         # scData.tree.root.storeParent()
-        print_memory("Loaded fresh scData from file before parallel-phase of SPR.")
+        # print_memory("Loaded fresh scData from file before parallel-phase of SPR.")
 
         # Now, every process should have the full tree-result of the first SPR moves. Ready to start Phase 2
         # Phase 2: no moves are performed, but we scan all candidates and store successful candidates
@@ -1614,12 +1614,12 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
             # the ordering of children, which makes it perfectly comparable when running on different numbers of cores
             del scData
             gc.collect()
-            print_memory('Deleted scData after parallel phase')
+            # print_memory('Deleted scData after parallel phase')
             scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                                   reprocess_data=False, all_genes=False, get_cell_info=False,
                                                   all_ranks=True, rel_to_results=False, single_process=True, verbose=False)
             # scData.tree.root.storeParent()
-            print_memory("Loaded tree again after parallel phase")
+            # print_memory("Loaded tree again after parallel phase")
 
             my_tasks = [node_ind_dlogl[1] for node_ind_dlogl in negdlogl_nodeind_tuples]
             successful_moves, total_dlogl, remain_cands = scData.tree.do_spr_moves(select_cand='list',
@@ -1644,7 +1644,7 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
     # All processes should come togethere here.
     mp_print("Start round of postprocessing after SPR-moves.", ALL_RANKS=True)
     scData = extensive_spr_postprocessing(args, scData, verbose=large_tree)
-    print_memory("After round of postprocessing after SPR-moves.")
+    # print_memory("After round of postprocessing after SPR-moves.")
 
     # Just some tracking
     # if tracking:

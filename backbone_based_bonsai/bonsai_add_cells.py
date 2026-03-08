@@ -4,9 +4,9 @@ import time
 import os, sys, csv
 from pathlib import Path
 
-import tracemalloc
-
-tracemalloc.start()
+# import tracemalloc
+#
+# tracemalloc.start()
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # Add the parent directory of this script-file to sys.path
@@ -76,7 +76,7 @@ args = Run_Configs(args.config_filepath, args=args, args_to_copy=args_to_copy)
 
 from bonsai.bonsai_dataprocessing import initializeSCData, loadReconstructedTreeAndData, SCData, \
     OriginalData, Metadata
-from bonsai.bonsai_helpers import mp_print, startMPI, print_memory
+from bonsai.bonsai_helpers import mp_print, startMPI
 import bonsai.bonsai_globals as bs_glob
 
 if args.guide_tree_folder is None:
@@ -261,4 +261,4 @@ if tmp_folder is not None:
     remove_tree_folders(tmp_folder, removeDir=True, base='added')
 
 mp_print("Time necessary for the whole calculation was {} seconds.".format(time.time() - start_all))
-print_memory("Memory usage after the whole calculation")
+# print_memory("Memory usage after the whole calculation")

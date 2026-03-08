@@ -1169,10 +1169,10 @@ def write_ids(filepath, ids_list):
             f.write("%s\n" % ID)
 
 
-import psutil
-import tracemalloc
-import resource
 def print_memory(location=None):
+    import psutil
+    import tracemalloc
+    import resource
     message = ''
     if location is not None:
         message += "{}: ".format(location)
