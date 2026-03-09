@@ -3002,7 +3002,7 @@ class TreeNode:
         self.clear_AIRoot()
         if mem_friendly:
             self.keep_one_ltqsvars_or_W(keep_ltqsvars=True)
-        print_memory("Finished clearing memory.")
+        # print_memory("Finished clearing memory.")
 
 
 class Tree:
@@ -3206,14 +3206,14 @@ class Tree:
             else:
                 np.save(ltqs_file, ltqs, allow_pickle=False)
                 np.save(ltqsVars_file, ltqs_vars, allow_pickle=False)
-            print_memory("Wrote ltqs and ltqsVars to file")
+            # print_memory("Wrote ltqs and ltqsVars to file")
         mp_print("Storing tree in folder took %.2f seconds." % (time.time() - start))
 
         return edge_lst, dist_lst, vert_info
 
     def getEdgeVertInfo_memfriendly(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
                                     geneDiffusionScaling=None, variances=None):
-        print_memory("Start getEdgeVertInfo")
+        # print_memory("Start getEdgeVertInfo")
         edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
         # print_memory("Got Tree")
         if coords_folder is not None:
@@ -3269,7 +3269,7 @@ class Tree:
                     edge[ind] = vertInd
             del ltqs_mm
             del ltqs_vars_mm
-            print_memory("Wrote ltqs and ltqsVars to file")
+            # print_memory("Wrote ltqs and ltqsVars to file")
             # print_memory("Got all ltqs in a list")
             # ltqs = np.vstack(ltqs)
             # np.save(ltqs_file, ltqs, allow_pickle=False)
@@ -3295,7 +3295,7 @@ class Tree:
 
     def getEdgeVertInfo(self, coords_folder=None, verbose=False, store_posterior_ltqs=False,
                         geneDiffusionScaling=None, variances=None):
-        print_memory("Start getEdgeVertInfo")
+        # print_memory("Start getEdgeVertInfo")
         edgeList, distList, nodeIndToVertId, _, nodeIndToNode = self.compile_tree_from_scData_tree()
         # print_memory("Got Tree")
         if coords_folder is not None:
@@ -3341,17 +3341,17 @@ class Tree:
                         vertIndCounter += 1
                     vertInd = nodeIndToVertInd[nodeInd]
                     edge[ind] = vertInd
-            print_memory("Got all ltqs in a list")
+            # print_memory("Got all ltqs in a list")
             ltqs = np.vstack(ltqs)
             np.save(ltqs_file, ltqs, allow_pickle=False)
-            print_memory("Stored ltqs")
+            # print_memory("Stored ltqs")
             del ltqs
-            print_memory("Deleted ltqs")
+            # print_memory("Deleted ltqs")
             ltqsVars = np.vstack(ltqsVars)
             np.save(ltqsVars_file, ltqsVars, allow_pickle=False)
-            print_memory("Stored ltqsVars")
+            # print_memory("Stored ltqsVars")
             del ltqsVars
-            print_memory("Deleted ltqsVars")
+            # print_memory("Deleted ltqsVars")
             mp_print("Printing to file took %.2f seconds." % (time.time() - start))
         else:
             for edge in edgeList:
@@ -4143,7 +4143,7 @@ class Tree:
                                                                      successful_moves, total_dlogl_increase,
                                                                      orig_t))
                 # TODO: Remove this memory measurement maybe
-                print_memory("n_moves: {}".format(n_moves))
+                # print_memory("n_moves: {}".format(n_moves))
 
                 n_print *= 2
 
@@ -4516,7 +4516,7 @@ class Tree:
                 mp_print("Total number of searches done: {}".format(total_search_moves))
                 # mp_print("Current memory usage is ",
                 #          psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2, " MB.", ALL_RANKS=True)
-                print_memory("n_added: {}".format(n_added))
+                # print_memory("n_added: {}".format(n_added))
                 n_print *= 2
 
             # Create TreeNode that can be added
