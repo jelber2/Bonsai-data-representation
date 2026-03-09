@@ -524,7 +524,7 @@ if args.perform_annot_guided_clustering:
             cell_to_celltype = cell_info_dict[annot_id]
             to_be_clst_ids = scData.metadata.cellIds
             id_to_node_id = cell_id_to_node_id
-            cell2cs = cell_id_to_cs_id[1].to_dict()
+            cell2cs = scData.metadata.cell_id_to_cs_id
         elif annot_info.info_object == 'cs_info_dict':
             cell_to_celltype = cs_info_dict[annot_id]
             to_be_clst_ids = scData.metadata.csIds
