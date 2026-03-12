@@ -966,7 +966,8 @@ class SCData:
                 except KeyError as e:
                     mp_print("The cell-ID {} was present in the data but not in annotation-file '{}'. "
                              "Please check this. "
-                             "For now, we are trying to still use this annotation-file.".format(e, filename), WARNING=True)
+                             "For now, we are trying to still use this annotation-file.".format(e, filename),
+                             WARNING=True)
                     annotation_df = None
             elif annot_input.shape[0] in [self.metadata.nCells - 1, self.metadata.nCells]:
                 if annot_input.shape[0] == (self.metadata.nCells - 1):
@@ -981,7 +982,8 @@ class SCData:
                 except KeyError as e:
                     mp_print("The cell-ID {} was present in the data but not in annotation-file '{}'. "
                              "Please check this. "
-                             "For now, we are trying to still use this annotation-file.".format(e, filename), WARNING=True)
+                             "For now, we are trying to still use this annotation-file.".format(e, filename),
+                             WARNING=True)
             else:
                 mp_print("Annotation-file '{}' has a number of rows that is not equal to the number of cells "
                          "(or cellstates) in the dataset. Please check this. For now, we are trying to still use this "
@@ -1194,11 +1196,28 @@ class SCData:
             self.metadata.nGenes = len(self.metadata.geneIds)
 
         self.metadata.cellIds = []
+        forbidden = {":", ",", "(", ")", ";", ' '}  # Otherwise, writing and reading to Nwk-string fails
+        warned = False
         if os.path.exists(self.data_path('cellID.txt')):
             with open(self.data_path(os.path.join('cellID.txt')), 'r') as file:
                 reader = csv.reader(file, delimiter="\t")
                 for row in reader:
-                    self.metadata.cellIds.append(row[0])
+                    cell_id = row[0]
+                    if any(c in cell_id for c in forbidden):
+                        logger.error("At least one cell-ID: {} contains a character that is problematic for"
+                                     "writing and reading Nwk-strings: ':', ',' '(', ')',';'.\n"
+                                     "Please replace these characters, for example by underscores: '_'.\n"
+                                     "Note that you should also do these "
+                                     "replacements in potential annotation-files.".format(cell_id))
+                        exit()
+                        # if not warned:
+                        #     logger.warning("At least one cell-ID: {} contains a character that is problematic for"
+                        #                    "writing and reading Nwk-strings: ':', ',' '(', ')',';'.\n"
+                        #                    "We'll replace these characters by underscores in the output.")
+                        #     warned = True
+                        # for c in forbidden:
+                        #     cell_id = cell_id.replace(c, "_")
+                    self.metadata.cellIds.append(cell_id)
             n_unq_ids = len(np.unique(self.metadata.cellIds))
             if self.metadata.nCells is not None:
                 if (n_unq_ids != self.metadata.nCells) or (len(self.metadata.cellIds) != self.metadata.nCells):
@@ -1617,7 +1636,8 @@ def do_spr_moves_with_postprocessing(scdata_path, args, select_cand, select_targ
             # print_memory('Deleted scData after parallel phase')
             scData = loadReconstructedTreeAndData(args, scdata_path_parallelphase,
                                                   reprocess_data=False, all_genes=False, get_cell_info=False,
-                                                  all_ranks=True, rel_to_results=False, single_process=True, verbose=False)
+                                                  all_ranks=True, rel_to_results=False, single_process=True,
+                                                  verbose=False)
             # scData.tree.root.storeParent()
             # print_memory("Loaded tree again after parallel phase")
 
@@ -1692,7 +1712,6 @@ def extensive_spr_postprocessing(args, scdata, verbose=False):
     scdata.tree.optTimes(verbose=verbose, singleProcess=True, mem_friendly=True, maxiter=100, tol=1e-4)
 
     return scdata
-
 
     # Used
     # def filter_variable_genes(self, originalData, zscoreCutoff=-1, nGenesToKeep=-1, verbose=False):
