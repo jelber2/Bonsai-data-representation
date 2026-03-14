@@ -61,3 +61,20 @@ All packages are installed via pip:
 ## Port
 
 The Shiny app runs on port **5000** (host: `0.0.0.0`).
+
+## bonsai-cupy
+
+A GPU-accelerated variant of the core tree-helper module lives in `bonsai-cupy/bonsai_treeHelpers.py`.
+
+Key differences from `bonsai/bonsai_treeHelpers.py`:
+
+| Original | CuPy version |
+|---|---|
+| `import numpy as np` | `import cupy as np` (falls back to numpy if CuPy unavailable) |
+| `from scipy.spatial import distance` | Custom `_DistanceModule` backed by CuPy broadcasting |
+| `from scipy.sparse import csr_array, lil_array` | `from cupyx.scipy.sparse import csr_array, lil_array` |
+| `np.lib.format.open_memmap(…)` | `_numpy.lib.format.open_memmap(…)` (numpy kept for file I/O) |
+| `np.save / np.load` | `_numpy.save / _numpy.load` |
+| `from scipy.optimize import …` | Unchanged — no CuPy GPU optimizer equivalent |
+
+All existing call-sites (`distance.pdist`, `distance.squareform`, `csr_array`, `lil_array`, `np.*`) work identically; only the back-end shifts to the GPU when CuPy is installed.
