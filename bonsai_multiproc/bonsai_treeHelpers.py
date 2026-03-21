@@ -1,4 +1,5 @@
 from bonsai_multiproc.bonsai_helpers import *
+import bonsai_multiproc.mp_wrapper as mp_wrapper
 
 import bonsai_multiproc.bonsai_globals as bs_glob
 import numpy as np
@@ -970,7 +971,7 @@ class TreeNode:
         """This function loops over all candidate pairs between nodes that are children of the root-node, and checks what
         the likelihood becomes when they are merged."""
         if mpiInfo is None:
-            mpiInfo = mpi_wrapper.get_mpi_info()
+            mpiInfo = mp_wrapper.get_mpi_info()
         if (mpiInfo.rank == 0) or single_process:
             if not self.isRoot:
                 # Get the mean and precision of this node's posterior when all other node-positions are integrated out
@@ -1051,7 +1052,7 @@ class TreeNode:
         # run from a single process without communication. In that case, we set mpiInfo.rank = 0, mpiInfo.size=1.
         # In general, only process 0 will keep track of the tree, and will report the correct results. The other
         # processes are just employed when necessary, and given the correct information then.
-        mpiInfo = mpi_wrapper.get_mpi_info(singleProcess=singleProcess)
+        mpiInfo = mp_wrapper.get_mpi_info(singleProcess=singleProcess)
         leaderOfMany = (mpiInfo.rank == 0) and (mpiInfo.size > 1)
 
         # Process the run configurations, and initialize some variables (only on process 0).
@@ -1093,7 +1094,7 @@ class TreeNode:
             # part of the function where parallel computing is required.
             if mpiInfo.rank != 0:
                 computeOrBreak = None
-                computeOrBreak = mpi_wrapper.bcast(computeOrBreak, root=0)
+                computeOrBreak = mp_wrapper.bcast(computeOrBreak, root=0)
                 # This will be a string, that can be either "break" or "continue", which mean that the process should
                 # quit the function or continue to the parallel part, respectively.
                 if computeOrBreak == 'break':
@@ -1106,7 +1107,7 @@ class TreeNode:
             if (mpiInfo.rank == 0) and breakOut:
                 if leaderOfMany:
                     computeOrBreak = 'break'
-                    mpi_wrapper.bcast(computeOrBreak, root=0)
+                    mp_wrapper.bcast(computeOrBreak, root=0)
                     # chInfo['expNChild'] = chInfo['nChild']
                 break
 
@@ -1160,14 +1161,14 @@ class TreeNode:
                     continue
 
                 if not runConfigs['parNow']:  # So we perform a merge in this round, but not in parallel.
-                    mpiInfoTmp = mpi_wrapper.get_mpi_info(singleProcess=True)
+                    mpiInfoTmp = mp_wrapper.get_mpi_info(singleProcess=True)
                 else:  # In this case, we do this round in parallel.
                     if verbose:
                         mp_print("This round will be done in parallel! Number of children left: ", chInfo['nChild'])
                     mpiInfoTmp = mpiInfo
                     # The following command makes the other processes run further to below, to receive necessary info
                     computeOrBreak = 'continue'
-                    mpi_wrapper.bcast(computeOrBreak, root=0)
+                    mp_wrapper.bcast(computeOrBreak, root=0)
                     # start_comm = time.time()
                     runConfigs, tChildren, ltqsChildren, ltqsVarsChildren = self.sendMergeChildrenInfo(runConfigs,
                                                                                                        pairInfoTuple,
@@ -1356,12 +1357,12 @@ class TreeNode:
             # Communicate maximum
             if mpiInfoTmp.size > 1:
                 commTuple = (pairsDone, maxdLogL, maxdLogLZeroRoot)
-                allCommTuples = mpi_wrapper.gather(commTuple, root=0)
+                allCommTuples = mp_wrapper.gather(commTuple, root=0)
                 if mpiInfo.rank == 0:
                     allPairsDone, maxdLogLTuples, maxdLogLTuplesZeroRoot = tuple(zip(*allCommTuples))
                     pairsDoneInfo['totalPairsDone'] = sum(allPairsDone)
                 if random:
-                    dLogLDictAll = mpi_wrapper.gather(dLogLDict, root=0)
+                    dLogLDictAll = mp_wrapper.gather(dLogLDict, root=0)
                     if mpiInfoTmp.rank == 0:
                         for dLogLs in dLogLDictAll:
                             dLogLDict.update(dLogLs)
@@ -1503,7 +1504,7 @@ class TreeNode:
 
             # If it was above decided that this round can be stopped, all processes can continue to next round here.
             if mpiInfoTmp.size > 1:
-                breakOut = mpi_wrapper.bcast(breakOut, root=0)
+                breakOut = mp_wrapper.bcast(breakOut, root=0)
             if breakOut:
                 continue
             # If no UBs are used, processes other than 0 can continue
@@ -1515,7 +1516,7 @@ class TreeNode:
                 if mpiInfoTmp.size > 1:
                     if mpiInfoTmp.rank == 0:
                         epsTuple = (epsx, epsW)
-                    epsx, epsW = mpi_wrapper.bcast(epsTuple, root=0)
+                    epsx, epsW = mp_wrapper.bcast(epsTuple, root=0)
                 # Get upper bounds by combining precalculated information with the chosen epsx and epsW
                 if len(UBInfo['tuples']):
                     pairKeys, dLogLUBInfo = zip(*UBInfo['tuples'].items())
@@ -1538,8 +1539,8 @@ class TreeNode:
 
                 # Gather the computed upper bounds from all processes
                 if mpiInfoTmp.size > 1:  # (not singleProcess) and parallelInfo['parNow']:
-                    allPairsUB = mpi_wrapper.gather(pairsUB, root=0)
-                    alldLogLsUB = mpi_wrapper.gather(dLogLUBs, root=0)
+                    allPairsUB = mp_wrapper.gather(pairsUB, root=0)
+                    alldLogLsUB = mp_wrapper.gather(dLogLUBs, root=0)
                     if mpiInfoTmp.rank != 0:
                         # The memory where UBs are stored can be freed up on processes other than zero, because
                         # probably they'll be idle for quite some rounds.
@@ -1579,7 +1580,7 @@ class TreeNode:
                 #  ubCommunicationStart = printTiming("Inserting new UBs and testing if out of ellipsoid", insertStart)
 
                 # if not singleProcess:
-                #     bcastUBTuple = mpi_wrapper.bcast(bcastUBTuple, root=0)
+                #     bcastUBTuple = mp_wrapper.bcast(bcastUBTuple, root=0)
                 # UBInfo, runConfigs['getNewUB'] = bcastUBTuple
 
                 # if runConfigs['timeStamps']:  # Print message on timing
@@ -1995,7 +1996,7 @@ class TreeNode:
         #
         #         parallelInfo['parNow'] = (parallelInfo['par'] or (nNewPairs > 1000))  # and (not nNewPairs < 100)
         #
-        #     parallelInfo = mpi_wrapper.bcast(parallelInfo, root=0)
+        #     parallelInfo = mp_wrapper.bcast(parallelInfo, root=0)
 
         return runConfigs, pairInfoTuple, oldRoot, UBInfo, pairsDoneInfo
 
@@ -2010,7 +2011,7 @@ class TreeNode:
             runConfigs['mem_friendly_files'] = os.path.join(runConfigs['mem_friendly_folder'],
                                                             'data%d' % np.random.randint(1e6))
         infoTuple = (pairInfoTuple, UBInfo, runConfigs, chInfo)
-        mpi_wrapper.bcast(infoTuple, root=0)
+        mp_wrapper.bcast(infoTuple, root=0)
 
         ltqsChildren, ltqsVarsChildren, tChildren = self.getInfoChildren()
         if runConfigs['mem_friendly']:
@@ -2029,12 +2030,12 @@ class TreeNode:
                     ltqsVarsChildren = np.load(runConfigs['mem_friendly_files'] + '_ltqsVars.npy', mmap_mode='r',
                                                allow_pickle=False)
                     files_sent = True
-                    mpi_wrapper.bcast(files_sent, root=0)
+                    mp_wrapper.bcast(files_sent, root=0)
                 except FileNotFoundError:
                     tries += 1
 
             if not files_sent:
-                mpi_wrapper.bcast(files_sent, root=0)
+                mp_wrapper.bcast(files_sent, root=0)
                 mp_print("Trying to communicate data: ltqsChildren with shape {}, and ltqsVarsChildren with"
                          " shape {}, at filepaths: {}, "
                          "but it does not work.".format(ltqsChildren.shape, ltqsVarsChildren.shape,
@@ -2045,8 +2046,8 @@ class TreeNode:
                 # Send some smaller numpy arrays (concerning coordinates of root)
                 # This sending also functions as a start signal for the other process to start loading the .npy-files
                 rootInfo = np.vstack((xrAsIfRoot_g, WAsIfRoot_g))
-                mpi_wrapper.Bcast(rootInfo, root=0, type='double')
-                mpi_wrapper.Bcast(tChildren, root=0, type='double')
+                mp_wrapper.Bcast(rootInfo, root=0, type='double')
+                mp_wrapper.Bcast(tChildren, root=0, type='double')
                 del rootInfo
                 gc.collect()
 
@@ -2059,11 +2060,11 @@ class TreeNode:
             # tChildren = [tChildren]
             ltqsInfo = np.concatenate(
                 (ltqsChildren, xrAsIfRoot_g[:, None], ltqsVarsChildren, WAsIfRoot_g[:, None]), axis=1)
-            mpi_wrapper.Bcast(ltqsInfo, root=0, type='double')
+            mp_wrapper.Bcast(ltqsInfo, root=0, type='double')
             del ltqsInfo
             gc.collect()
-            mpi_wrapper.Bcast(tChildren, root=0, type='double')
-        mpi_wrapper.barrier()
+            mp_wrapper.Bcast(tChildren, root=0, type='double')
+        mp_wrapper.barrier()
         return runConfigs, tChildren, ltqsChildren, ltqsVarsChildren
 
     def receiveMergeChildrenInfo(self):
@@ -2071,18 +2072,18 @@ class TreeNode:
         #          % (psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2),
         #          ALL_RANKS=True)
         infoTuple = None
-        infoTuple = mpi_wrapper.bcast(infoTuple, root=0)
+        infoTuple = mp_wrapper.bcast(infoTuple, root=0)
         pairInfoTuple, UBInfo, runConfigs, chInfo = infoTuple
         nChild = chInfo['nChild']
         files_sent = False
         if runConfigs['mem_friendly']:
             # Receive root coordinates
-            files_sent = mpi_wrapper.bcast(files_sent, root=0)
+            files_sent = mp_wrapper.bcast(files_sent, root=0)
             if files_sent:
                 rootInfo = np.empty((2, bs_glob.nGenes))
                 tChildren = np.empty(nChild)
-                mpi_wrapper.Bcast(rootInfo, root=0, type='double')
-                mpi_wrapper.Bcast(tChildren, root=0, type='double')
+                mp_wrapper.Bcast(rootInfo, root=0, type='double')
+                mp_wrapper.Bcast(tChildren, root=0, type='double')
                 xrAsIfRoot_g = rootInfo[0, :]
                 WAsIfRoot_g = rootInfo[1, :]
                 ltqsChildren = np.load(runConfigs['mem_friendly_files'] + '_ltqs.npy', mmap_mode='r',
@@ -2097,8 +2098,8 @@ class TreeNode:
             ltqsInfo = np.empty((bs_glob.nGenes, 2 * nChild + 2))
             tChildren = np.empty(nChild)
             # Receive numpy arrays
-            mpi_wrapper.Bcast(ltqsInfo, root=0, type='double')
-            mpi_wrapper.Bcast(tChildren, root=0, type='double')
+            mp_wrapper.Bcast(ltqsInfo, root=0, type='double')
+            mp_wrapper.Bcast(tChildren, root=0, type='double')
 
             # Compile child information
             ltqsChildren, xrAsIfRoot_g, ltqsVarsChildren, WAsIfRoot_g = \
@@ -2109,7 +2110,7 @@ class TreeNode:
             WAsIfRoot_g = WAsIfRoot_g.flatten()
 
         coordsTuple = (xrAsIfRoot_g, WAsIfRoot_g, ltqsChildren, ltqsVarsChildren)
-        mpi_wrapper.barrier()
+        mp_wrapper.barrier()
         return infoTuple, tChildren, coordsTuple
 
     def getNNPairs(self, xrAIRoot, xrVarsAIRoot, NNInfo, kNN, verbose=False):
@@ -2252,9 +2253,9 @@ class TreeNode:
             W_g = None
             xr_g = None
         if (not singleProcess) and (mpiInfo.size > 1):
-            tStar = mpi_wrapper.bcast(tStar, root=0)
-            W_g = mpi_wrapper.bcast(W_g, root=0)
-            xr_g = mpi_wrapper.bcast(xr_g, root=0)
+            tStar = mp_wrapper.bcast(tStar, root=0)
+            W_g = mp_wrapper.bcast(W_g, root=0)
+            xr_g = mp_wrapper.bcast(xr_g, root=0)
         for ind, child in enumerate(self.childNodes):
             child.tParent = tStar[ind]
         self.getLtqsComplete(mem_friendly=True)
@@ -3447,7 +3448,7 @@ class Tree:
         of this function.
         :return:
         """
-        if mpi_wrapper.is_first_process() or singleProcess:
+        if mp_wrapper.is_first_process() or singleProcess:
             nodeInds, times = zip(*self.root.getTs({}).items())
             t0 = np.minimum(np.maximum(np.array(times), 1e-4), 1e4)
             bounds = ((-15, 15),) * len(t0)  # np.log(1e-6) = -13.815510557964274
@@ -3460,8 +3461,8 @@ class Tree:
             optTimes = None
             nodeInds = None
         if not singleProcess:
-            nodeInds = mpi_wrapper.bcast(nodeInds, root=0)
-            optTimes = mpi_wrapper.bcast(optTimes, root=0)
+            nodeInds = mp_wrapper.bcast(nodeInds, root=0)
+            optTimes = mp_wrapper.bcast(optTimes, root=0)
 
         optTimes = dict(zip(nodeInds, optTimes))
         self.root.assignTs(optTimes)
@@ -3478,7 +3479,7 @@ class Tree:
         of this function.
         :return:
         """
-        if mpi_wrapper.is_first_process() or singleProcess:
+        if mp_wrapper.is_first_process() or singleProcess:
             nodeInds, times = zip(*self.root.getTs({}).items())
             times = np.array(times)
             cutoffs = [None, 1e-6, 1e-5, 1e-4, 1e-3]
@@ -3511,8 +3512,8 @@ class Tree:
             optTimes = None
             nodeInds = None
         if not singleProcess:
-            nodeInds = mpi_wrapper.bcast(nodeInds, root=0)
-            optTimes = mpi_wrapper.bcast(optTimes, root=0)
+            nodeInds = mp_wrapper.bcast(nodeInds, root=0)
+            optTimes = mp_wrapper.bcast(optTimes, root=0)
         optTimes = dict(zip(nodeInds, optTimes))
         self.root.assignTs(optTimes)
         self.root.getLtqsComplete(mem_friendly=True)
@@ -3529,8 +3530,8 @@ class Tree:
         #     optTimes = None
         #     nodeInds = None
         # if not singleProcess:
-        #     nodeInds = mpi_wrapper.bcast(nodeInds, root=0)
-        #     optTimes = mpi_wrapper.bcast(optTimes, root=0)
+        #     nodeInds = mp_wrapper.bcast(nodeInds, root=0)
+        #     optTimes = mp_wrapper.bcast(optTimes, root=0)
         #
         # optTimes = dict(zip(nodeInds, optTimes))
         # self.root.assignTs(optTimes)
@@ -3547,7 +3548,7 @@ class Tree:
         of this function.
         :return:
         """
-        if mpi_wrapper.is_first_process() or singleProcess:
+        if mp_wrapper.is_first_process() or singleProcess:
             nodeInds, times = zip(*self.root.getTs({}).items())
             t0 = np.minimum(np.maximum(np.array(times), 1e-4), 1e4)
             loglamb0 = 0
@@ -3562,8 +3563,8 @@ class Tree:
             optTimes = None
             nodeInds = None
         if not singleProcess:
-            nodeInds = mpi_wrapper.bcast(nodeInds, root=0)
-            optTimes = mpi_wrapper.bcast(optTimes, root=0)
+            nodeInds = mp_wrapper.bcast(nodeInds, root=0)
+            optTimes = mp_wrapper.bcast(optTimes, root=0)
 
         optTimes = dict(zip(nodeInds, optTimes))
         self.root.assignTs(optTimes)
@@ -3582,7 +3583,7 @@ class Tree:
         of this function.
         :return:
         """
-        if mpi_wrapper.is_first_process() or singleProcess:
+        if mp_wrapper.is_first_process() or singleProcess:
             nGenes = bs_glob.nGenes
             logLambda0 = np.zeros(nGenes)
 
@@ -3618,7 +3619,7 @@ class Tree:
         else:
             optLambdas = None
         if not singleProcess:
-            optLambdas = mpi_wrapper.bcast(optLambdas, root=0)
+            optLambdas = mp_wrapper.bcast(optLambdas, root=0)
 
         self.root.assignVs(optLambdas)
         optGeneVars = geneVars * optLambdas
@@ -4795,15 +4796,15 @@ def getNewUBInfo(xrAsIfRoot_g, WAsIfRoot_g, epsx, epsW, alldLogLsUB, UBInfo, all
 
 def communicateMaxs(maxdLogL, maxdLogLZeroRoot, foundMax, task, nNewPairs, UBInfo, mpiInfo):
     if mpiInfo.size > 1:
-        maxdLogLTuples = mpi_wrapper.world_allgather(maxdLogL)
-        maxdLogLZeroRootTuples = mpi_wrapper.world_allgather(maxdLogLZeroRoot)
+        maxdLogLTuples = mp_wrapper.world_allgather(maxdLogL)
+        maxdLogLZeroRootTuples = mp_wrapper.world_allgather(maxdLogLZeroRoot)
         ind1s, ind2s, maxdLogLs = zip(*maxdLogLTuples)
         ind1sZeroRoot, ind2sZeroRoot, maxdLogLsZeroRoot = zip(*maxdLogLZeroRootTuples)
         maxdLogL = maxdLogLTuples[np.argmax(maxdLogLs)]
         maxdLogLZeroRoot = maxdLogLZeroRootTuples[np.argmax(maxdLogLsZeroRoot)]
         if not foundMax:
             foundMax = (maxdLogL[2] > UBInfo['UBs'][task - nNewPairs])
-        foundMaxs = mpi_wrapper.world_allgather(foundMax)
+        foundMaxs = mp_wrapper.world_allgather(foundMax)
         allFoundMax = min(foundMaxs)
         return foundMax, allFoundMax, maxdLogL, maxdLogLZeroRoot
     else:
