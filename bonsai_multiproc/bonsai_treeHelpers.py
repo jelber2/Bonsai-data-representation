@@ -1,6 +1,6 @@
-from bonsai.bonsai_helpers import *
+from bonsai_multiproc.bonsai_helpers import *
 
-import bonsai.bonsai_globals as bs_glob
+import bonsai_multiproc.bonsai_globals as bs_glob
 import numpy as np
 import time
 from scipy.optimize import brentq, minimize
@@ -10,7 +10,7 @@ import itertools
 import os
 import gc
 from itertools import permutations
-from bonsai.bonsai_approxNN import getApproxNNs
+from bonsai_multiproc.bonsai_approxNN import getApproxNNs
 import pandas as pd
 from downstream_analyses.get_clusters_max_diameter import get_min_pdists_clustering_from_nwk_str
 import json
