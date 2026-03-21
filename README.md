@@ -119,6 +119,35 @@ mv bonsai/ bonsai-orig/
 mv bonsai-cupy/ bonsai/
 ```
 
+## Installing *Bonsai with True Multiprocessing*
+1. Clone the GitHub repository:
+```
+git clone https://github.com/jelber2/Bonsai-data-representation.git
+```
+
+2. Install uv, upgrade to python3.14t, make virtual environment, activate virtual environment
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python upgrade 3.14t #python3.14t has the free-threaded, global interpreter local disabled
+uv venv bonsai_multiproc_venv
+source bonsai_multiproc_venv/bin/activate
+```
+
+3. Navigate to the cloned GitHub repository:
+```
+cd <PathToLocalBonsaiRepository>
+```
+
+4. Install the required *Python* packages by
+```
+uv pip install -r requirements_python3.14t.txt
+```
+
+5. Run in multiproc mode (2 cores for example)
+```
+python3 bonsai_multiproc/bonsai_main.py -n_workers 2
+```
+
 
 ## Running *Bonsai*
 In this section, we will go over the steps to recontruct a Bonsai data-representation. These steps are also followed in the example below [(Example 1: Your first *Bonsai* run)](https://github.com/dhdegroot/Bonsai-data-representation?tab=readme-ov-file#example-1-your-first-bonsai-run), so as a good test if *Bonsai* and its dependencies were properly installed, you can follow that example.
