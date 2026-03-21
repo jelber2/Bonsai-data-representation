@@ -125,6 +125,7 @@ pickup_intermediate = args.pickup_intermediate
 # TODO: Remove
 store_all_nwk_folder = args.store_all_nwk_folder
 print_annotations = args.print_annotations
+n_workers = args.n_workers
 
 args = Run_Configs(args.config_filepath, step=args.step)
 
@@ -148,7 +149,7 @@ else:
     bs_glob.nwk_folder = None
 
 # Initialise thread pool (replaces MPI process launch)
-mpiRank, mpiSize = startMP(n_workers=args.n_workers, verbose=args.verbose)
+mpiRank, mpiSize = startMP(n_workers=n_workers, verbose=args.verbose)
 scData = None
 startGML = None
 ellipsoidSize = args.UB_ellipsoid_size if (args.UB_ellipsoid_size > 0) else None
