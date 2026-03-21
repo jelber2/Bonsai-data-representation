@@ -1831,6 +1831,8 @@ def nnnReorderRandom(args, outputFolder, verbose=False, randomMoves=0,
         _scData = loadReconstructedTreeAndData(args, os.path.join(random_folder, 'orig_tree'),
                                                reprocess_data=False, all_genes=False, get_cell_info=False,
                                                all_ranks=True, rel_to_results=False)
+        if _scData.tree.root.ltqs is None:
+            _scData.tree.root.getLtqsComplete(mem_friendly=True)
         _currLoglik = _scData.metadata.loglik
         while _moveCounter < randomMoves:
             _nodesList = recursionWrap(_scData.tree.root.getNodeList, [], returnLeafs=True, returnRoot=True)
